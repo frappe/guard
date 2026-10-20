@@ -36,6 +36,12 @@ Ideas past the baseline in [01-features.md](01-features.md). Each idea has a sta
 | O3 | Cost view: tokens and gateway spend for each review, team and month, from gateway usage. | later |
 | O4 | Pre-push hook recipe with `guard review status`. | v1 (docs only) |
 
+## Platform
+
+| # | Idea | Status |
+| - | - | - |
+| F1 | **Flow integration.** When the Flow app is installed, Guard registers its graph and knowledge tools (`search_code`, `find_definition`, `get_callers`, `get_callees`, `read_file`, `search_knowledge_base`, `list_findings`) through the `flow_tools` hook, and a "Guard" agent through `flow_agents`. Flow sessions then give codebase chat with transcripts and approvals. The review pipeline does not run on Flow: it needs a bounded synchronous loop inside an RQ job, a forced final tool call, and offline tests. | v1 |
+
 ## People
 
 | # | Idea | Status |

@@ -1,7 +1,12 @@
 # Copyright (c) 2026, Sabu Siyad and contributors
 # For license information, please see license.txt
 
+import frappe
+from frappe import _
 from frappe.model.document import Document
+
+from guard.llm.http import get_json
+from guard.llm.types import LLMError
 
 
 class GuardSettings(Document):
@@ -48,4 +53,30 @@ class GuardSettings(Document):
 		trigger_handles: DF.SmallText | None
 	# end: auto-generated types
 
-	pass
+	def validate(self):
+		if self.monthly_credit_cap and self.monthly_credit_cap < 0:
+			frappe.throw(_("The credit cap cannot be negative."))
+		if self.embedding_dimensions and not 64 <= self.embedding_dimensions <= 8192:
+			frappe.throw(_("Embedding dimensions must be between 64 and 8192."))
+
+	def on_update(self):
+		if self.has_value_changed("embedding_dimensions") or self.has_value_changed("embedding_model"):
+			from guard.indexing.vectors import VectorStore
+
+			frappe.clear_cache(doctype="Guard Settings")
+			VectorStore.ensure_table()
+			frappe.enqueue("guard.indexing.jobs.reembed_all", queue="long", enqueue_after_commit=True)
+
+	@frappe.whitelist()
+	def fetch_models(self) -> list[str]:
+		"""Model ids that the gateway serves, from `/v1/models`."""
+		if not self.gateway_url:
+			frappe.throw(_("Set the gateway URL first."))
+		key = self.get_password("gateway_api_key", raise_exception=False) or ""
+		headers = {"Authorization": f"Bearer {key}"} if key else {}
+		try:
+			data = get_json(f"{(self.gateway_url or '').rstrip('/')}/v1/models", headers)
+		except LLMError as error:
+			frappe.throw(str(error), title=_("Gateway"))
+			return []
+		return sorted(str(row.get("id")) for row in data.get("data") or [] if row.get("id"))

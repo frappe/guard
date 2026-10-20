@@ -1,0 +1,8 @@
+{
+  "include": ["guard"],
+  "extraPaths": ["../frappe"],
+  "venvPath": "../..",
+  "venv": "env",
+  "pythonVersion": "3.14",
+  "reportMissingModuleSource": false
+}
