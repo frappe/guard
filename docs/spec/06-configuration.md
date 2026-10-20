@@ -1,120 +1,161 @@
 # Configuration
 
+Repository config is TOML. Guard parses it with the standard library `tomllib`.
+
 ## Sources
 
 From lowest to highest priority:
 
 1. Organization Review Settings.
 2. Team Review Settings, when the team does not inherit.
-3. Repository overrides on Code Repository: `review_tier`, `strictness`.
-4. Root config file: `.guard/` or `guard.json` at the repository root.
-5. Nested config files, from the root down to the directory of the file.
+3. Dashboard custom context: rules, files, instructions and notes from Custom Context records that match the repository.
+4. Repository overrides on Code Repository: `review_tier`, `strictness`.
+5. Root config: `.guard/` or `guard.toml` at the repository root.
+6. Nested config, from the root down to the directory of the file.
 
-Settings: the closest value wins. Rules, file references and instructions: all levels add up. A config can turn off a dashboard or parent rule by its id with `disabledRules`.
+Settings: the closest value wins. Rules, files, notes, instructions and ignore patterns: all levels add up. A config can turn off a dashboard or parent rule by its id with `disabled_rules`.
 
-If `.guard/` and `guard.json` are in the same directory, Guard reads `.guard/` and ignores `guard.json`.
+If `.guard/` and `guard.toml` are in the same directory, Guard reads `.guard/` and ignores `guard.toml`.
 
 ## Which branch Guard reads
 
 - All settings come from the head commit of the pull request.
-- `autoApprove` comes from the base branch, so a pull request cannot loosen its own policy.
+- `auto_approve` comes from the base branch, so a pull request cannot loosen its own policy.
 
 ## `.guard/` folder
 
 ```text
 .guard/
-├── config.json    settings and structured rules
+├── config.toml    settings, rules, files and notes
 ├── rules.md       rules as plain markdown, scoped to this directory
-└── files.json     files the reviewer reads for context
+└── files.toml     more files the reviewer reads for context
 ```
 
-All three are optional.
+All three are optional. `guard.toml` takes the same keys as `config.toml`.
 
-### `config.json` fields
+## Example
 
-| Field | Type | Default | Meaning |
+```toml
+strictness = 2
+comment_types = ["logic", "syntax"]
+effort = "auto"
+auto_review = ["open", "push"]
+review_drafts = false
+ignore_patterns = ["**/*.generated.*", "dist/**"]
+exclude_authors = ["dependabot[bot]", "*-bot"]
+include_branches = ["main", "release/*"]
+instructions = """
+This is a Frappe app. Prefer frappe.qb over raw SQL.
+"""
+disabled_rules = ["no-print"]
+
+[sections.summary]
+included = true
+collapsible = true
+default_open = false
+
+[context]
+repos = ["acme/shared-lib"]
+
+[[rules]]
+id = "no-raw-sql"
+rule = "Use parameterized queries. Never interpolate user input into SQL."
+scope = ["db/**"]
+severity = "high"
+
+[[files]]
+path = "docs/architecture.md"
+description = "System overview"
+
+[[notes]]
+content = "Legacy module. Be careful with changes."
+scope = ["legacy/**"]
+
+[auto_approve]
+enabled = true
+risk_ceiling = "low"
+
+[auto_approve.filters]
+exclude_paths = ["auth/**", "migrations"]
+exclude_authors = ["dependabot[bot]"]
+```
+
+## Keys
+
+### Review
+
+| Key | Type | Default | Meaning |
 | - | - | - | - |
 | `strictness` | 1, 2, 3 | 2 | 1 verbose, 3 critical only |
-| `commentTypes` | string[] | all | `logic`, `syntax`, `style` |
+| `comment_types` | array | all | `logic`, `syntax`, `style` |
 | `effort` | string | unset | `base`, `plus`, `apex`, `auto` |
-| `labels` | string[] | | Review only pull requests with one of these labels |
-| `disabledLabels` | string[] | | Skip pull requests with one of these labels |
-| `includeAuthors`, `excludeAuthors` | string[] | | Author filters |
-| `includeBranches`, `excludeBranches` | string[] | | Target branch filters |
-| `includeKeywords`, `ignoreKeywords` | string | | Newline-separated, matched against title and description |
-| `ignorePatterns` | string | | Newline-separated, `.gitignore` syntax |
-| `autoReview` | string[] | `["open"]` | `open`, `push`, `rebase`. Each implies the ones before it. `[]` is never. |
-| `triggerOnUpdates` | boolean | false | Old form: `true` is `["open", "push", "rebase"]` |
-| `triggerOnDrafts` | boolean | false | Review drafts |
-| `skipReview` | `"AUTOMATIC"` | | Old form of `autoReview: []` |
-| `statusCheck` | boolean | true | Post a status check |
-| `statusCommentsEnabled` | boolean | | Post "N files reviewed, no comments" |
-| `shouldUpdateDescription` | boolean | false | Put the summary in the description |
-| `updateSummaryOnly` | boolean | false | No inline comments |
-| `fixWithAI` | boolean | true | Prompt for AI agents block and fix link |
-| `hideFooter` | boolean | false | No footer |
-| `summarySection`, `issuesTableSection`, `confidenceScoreSection`, `diagramSection` | object | | `included`, `collapsible`, `defaultOpen` |
-| `includeIssuesTable`, `includeConfidenceScore`, `includeDiagram` | boolean | | Short forms of `<section>.included` |
-| `context.repos` | string[] | | Related repositories, `owner/repo` on the same provider |
-| `instructions` | string | | Free-form instructions. Concatenated across levels. |
-| `rules` | Rule[] | | Structured rules |
-| `disabledRules` | string[] | | Rule ids to turn off at this level and below |
-| `autoApprove` | object | | See below |
+| `auto_review` | array | `["open"]` | `open`, `push`, `rebase`. Each implies the ones before it. `[]` is never. |
+| `review_drafts` | boolean | false | Review draft pull requests |
 
-`sequenceDiagramSection` and `includeSequenceDiagram` are accepted as other names for the diagram fields.
+### Filters
 
-### Rule
-
-| Field | Required | Meaning |
+| Key | Type | Meaning |
 | - | - | - |
-| `rule` | yes | The instruction |
-| `id` | no | Needed to turn the rule off in a child config |
-| `scope` | no | Globs relative to the `.guard/` directory |
-| `severity` | no | `low`, `medium`, `high` |
-| `enabled` | no | Default true |
+| `labels`, `disabled_labels` | array | Review only with one of these labels / skip with one of these labels |
+| `include_authors`, `exclude_authors` | array | Author filters |
+| `include_branches`, `exclude_branches` | array | Target branch filters |
+| `include_keywords`, `ignore_keywords` | array | Matched against title and description, case-insensitive |
+| `ignore_patterns` | array | `.gitignore` syntax, relative to the config directory |
 
-### `autoApprove`
+### Output
 
-| Field | Default | Meaning |
+| Key | Type | Default | Meaning |
+| - | - | - | - |
+| `status_check` | boolean | true | Post a status check |
+| `status_comments` | boolean | false | Post "N files reviewed, no comments" when there is no status check |
+| `update_description` | boolean | false | Put the summary in the description |
+| `update_summary_only` | boolean | false | No inline comments |
+| `fix_with_ai` | boolean | true | "Prompt for AI agents" block and fix link |
+| `hide_footer` | boolean | false | No footer |
+| `comments_outside_diff` | boolean | true | List findings outside the diff in the summary |
+| `include_rule_files` | boolean | true | Read `CLAUDE.md`, `AGENTS.md` and similar files |
+| `sections.<name>` | table | | `included`, `collapsible`, `default_open`. Names: `summary`, `issues_table`, `confidence`, `diagram` |
+
+### Context
+
+| Key | Type | Meaning |
+| - | - | - |
+| `instructions` | string | Free-form instructions. Concatenated across levels. |
+| `[[rules]]` | array of tables | `rule` (required), `id`, `scope`, `severity` (`low`, `medium`, `high`), `enabled` |
+| `disabled_rules` | array | Rule ids to turn off at this level and below |
+| `[[files]]` | array of tables | `path` (required), `description`, `scope` |
+| `[[notes]]` | array of tables | `content` (required), `scope` |
+| `context.repos` | array | Related repositories, `owner/repo` on the same provider |
+
+Paths and scopes in a config are relative to the directory that holds `.guard/` or `guard.toml`. A rule, file or note with a scope applies only to files that match the scope.
+
+### `auto_approve`
+
+| Key | Default | Meaning |
 | - | - | - |
 | `enabled` | false | |
-| `riskCeiling` | `low` | `low`, `medium`, `high`, `critical` |
-| `filters.includePaths`, `filters.excludePaths` | | Globs or plain directory paths. Both sides of a rename count. |
-| `filters.includeAuthors`, `filters.excludeAuthors` | | |
-| `filters.includeBranches`, `filters.excludeBranches` | | |
-| `filters.labels`, `filters.disabledLabels` | | |
-| `filters.includeKeywords`, `filters.ignoreKeywords` | | |
-| `filters.includeRepositories`, `filters.excludeRepositories` | | |
+| `risk_ceiling` | `low` | `low`, `medium`, `high`, `critical` |
+| `filters.include_paths`, `filters.exclude_paths` | | Globs or plain directory paths. Both sides of a rename count. |
+| `filters.include_authors`, `filters.exclude_authors` | | |
+| `filters.include_branches`, `filters.exclude_branches` | | |
+| `filters.labels`, `filters.disabled_labels` | | |
+| `filters.include_keywords`, `filters.ignore_keywords` | | |
+| `filters.include_repositories`, `filters.exclude_repositories` | | |
 
-`autoApprove.instructions` in a file is ignored. Risk definitions are a dashboard setting only.
+Risk definitions are a dashboard setting only. Config files cannot set them.
 
 ### `rules.md`
 
 Plain markdown. The whole file applies to files under the directory that holds the `.guard/` folder.
 
-### `files.json`
+### `files.toml`
 
-```json
-{
-  "files": [
-    { "path": "docs/architecture.md", "description": "System overview" },
-    { "path": "schema.sql", "description": "Database schema", "scope": ["src/db/**"] }
-  ]
-}
+```toml
+[[files]]
+path = "schema.sql"
+description = "Database schema"
+scope = ["db/**"]
 ```
-
-Paths and scopes are relative to the directory that holds the `.guard/` folder. A file with a scope is read only when a reviewed file matches the scope.
-
-## `guard.json`
-
-`guard.json` takes the same fields as `config.json`. It can be in any directory and cascades the same way. It also takes:
-
-| Field | Meaning |
-| - | - |
-| `customContext.rules` | `[{ "rule": "...", "scope": ["..."] }]` |
-| `customContext.files` | `[{ "path": "...", "description": "...", "scope": ["..."] }]` |
-| `customContext.other` | `[{ "content": "...", "scope": ["..."] }]` |
-| `patternRepositories` | Other name for `context.repos` |
 
 ## Merge rules
 
@@ -122,10 +163,9 @@ Paths and scopes are relative to the directory that holds the `.guard/` folder. 
 
 Walk from the root to the directory of the file. At each level:
 
-- Scalar settings and arrays replace the parent value.
-- Section objects merge field by field.
-- `rules`, `files`, `customContext` items and `instructions` add to the parent list.
-- `disabledRules` removes rules by id from the list so far.
+- Scalar settings and arrays replace the parent value. Section tables merge key by key.
+- `rules`, `files`, `notes`, `instructions` and `ignore_patterns` add to the list so far.
+- `disabled_rules` removes rules by id from the list so far.
 
 ### For the pull request
 
@@ -135,19 +175,19 @@ Each file uses its own resolved config for rules and context. The pull request u
 | - | - |
 | `strictness` | Maximum |
 | `effort` | Highest tier. `auto` counts only when no level sets a tier. |
-| `commentTypes` | Union |
-| `autoReview` | Union |
+| `comment_types` | Union |
+| `auto_review` | Union |
 | Sections | Shown if any config shows them |
 | Booleans | True if any config sets true |
-| `skipReview` | Skip only if every touched config says `"AUTOMATIC"` |
-| `autoApprove` | Strictest: `enabled` must be true everywhere, exclude lists union, include lists intersect, lowest `riskCeiling` |
+| Filters | From the root config |
+| `auto_approve` | Strictest: `enabled` must be true everywhere, exclude lists union, include lists intersect, lowest `risk_ceiling` |
 
 ## Glob matching
 
 | Where | Syntax |
 | - | - |
 | Labels, authors, branches, repositories | `*` (one segment), `**` (any), `?`, `{a,b}`. Case-insensitive. `[`, `]` and a leading `!` are literal, so `dependabot[bot]` works. No negation. |
-| Paths: `scope`, `ignorePatterns`, auto-approve paths, dashboard path scopes | `.gitignore` syntax |
+| Paths: `scope`, `ignore_patterns`, auto-approve paths, dashboard path scopes | `.gitignore` syntax. A plain directory path also covers everything under it. |
 | Repository scope of custom context | `owner/*`, `group/subgroup/*`, or an exact name |
 
 ## Review gate
@@ -158,12 +198,11 @@ Guard decides to review in this order. The first "no" stops it.
 2. The author passes `trigger_by_authoring` (automatic events) or the commenter passes `trigger_by_tagging` (manual triggers).
 3. The credit cap allows the tier.
 4. For automatic events only:
-   1. The pull request is not a draft, or drafts are on.
-   2. The event is in the merged `autoReview`.
-   3. `skipReview` does not apply.
-   4. The config filters pass: labels, authors, branches, keywords.
-   5. The dashboard filter rules pass (below).
-5. For manual triggers: only `excludeBranches` and `excludeAuthors` apply.
+   1. The pull request is not a draft, or `review_drafts` is on.
+   2. The event is in the merged `auto_review`.
+   3. The config filters pass: labels, authors, branches, keywords.
+   4. The dashboard filter rules pass (below).
+5. For manual triggers: only `exclude_branches` and `exclude_authors` apply.
 
 ### Dashboard filter rules
 
@@ -173,8 +212,8 @@ Guard decides to review in this order. The first "no" stops it.
 
 ## Validation
 
-Guard validates each config file against a JSON schema. A file with an error is ignored. The summary comment lists the error under "Config problems" so the author can fix it.
+Guard parses each file with `tomllib` and checks the keys and types. A file with an error is ignored. The summary comment lists the error under "Config problems" so the author can fix it.
 
 ## Explain
 
-`guard.config.resolver.explain(repository, ref, path)` returns the effective config for a path and the source of each value. The CLI `guard config <path>` and the API use it.
+`guard.config.resolver.ConfigResolver.explain(path)` returns the effective config for a path and the source of each value. The CLI `guard config <path>` and the API use it.

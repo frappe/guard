@@ -32,7 +32,7 @@ flowchart LR
 | Git store | `guard/git/` | Keeps one bare mirror for each repository. Fetches pull request heads. Reads files and diffs. |
 | Indexer | `guard/indexing/` | Parses files into entities and edges, cuts chunks, writes vectors. |
 | Graph queries | `guard/graph/` | Callers, callees, definitions, impact, similar code. |
-| Config resolver | `guard/config/` | Merges dashboard settings with `.guard/` and `guard.json` files. Evaluates filters. |
+| Config resolver | `guard/config/` | Merges dashboard settings with `.guard/` and `guard.toml` files. Evaluates filters. |
 | Review engine | `guard/review/` | Builds context, runs the agent, filters findings, renders and publishes. |
 | Conversation engine | `guard/conversation/` | Mentions, thread replies, Chat with PR, codebase chat. |
 | Learning | `guard/learning/` | Feedback, addressed detection, memories, suppression, suggested rules. |

@@ -45,7 +45,7 @@ Build order. Each milestone ends with passing tests and one commit or more. Feat
 
 ## M5. Config
 
-- [ ] Schema and validation for `config.json`, `guard.json`, `files.json`.
+- [ ] Schema and validation for `config.toml`, `guard.toml`, `files.toml`.
 - [ ] Cascade resolver for one file and for the pull request, with explain.
 - [ ] Filter globs and path globs.
 - [ ] Review gate and tier selection.

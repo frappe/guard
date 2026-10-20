@@ -19,7 +19,7 @@
 
 Team admin is the Admin role on a Guard Team Member row. Guard checks it in `has_permission` hooks for team-scoped records.
 
-Editing `.guard/` or `guard.json` needs write access to the repository. Guard roles do not control it.
+Editing `.guard/` or `guard.toml` needs write access to the repository. Guard roles do not control it.
 
 ## Who Guard answers
 

@@ -14,7 +14,7 @@ This document set is the specification. Code follows the spec. When the code and
 | [03-data-model.md](03-data-model.md) | DocTypes and tables |
 | [04-codebase-graph.md](04-codebase-graph.md) | Indexing, parsing, graph storage, graph queries |
 | [05-review-engine.md](05-review-engine.md) | Review pipeline, tiers, agent, findings, output |
-| [06-configuration.md](06-configuration.md) | Dashboard settings, `.guard/` cascade, `guard.json`, filters |
+| [06-configuration.md](06-configuration.md) | Dashboard settings, `.guard/` cascade, `guard.toml`, filters |
 | [07-conversations.md](07-conversations.md) | Mentions, thread replies, Chat with PR, actions, tour |
 | [08-learning.md](08-learning.md) | Feedback, addressed detection, memories, suppression |
 | [09-knowledge-base.md](09-knowledge-base.md) | Generated repository documentation |

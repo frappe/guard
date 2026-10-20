@@ -47,7 +47,7 @@ One record for the organization (name `Organization`) and one for each team that
 | `<section>_included`, `<section>_collapsible`, `<section>_open` | Check | For `summary`, `issues_table`, `confidence`, `diagram`. |
 | `comments_outside_diff` | Check | |
 | `status_check`, `status_comments`, `update_description`, `update_summary_only`, `fix_with_ai`, `hide_footer` | Check | |
-| `auto_approve`, `risk_ceiling`, `risk_definitions`, `auto_approve_filters` | mixed | `auto_approve_filters` is JSON in the config file shape. |
+| `auto_approve`, `risk_ceiling`, `risk_definitions`, `auto_approve_filters` | mixed | `auto_approve_filters` is JSON with the keys of `[auto_approve.filters]`. |
 | `include_rule_files` | Check | Read `CLAUDE.md` and similar files. |
 
 ### Review Filter Rule (child)

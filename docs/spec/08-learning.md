@@ -93,7 +93,7 @@ Guard approves a pull request when every condition is true:
 1. The merged auto-approve policy is enabled. The policy merges dashboard settings with the base-branch config files, strictest value first.
 2. The confidence section is on.
 3. The review score is 5 and the review has no posted finding.
-4. The risk level is at or below `riskCeiling`. The agent sets the risk level with the risk definitions from the dashboard in its prompt.
+4. The risk level is at or below `risk_ceiling`. The agent sets the risk level with the risk definitions from the dashboard in its prompt.
 5. The auto-approve filters pass, with both sides of each rename checked against path filters.
 6. The regular review filters pass.
 7. The pull request is open, not a draft, and its head is still the reviewed commit.

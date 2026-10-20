@@ -10,7 +10,7 @@ Guard reviews a pull request when a configured event happens.
 
 - Events: `open` (opened, reopened, marked ready, trigger label added), `push` (a push that adds commits), `rebase` (a push that rewrites history).
 - Each event implies the events before it. `["rebase"]` means all three. `[]` means never.
-- Guard skips draft pull requests unless `triggerOnDrafts` is true or the trigger comment asks for a draft review.
+- Guard skips draft pull requests unless `review_drafts` is true or the trigger comment asks for a draft review.
 - Guard adds the 👀 reaction when it starts and replaces it with 👍 when it is done. On failure it adds 😕.
 - A review on a medium pull request finishes in less than 5 minutes with the base tier.
 
@@ -42,22 +42,22 @@ The summary comment has these sections. Each section can be turned on or off, ma
 6. **Context used**: tickets, pages and cross-repo files that the review read.
 7. **Footer**: review counter ("Reviews (2)"), last reviewed commit with its message, a **Re-trigger** link, a **Fix All** link.
 
-On a new review Guard edits the same summary comment. It does not post a second one. If `shouldUpdateDescription` is true, Guard writes the summary into the pull request description between markers instead.
+On a new review Guard edits the same summary comment. It does not post a second one. If `update_description` is true, Guard writes the summary into the pull request description between markers instead.
 
 ### R5. Inline comments
 
 - Each finding becomes an inline comment on the changed line or line range.
 - Each comment has a severity badge (P0, P1, P2), a comment type and a short title.
 - Most comments have a suggested fix. On GitHub and Gitea the fix uses a `suggestion` block that the author can apply in one click.
-- If `fixWithAI` is true, each comment has a collapsed "Prompt for AI agents" block and a **Fix with your agent** link.
+- If `fix_with_ai` is true, each comment has a collapsed "Prompt for AI agents" block and a **Fix with your agent** link.
 - A finding outside the diff goes into the summary under "Comments outside the diff", unless the setting turns this off.
-- If `updateSummaryOnly` is true, Guard posts no inline comments.
+- If `update_summary_only` is true, Guard posts no inline comments.
 - The reviewer can attach a clarification question when the intent of a change is not clear.
 
 ### R6. Severity, comment types and strictness
 
 - Severity: P0 must fix (security, data loss, crash), P1 should fix (bug, wrong behavior, edge case), P2 consider (quality, maintainability).
-- `commentTypes` limits the posted types to a subset of `logic`, `syntax`, `style`.
+- `comment_types` limits the posted types to a subset of `logic`, `syntax`, `style`.
 - Strictness 1 posts all findings. Strictness 2 drops low-confidence P2 findings. Strictness 3 posts only P0 and P1.
 
 ### R7. Review tiers
@@ -76,8 +76,8 @@ On a new review Guard edits the same summary comment. It does not post a second 
 
 - Guard posts a pending status when it starts and a final status when it is done.
 - The status is `success` unless the review found a P0 finding. Then it is `failure`.
-- `statusCheck: false` turns the status off.
-- With the status off and no findings, Guard posts a short "N files reviewed, no comments" note if `statusCommentsEnabled` is true.
+- `status_check = false` turns the status off.
+- With the status off and no findings, Guard posts a short "N files reviewed, no comments" note if `status_comments` is true.
 
 ### R9. Re-reviews and deduplication
 
@@ -113,12 +113,12 @@ Organization-level review settings that every team inherits. A team can override
 
 ### C2. Repository config files
 
-- `.guard/config.json`, `.guard/rules.md` and `.guard/files.json` in any directory.
-- `guard.json` at any directory level, for teams that want a single file.
-- If `.guard/` and `guard.json` are in the same directory, `.guard/` wins.
+- `.guard/config.toml`, `.guard/rules.md` and `.guard/files.toml` in any directory. Config is TOML.
+- `guard.toml` at any directory level, for teams that want a single file.
+- If `.guard/` and `guard.toml` are in the same directory, `.guard/` wins.
 - Settings cascade from the root to the file. The closest value wins. Rules, files and instructions add up.
-- A child config can turn off an inherited rule with `disabledRules`.
-- Guard reads config from the source branch, except `autoApprove`, which it reads from the base branch.
+- A child config can turn off an inherited rule with `disabled_rules`.
+- Guard reads config from the source branch, except `auto_approve`, which it reads from the base branch.
 
 ### C3. Filters
 
@@ -126,7 +126,7 @@ Label, author, branch, keyword and path filters, with globs. Matching is case-in
 
 ### C4. Ignore patterns
 
-`ignorePatterns` uses `.gitignore` syntax. Guard does not review matching files. The index still includes them.
+`ignore_patterns` uses `.gitignore` syntax. Guard does not review matching files. The index still includes them.
 
 ### C5. Custom context
 

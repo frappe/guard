@@ -32,7 +32,7 @@ A new push to a pull request cancels a queued or running review for an older hea
 
 1. Fetch the head into the mirror. Compute the merge base with the base branch.
 2. Run `git diff --find-renames <merge base> <head>`. Parse it into files, hunks and lines with head and base line numbers.
-3. Resolve the config for each changed file ([06-configuration.md](06-configuration.md)). Drop files that match `ignorePatterns`.
+3. Resolve the config for each changed file ([06-configuration.md](06-configuration.md)). Drop files that match `ignore_patterns`.
 4. Merge the config at the pull request level: maximum strictness, highest tier, union of comment types.
 5. Pick the tier (below).
 
@@ -72,7 +72,7 @@ If the base index is older than the merge base, Guard runs an incremental index 
 | 3 | Sibling implementations, for pattern consistency |
 | 3 | Learned memories that match the paths |
 | 3 | Open findings from earlier reviews of this pull request |
-| 4 | Files from `files.json` and project rule files (`CLAUDE.md` and similar) |
+| 4 | Files from `[[files]]` and project rule files (`CLAUDE.md` and similar) |
 | 4 | Knowledge base pages for the touched areas, and the reverts page |
 | 4 | Cross-repo definitions and callers of changed entities |
 | 5 | Similar code from vector search |
@@ -205,8 +205,8 @@ The summary comment starts with the marker `<!-- guard:summary -->`. On a re-rev
 ```
 
 - A collapsible section is wrapped in `<details>`. `open` is set when the section is open by default.
-- `hideFooter` removes the footer.
-- `shouldUpdateDescription` writes the same content into the description between `<!-- guard:start -->` and `<!-- guard:end -->`.
+- `hide_footer` removes the footer.
+- `update_description` writes the same content into the description between `<!-- guard:start -->` and `<!-- guard:end -->`.
 - Plus and apex reviews show the tier next to the score.
 
 ### Inline comment
