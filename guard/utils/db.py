@@ -57,3 +57,13 @@ def single_int(doctype: str, field: str, default: int) -> int:
 		return int(cast(Any, value)) if value not in (None, "") else default
 	except TypeError, ValueError:
 		return default
+
+
+def value(doctype: str, name: str | dict, field: str) -> Any:
+	return frappe.db.get_value(doctype, name, field)
+
+
+def values(doctype: str, name: str | dict, fields: Sequence[str]) -> dict[str, Any] | None:
+	"""Field values of one record as a dict, or None when it does not exist."""
+	result = frappe.db.get_value(doctype, name, list(fields), as_dict=True)
+	return cast(dict[str, Any], result) if result else None
