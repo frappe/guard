@@ -96,10 +96,10 @@ class Indexer:
 		try:
 			self._run()
 		except Exception as error:
-			frappe.db.rollback()
+			db.rollback()
 			self._set(status="failed", error=str(error)[:5000])
 			frappe.db.set_value("Code Repository", self.repository, "index_status", "Failed")
-			frappe.db.commit()
+			db.commit()
 			raise
 
 	def _run(self) -> None:
@@ -169,9 +169,9 @@ class Indexer:
 				for r in db.rows("SELECT name FROM `tabCode Chunk` WHERE `index` = %s AND path IN %s", values)
 			]
 			VectorStore().delete_refs("chunk", chunks)
-			db.execute("DELETE FROM `tabCode Entity` WHERE `index` = %s AND path IN %s", values)
-			db.execute("DELETE FROM `tabCode Edge` WHERE `index` = %s AND path IN %s", values)
-			db.execute("DELETE FROM `tabCode Chunk` WHERE `index` = %s AND path IN %s", values)
+			filters = {"index": self.index, "path": ["in", batch]}
+			for doctype in ("Code Entity", "Code Edge", "Code Chunk"):
+				frappe.db.delete(doctype, filters)
 		return names
 
 	# ------------------------------------------------------------- parse
@@ -198,7 +198,7 @@ class Indexer:
 				results.append((parsed, names, source))
 			db.insert_many("tabCode Entity", ENTITY_COLUMNS, rows)
 			self._set(files_processed=min(count * BATCH, len(entries)))
-			frappe.db.commit()
+			db.commit()
 		return results
 
 	def _names(self, parsed: ParsedFile, blob: str) -> dict[str, str]:
@@ -369,7 +369,7 @@ class Indexer:
 					for row, vector in zip(rows, vectors, strict=True)
 				]
 			)
-			frappe.db.commit()
+			db.commit()
 
 	# ------------------------------------------------------------ finish
 
@@ -400,7 +400,7 @@ class Indexer:
 					"size_kb": store.size_kb(),
 				}
 			)
-		frappe.db.commit()
+		db.commit()
 		frappe.publish_realtime("guard_index_updated", {"repository": self.repository, "index": self.index})
 
 	def _set(self, **values) -> None:

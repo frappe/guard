@@ -44,7 +44,7 @@ def run_index(index: str, full: bool = False) -> None:
 		"Repository Index", index, "branch"
 	):
 		frappe.db.set_value("Code Repository", repository, "index_status", "Indexing")
-		frappe.db.commit()
+		db.commit()
 	Indexer(index, full=full).run()
 
 
@@ -75,4 +75,4 @@ def reembed_all() -> None:
 			[VectorRow(row[0], "chunk", row[0], row[1], v) for row, v in zip(rows, vectors, strict=True)]
 		)
 		last = rows[-1][0]
-		frappe.db.commit()
+		db.commit()

@@ -67,3 +67,14 @@ def values(doctype: str, name: str | dict, fields: Sequence[str]) -> dict[str, A
 	"""Field values of one record as a dict, or None when it does not exist."""
 	result = frappe.db.get_value(doctype, name, list(fields), as_dict=True)
 	return cast(dict[str, Any], result) if result else None
+
+
+def commit() -> None:
+	"""Commit in background jobs. Tests run in one transaction, so skip there."""
+	if not frappe.flags.in_test:
+		frappe.db.commit()
+
+
+def rollback() -> None:
+	if not frappe.flags.in_test:
+		frappe.db.rollback()
