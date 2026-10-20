@@ -1,0 +1,63 @@
+{
+ "actions": [],
+ "allow_rename": 0,
+ "autoname": "hash",
+ "creation": "2026-10-20 10:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "role",
+  "content",
+  "context",
+  "sources",
+  "actions"
+ ],
+ "fields": [
+  {
+   "fieldname": "role",
+   "fieldtype": "Select",
+   "idx": 1,
+   "in_list_view": 1,
+   "label": "Role",
+   "options": "user\nassistant"
+  },
+  {
+   "fieldname": "content",
+   "fieldtype": "Long Text",
+   "idx": 2,
+   "in_list_view": 1,
+   "label": "Content"
+  },
+  {
+   "fieldname": "context",
+   "fieldtype": "JSON",
+   "idx": 3,
+   "label": "Context"
+  },
+  {
+   "fieldname": "sources",
+   "fieldtype": "JSON",
+   "idx": 4,
+   "label": "Sources"
+  },
+  {
+   "fieldname": "actions",
+   "fieldtype": "JSON",
+   "idx": 5,
+   "label": "Actions"
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "istable": 1,
+ "links": [],
+ "modified": "2026-10-20 10:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Guard",
+ "name": "Chat Message",
+ "naming_rule": "Random",
+ "owner": "Administrator",
+ "permissions": [],
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": []
+}

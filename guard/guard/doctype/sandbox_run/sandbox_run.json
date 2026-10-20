@@ -1,0 +1,118 @@
+{
+ "actions": [],
+ "allow_rename": 0,
+ "autoname": "hash",
+ "creation": "2026-10-20 10:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "code_review",
+  "finding",
+  "command",
+  "exit_code",
+  "status",
+  "duration",
+  "output"
+ ],
+ "fields": [
+  {
+   "fieldname": "code_review",
+   "fieldtype": "Link",
+   "idx": 1,
+   "in_list_view": 1,
+   "label": "Code Review",
+   "options": "Code Review",
+   "reqd": 1
+  },
+  {
+   "fieldname": "finding",
+   "fieldtype": "Link",
+   "idx": 2,
+   "label": "Finding",
+   "options": "Review Finding"
+  },
+  {
+   "fieldname": "command",
+   "fieldtype": "Small Text",
+   "idx": 3,
+   "in_list_view": 1,
+   "label": "Command"
+  },
+  {
+   "fieldname": "exit_code",
+   "fieldtype": "Int",
+   "idx": 4,
+   "in_list_view": 1,
+   "label": "Exit Code"
+  },
+  {
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "idx": 5,
+   "in_list_view": 1,
+   "label": "Status",
+   "options": "Running\nPassed\nFailed\nTimed Out\nError"
+  },
+  {
+   "fieldname": "duration",
+   "fieldtype": "Float",
+   "idx": 6,
+   "label": "Duration"
+  },
+  {
+   "fieldname": "output",
+   "fieldtype": "Long Text",
+   "idx": 7,
+   "label": "Output"
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "modified": "2026-10-20 10:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Guard",
+ "name": "Sandbox Run",
+ "naming_rule": "Random",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Guard Admin",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "export": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Guard Member"
+  },
+  {
+   "export": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Guard Viewer"
+  }
+ ],
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": []
+}

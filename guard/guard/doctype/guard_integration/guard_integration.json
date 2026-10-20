@@ -1,0 +1,129 @@
+{
+ "actions": [],
+ "allow_rename": 0,
+ "autoname": "field:integration_type",
+ "creation": "2026-10-20 10:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "integration_type",
+  "enabled",
+  "site_url",
+  "email",
+  "api_token",
+  "linear_teams",
+  "instructions",
+  "last_tested_at"
+ ],
+ "fields": [
+  {
+   "fieldname": "integration_type",
+   "fieldtype": "Select",
+   "idx": 1,
+   "in_list_view": 1,
+   "label": "Integration Type",
+   "options": "Jira\nLinear",
+   "reqd": 1
+  },
+  {
+   "default": "1",
+   "fieldname": "enabled",
+   "fieldtype": "Check",
+   "idx": 2,
+   "in_list_view": 1,
+   "label": "Enabled"
+  },
+  {
+   "depends_on": "eval:doc.integration_type=='Jira'",
+   "fieldname": "site_url",
+   "fieldtype": "Data",
+   "idx": 3,
+   "label": "Site URL"
+  },
+  {
+   "depends_on": "eval:doc.integration_type=='Jira'",
+   "fieldname": "email",
+   "fieldtype": "Data",
+   "idx": 4,
+   "label": "Email"
+  },
+  {
+   "fieldname": "api_token",
+   "fieldtype": "Password",
+   "idx": 5,
+   "label": "API Token",
+   "length": 1024
+  },
+  {
+   "depends_on": "eval:doc.integration_type=='Linear'",
+   "description": "Team keys, one each line. Blank means all teams.",
+   "fieldname": "linear_teams",
+   "fieldtype": "Small Text",
+   "idx": 6,
+   "label": "Linear Teams"
+  },
+  {
+   "fieldname": "instructions",
+   "fieldtype": "Long Text",
+   "idx": 7,
+   "label": "Instructions"
+  },
+  {
+   "fieldname": "last_tested_at",
+   "fieldtype": "Datetime",
+   "idx": 8,
+   "label": "Last Tested At",
+   "read_only": 1
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "modified": "2026-10-20 10:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Guard",
+ "name": "Guard Integration",
+ "naming_rule": "By fieldname",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Guard Admin",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "export": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Guard Member"
+  },
+  {
+   "export": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Guard Viewer"
+  }
+ ],
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}

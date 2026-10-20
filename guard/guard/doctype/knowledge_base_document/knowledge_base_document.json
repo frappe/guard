@@ -1,0 +1,170 @@
+{
+ "actions": [],
+ "allow_rename": 0,
+ "autoname": "hash",
+ "creation": "2026-10-20 10:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "repository",
+  "path",
+  "section",
+  "title",
+  "area",
+  "main_col",
+  "version_id",
+  "edited_by_human",
+  "stale",
+  "generated_at",
+  "content_section",
+  "content",
+  "source_files"
+ ],
+ "fields": [
+  {
+   "fieldname": "repository",
+   "fieldtype": "Link",
+   "idx": 1,
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Repository",
+   "options": "Code Repository",
+   "reqd": 1,
+   "search_index": 1
+  },
+  {
+   "fieldname": "path",
+   "fieldtype": "Data",
+   "idx": 2,
+   "in_list_view": 1,
+   "label": "Path",
+   "reqd": 1
+  },
+  {
+   "default": "docs",
+   "fieldname": "section",
+   "fieldtype": "Select",
+   "idx": 3,
+   "in_list_view": 1,
+   "label": "Section",
+   "options": "index\ndocs\nreverts"
+  },
+  {
+   "fieldname": "title",
+   "fieldtype": "Data",
+   "idx": 4,
+   "label": "Title"
+  },
+  {
+   "fieldname": "area",
+   "fieldtype": "Data",
+   "idx": 5,
+   "label": "Area"
+  },
+  {
+   "fieldname": "main_col",
+   "fieldtype": "Column Break",
+   "idx": 6
+  },
+  {
+   "fieldname": "version_id",
+   "fieldtype": "Data",
+   "idx": 7,
+   "label": "Version Id",
+   "read_only": 1
+  },
+  {
+   "default": "0",
+   "fieldname": "edited_by_human",
+   "fieldtype": "Check",
+   "idx": 8,
+   "label": "Edited By Human"
+  },
+  {
+   "default": "0",
+   "fieldname": "stale",
+   "fieldtype": "Check",
+   "idx": 9,
+   "label": "Stale",
+   "read_only": 1
+  },
+  {
+   "fieldname": "generated_at",
+   "fieldtype": "Datetime",
+   "idx": 10,
+   "label": "Generated At",
+   "read_only": 1
+  },
+  {
+   "fieldname": "content_section",
+   "fieldtype": "Section Break",
+   "idx": 11,
+   "label": "Content"
+  },
+  {
+   "fieldname": "content",
+   "fieldtype": "Markdown Editor",
+   "idx": 12,
+   "label": "Content"
+  },
+  {
+   "fieldname": "source_files",
+   "fieldtype": "JSON",
+   "idx": 13,
+   "label": "Source Files",
+   "read_only": 1
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "modified": "2026-10-20 10:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Guard",
+ "name": "Knowledge Base Document",
+ "naming_rule": "Random",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Guard Admin",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "export": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Guard Viewer"
+  },
+  {
+   "export": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Guard Member",
+   "write": 1
+  }
+ ],
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": [],
+ "title_field": "title",
+ "track_changes": 1
+}

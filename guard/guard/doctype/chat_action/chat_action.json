@@ -1,0 +1,130 @@
+{
+ "actions": [],
+ "allow_rename": 0,
+ "autoname": "hash",
+ "creation": "2026-10-20 10:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "chat_session",
+  "action_type",
+  "summary",
+  "payload",
+  "status",
+  "routine",
+  "draft",
+  "result",
+  "executed_by"
+ ],
+ "fields": [
+  {
+   "fieldname": "chat_session",
+   "fieldtype": "Link",
+   "idx": 1,
+   "in_list_view": 1,
+   "label": "Chat Session",
+   "options": "Chat Session",
+   "reqd": 1
+  },
+  {
+   "fieldname": "action_type",
+   "fieldtype": "Data",
+   "idx": 2,
+   "in_list_view": 1,
+   "label": "Action Type"
+  },
+  {
+   "fieldname": "summary",
+   "fieldtype": "Small Text",
+   "idx": 3,
+   "label": "Summary"
+  },
+  {
+   "fieldname": "payload",
+   "fieldtype": "JSON",
+   "idx": 4,
+   "label": "Payload"
+  },
+  {
+   "default": "Proposed",
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "idx": 5,
+   "in_list_view": 1,
+   "label": "Status",
+   "options": "Proposed\nApproved\nExecuted\nCancelled\nFailed"
+  },
+  {
+   "default": "0",
+   "fieldname": "routine",
+   "fieldtype": "Check",
+   "idx": 6,
+   "label": "Routine"
+  },
+  {
+   "default": "0",
+   "fieldname": "draft",
+   "fieldtype": "Check",
+   "idx": 7,
+   "label": "Draft"
+  },
+  {
+   "fieldname": "result",
+   "fieldtype": "Long Text",
+   "idx": 8,
+   "label": "Result"
+  },
+  {
+   "fieldname": "executed_by",
+   "fieldtype": "Link",
+   "idx": 9,
+   "label": "Executed By",
+   "options": "User"
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "modified": "2026-10-20 10:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Guard",
+ "name": "Chat Action",
+ "naming_rule": "Random",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Guard Admin",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "if_owner": 1,
+   "read": 1,
+   "role": "Guard Member",
+   "write": 1
+  }
+ ],
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}

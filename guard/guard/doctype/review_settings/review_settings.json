@@ -1,0 +1,493 @@
+{
+ "actions": [],
+ "allow_rename": 0,
+ "autoname": "hash",
+ "creation": "2026-10-20 10:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "scope",
+  "team",
+  "inherit_from_organization",
+  "review_tab",
+  "strictness",
+  "review_tier",
+  "auto_review",
+  "review_drafts",
+  "review_col",
+  "comment_logic",
+  "comment_syntax",
+  "comment_style",
+  "comments_outside_diff",
+  "include_rule_files",
+  "filters_section",
+  "filter_rules",
+  "ignore_patterns",
+  "instructions",
+  "output_tab",
+  "summary_section",
+  "summary_included",
+  "summary_col1",
+  "summary_collapsible",
+  "summary_col2",
+  "summary_open",
+  "issues_table_section",
+  "issues_table_included",
+  "issues_table_col1",
+  "issues_table_collapsible",
+  "issues_table_col2",
+  "issues_table_open",
+  "confidence_section",
+  "confidence_included",
+  "confidence_col1",
+  "confidence_collapsible",
+  "confidence_col2",
+  "confidence_open",
+  "diagram_section",
+  "diagram_included",
+  "diagram_col1",
+  "diagram_collapsible",
+  "diagram_col2",
+  "diagram_open",
+  "behavior_section",
+  "status_check",
+  "status_comments",
+  "update_description",
+  "behavior_col",
+  "update_summary_only",
+  "fix_with_ai",
+  "hide_footer",
+  "approve_tab",
+  "auto_approve",
+  "risk_ceiling",
+  "risk_definitions",
+  "auto_approve_filters"
+ ],
+ "fields": [
+  {
+   "default": "Organization",
+   "fieldname": "scope",
+   "fieldtype": "Select",
+   "idx": 1,
+   "in_list_view": 1,
+   "label": "Scope",
+   "options": "Organization\nTeam",
+   "reqd": 1
+  },
+  {
+   "depends_on": "eval:doc.scope=='Team'",
+   "fieldname": "team",
+   "fieldtype": "Link",
+   "idx": 2,
+   "in_list_view": 1,
+   "label": "Team",
+   "options": "Guard Team"
+  },
+  {
+   "default": "0",
+   "depends_on": "eval:doc.scope=='Team'",
+   "fieldname": "inherit_from_organization",
+   "fieldtype": "Check",
+   "idx": 3,
+   "label": "Inherit From Organization"
+  },
+  {
+   "fieldname": "review_tab",
+   "fieldtype": "Tab Break",
+   "idx": 4,
+   "label": "Review"
+  },
+  {
+   "default": "2",
+   "description": "1 verbose, 2 balanced, 3 critical only",
+   "fieldname": "strictness",
+   "fieldtype": "Select",
+   "idx": 5,
+   "label": "Strictness",
+   "options": "1\n2\n3"
+  },
+  {
+   "default": "auto",
+   "fieldname": "review_tier",
+   "fieldtype": "Select",
+   "idx": 6,
+   "label": "Review Tier",
+   "options": "auto\nbase\nplus\napex"
+  },
+  {
+   "default": "On pull request opened",
+   "fieldname": "auto_review",
+   "fieldtype": "Select",
+   "idx": 7,
+   "label": "Auto Review",
+   "options": "Never\nOn pull request opened\nOn new pushes\nOn all events"
+  },
+  {
+   "default": "0",
+   "fieldname": "review_drafts",
+   "fieldtype": "Check",
+   "idx": 8,
+   "label": "Review Drafts"
+  },
+  {
+   "fieldname": "review_col",
+   "fieldtype": "Column Break",
+   "idx": 9
+  },
+  {
+   "default": "1",
+   "fieldname": "comment_logic",
+   "fieldtype": "Check",
+   "idx": 10,
+   "label": "Logic Comments"
+  },
+  {
+   "default": "1",
+   "fieldname": "comment_syntax",
+   "fieldtype": "Check",
+   "idx": 11,
+   "label": "Syntax Comments"
+  },
+  {
+   "default": "1",
+   "fieldname": "comment_style",
+   "fieldtype": "Check",
+   "idx": 12,
+   "label": "Style Comments"
+  },
+  {
+   "default": "1",
+   "fieldname": "comments_outside_diff",
+   "fieldtype": "Check",
+   "idx": 13,
+   "label": "Comments Outside Diff"
+  },
+  {
+   "default": "1",
+   "description": "CLAUDE.md, AGENTS.md, .cursorrules",
+   "fieldname": "include_rule_files",
+   "fieldtype": "Check",
+   "idx": 14,
+   "label": "Read Project Rule Files"
+  },
+  {
+   "fieldname": "filters_section",
+   "fieldtype": "Section Break",
+   "idx": 15,
+   "label": "Filters"
+  },
+  {
+   "fieldname": "filter_rules",
+   "fieldtype": "Table",
+   "idx": 16,
+   "label": "Filter Rules",
+   "options": "Review Filter Rule"
+  },
+  {
+   "description": ".gitignore syntax",
+   "fieldname": "ignore_patterns",
+   "fieldtype": "Code",
+   "idx": 17,
+   "label": "Ignore Patterns",
+   "options": "Text"
+  },
+  {
+   "fieldname": "instructions",
+   "fieldtype": "Long Text",
+   "idx": 18,
+   "label": "Instructions"
+  },
+  {
+   "fieldname": "output_tab",
+   "fieldtype": "Tab Break",
+   "idx": 19,
+   "label": "Output"
+  },
+  {
+   "fieldname": "summary_section",
+   "fieldtype": "Section Break",
+   "idx": 20,
+   "label": "Summary"
+  },
+  {
+   "default": "1",
+   "fieldname": "summary_included",
+   "fieldtype": "Check",
+   "idx": 21,
+   "label": "Included"
+  },
+  {
+   "fieldname": "summary_col1",
+   "fieldtype": "Column Break",
+   "idx": 22
+  },
+  {
+   "default": "0",
+   "fieldname": "summary_collapsible",
+   "fieldtype": "Check",
+   "idx": 23,
+   "label": "Collapsible"
+  },
+  {
+   "fieldname": "summary_col2",
+   "fieldtype": "Column Break",
+   "idx": 24
+  },
+  {
+   "default": "1",
+   "fieldname": "summary_open",
+   "fieldtype": "Check",
+   "idx": 25,
+   "label": "Open by Default"
+  },
+  {
+   "fieldname": "issues_table_section",
+   "fieldtype": "Section Break",
+   "idx": 26,
+   "label": "Issues Table"
+  },
+  {
+   "default": "1",
+   "fieldname": "issues_table_included",
+   "fieldtype": "Check",
+   "idx": 27,
+   "label": "Included"
+  },
+  {
+   "fieldname": "issues_table_col1",
+   "fieldtype": "Column Break",
+   "idx": 28
+  },
+  {
+   "default": "0",
+   "fieldname": "issues_table_collapsible",
+   "fieldtype": "Check",
+   "idx": 29,
+   "label": "Collapsible"
+  },
+  {
+   "fieldname": "issues_table_col2",
+   "fieldtype": "Column Break",
+   "idx": 30
+  },
+  {
+   "default": "1",
+   "fieldname": "issues_table_open",
+   "fieldtype": "Check",
+   "idx": 31,
+   "label": "Open by Default"
+  },
+  {
+   "fieldname": "confidence_section",
+   "fieldtype": "Section Break",
+   "idx": 32,
+   "label": "Confidence"
+  },
+  {
+   "default": "1",
+   "fieldname": "confidence_included",
+   "fieldtype": "Check",
+   "idx": 33,
+   "label": "Included"
+  },
+  {
+   "fieldname": "confidence_col1",
+   "fieldtype": "Column Break",
+   "idx": 34
+  },
+  {
+   "default": "0",
+   "fieldname": "confidence_collapsible",
+   "fieldtype": "Check",
+   "idx": 35,
+   "label": "Collapsible"
+  },
+  {
+   "fieldname": "confidence_col2",
+   "fieldtype": "Column Break",
+   "idx": 36
+  },
+  {
+   "default": "1",
+   "fieldname": "confidence_open",
+   "fieldtype": "Check",
+   "idx": 37,
+   "label": "Open by Default"
+  },
+  {
+   "fieldname": "diagram_section",
+   "fieldtype": "Section Break",
+   "idx": 38,
+   "label": "Diagram"
+  },
+  {
+   "default": "1",
+   "fieldname": "diagram_included",
+   "fieldtype": "Check",
+   "idx": 39,
+   "label": "Included"
+  },
+  {
+   "fieldname": "diagram_col1",
+   "fieldtype": "Column Break",
+   "idx": 40
+  },
+  {
+   "default": "0",
+   "fieldname": "diagram_collapsible",
+   "fieldtype": "Check",
+   "idx": 41,
+   "label": "Collapsible"
+  },
+  {
+   "fieldname": "diagram_col2",
+   "fieldtype": "Column Break",
+   "idx": 42
+  },
+  {
+   "default": "1",
+   "fieldname": "diagram_open",
+   "fieldtype": "Check",
+   "idx": 43,
+   "label": "Open by Default"
+  },
+  {
+   "fieldname": "behavior_section",
+   "fieldtype": "Section Break",
+   "idx": 44,
+   "label": "Behavior"
+  },
+  {
+   "default": "1",
+   "fieldname": "status_check",
+   "fieldtype": "Check",
+   "idx": 45,
+   "label": "Status Check"
+  },
+  {
+   "default": "0",
+   "fieldname": "status_comments",
+   "fieldtype": "Check",
+   "idx": 46,
+   "label": "Status Comments"
+  },
+  {
+   "default": "0",
+   "fieldname": "update_description",
+   "fieldtype": "Check",
+   "idx": 47,
+   "label": "Update Description"
+  },
+  {
+   "fieldname": "behavior_col",
+   "fieldtype": "Column Break",
+   "idx": 48
+  },
+  {
+   "default": "0",
+   "fieldname": "update_summary_only",
+   "fieldtype": "Check",
+   "idx": 49,
+   "label": "Update Summary Only"
+  },
+  {
+   "default": "1",
+   "fieldname": "fix_with_ai",
+   "fieldtype": "Check",
+   "idx": 50,
+   "label": "Fix with AI"
+  },
+  {
+   "default": "0",
+   "fieldname": "hide_footer",
+   "fieldtype": "Check",
+   "idx": 51,
+   "label": "Hide Footer"
+  },
+  {
+   "fieldname": "approve_tab",
+   "fieldtype": "Tab Break",
+   "idx": 52,
+   "label": "Auto-approve"
+  },
+  {
+   "default": "0",
+   "fieldname": "auto_approve",
+   "fieldtype": "Check",
+   "idx": 53,
+   "label": "Auto Approve"
+  },
+  {
+   "default": "low",
+   "fieldname": "risk_ceiling",
+   "fieldtype": "Select",
+   "idx": 54,
+   "label": "Risk Ceiling",
+   "options": "low\nmedium\nhigh\ncritical"
+  },
+  {
+   "description": "Natural-language guidance for the risk assessment",
+   "fieldname": "risk_definitions",
+   "fieldtype": "Long Text",
+   "idx": 55,
+   "label": "Risk Definitions"
+  },
+  {
+   "description": "Same shape as autoApprove.filters in config files",
+   "fieldname": "auto_approve_filters",
+   "fieldtype": "JSON",
+   "idx": 56,
+   "label": "Auto Approve Filters"
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "modified": "2026-10-20 10:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Guard",
+ "name": "Review Settings",
+ "naming_rule": "Random",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Guard Admin",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "export": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Guard Member"
+  },
+  {
+   "export": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Guard Viewer"
+  }
+ ],
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}

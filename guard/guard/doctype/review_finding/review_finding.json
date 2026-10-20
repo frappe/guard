@@ -1,0 +1,370 @@
+{
+ "actions": [],
+ "allow_rename": 0,
+ "autoname": "hash",
+ "creation": "2026-10-20 10:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "code_review",
+  "pull_request",
+  "repository",
+  "title",
+  "severity",
+  "comment_type",
+  "category",
+  "is_security",
+  "main_col",
+  "status",
+  "status_reason",
+  "confidence",
+  "posted",
+  "outside_diff",
+  "verified",
+  "location_section",
+  "path",
+  "start_line",
+  "end_line",
+  "side",
+  "location_col",
+  "comment_url",
+  "provider_comment_id",
+  "provider_thread_id",
+  "fingerprint",
+  "content_section",
+  "body",
+  "suggestion",
+  "question",
+  "fix_prompt",
+  "fix_html",
+  "learning_section",
+  "upvotes",
+  "downvotes",
+  "custom_context",
+  "learning_col",
+  "addressed_at",
+  "addressed_in_sha",
+  "author",
+  "sandbox_log"
+ ],
+ "fields": [
+  {
+   "fieldname": "code_review",
+   "fieldtype": "Link",
+   "idx": 1,
+   "in_list_view": 1,
+   "label": "Code Review",
+   "options": "Code Review",
+   "reqd": 1,
+   "search_index": 1
+  },
+  {
+   "fieldname": "pull_request",
+   "fieldtype": "Link",
+   "idx": 2,
+   "label": "Pull Request",
+   "options": "Pull Request",
+   "search_index": 1
+  },
+  {
+   "fieldname": "repository",
+   "fieldtype": "Link",
+   "idx": 3,
+   "in_standard_filter": 1,
+   "label": "Repository",
+   "options": "Code Repository"
+  },
+  {
+   "fieldname": "title",
+   "fieldtype": "Small Text",
+   "idx": 4,
+   "in_list_view": 1,
+   "label": "Title"
+  },
+  {
+   "fieldname": "severity",
+   "fieldtype": "Select",
+   "idx": 5,
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Severity",
+   "options": "P0\nP1\nP2"
+  },
+  {
+   "fieldname": "comment_type",
+   "fieldtype": "Select",
+   "idx": 6,
+   "in_standard_filter": 1,
+   "label": "Comment Type",
+   "options": "logic\nsyntax\nstyle"
+  },
+  {
+   "fieldname": "category",
+   "fieldtype": "Data",
+   "idx": 7,
+   "in_standard_filter": 1,
+   "label": "Category"
+  },
+  {
+   "default": "0",
+   "fieldname": "is_security",
+   "fieldtype": "Check",
+   "idx": 8,
+   "label": "Is Security"
+  },
+  {
+   "fieldname": "main_col",
+   "fieldtype": "Column Break",
+   "idx": 9
+  },
+  {
+   "default": "Open",
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "idx": 10,
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Status",
+   "options": "Open\nAddressed\nIgnored\nDismissed\nSuppressed\nOutdated"
+  },
+  {
+   "fieldname": "status_reason",
+   "fieldtype": "Small Text",
+   "idx": 11,
+   "label": "Status Reason"
+  },
+  {
+   "fieldname": "confidence",
+   "fieldtype": "Float",
+   "idx": 12,
+   "label": "Confidence"
+  },
+  {
+   "default": "0",
+   "fieldname": "posted",
+   "fieldtype": "Check",
+   "idx": 13,
+   "label": "Posted"
+  },
+  {
+   "default": "0",
+   "fieldname": "outside_diff",
+   "fieldtype": "Check",
+   "idx": 14,
+   "label": "Outside Diff"
+  },
+  {
+   "default": "0",
+   "fieldname": "verified",
+   "fieldtype": "Check",
+   "idx": 15,
+   "label": "Verified"
+  },
+  {
+   "fieldname": "location_section",
+   "fieldtype": "Section Break",
+   "idx": 16,
+   "label": "Location"
+  },
+  {
+   "fieldname": "path",
+   "fieldtype": "Small Text",
+   "idx": 17,
+   "label": "Path"
+  },
+  {
+   "fieldname": "start_line",
+   "fieldtype": "Int",
+   "idx": 18,
+   "label": "Start Line"
+  },
+  {
+   "fieldname": "end_line",
+   "fieldtype": "Int",
+   "idx": 19,
+   "label": "End Line"
+  },
+  {
+   "default": "RIGHT",
+   "fieldname": "side",
+   "fieldtype": "Select",
+   "idx": 20,
+   "label": "Side",
+   "options": "RIGHT\nLEFT"
+  },
+  {
+   "fieldname": "location_col",
+   "fieldtype": "Column Break",
+   "idx": 21
+  },
+  {
+   "fieldname": "comment_url",
+   "fieldtype": "Data",
+   "idx": 22,
+   "label": "Comment Url"
+  },
+  {
+   "fieldname": "provider_comment_id",
+   "fieldtype": "Data",
+   "idx": 23,
+   "label": "Provider Comment Id",
+   "search_index": 1
+  },
+  {
+   "fieldname": "provider_thread_id",
+   "fieldtype": "Data",
+   "idx": 24,
+   "label": "Provider Thread Id"
+  },
+  {
+   "fieldname": "fingerprint",
+   "fieldtype": "Data",
+   "idx": 25,
+   "label": "Fingerprint",
+   "search_index": 1
+  },
+  {
+   "fieldname": "content_section",
+   "fieldtype": "Section Break",
+   "idx": 26,
+   "label": "Content"
+  },
+  {
+   "fieldname": "body",
+   "fieldtype": "Markdown Editor",
+   "idx": 27,
+   "label": "Body"
+  },
+  {
+   "fieldname": "suggestion",
+   "fieldtype": "Code",
+   "idx": 28,
+   "label": "Suggestion"
+  },
+  {
+   "fieldname": "question",
+   "fieldtype": "Small Text",
+   "idx": 29,
+   "label": "Question"
+  },
+  {
+   "fieldname": "fix_prompt",
+   "fieldtype": "Code",
+   "idx": 30,
+   "label": "Fix Prompt",
+   "options": "Markdown"
+  },
+  {
+   "fieldname": "fix_html",
+   "fieldtype": "HTML",
+   "idx": 31,
+   "label": "Fix Html"
+  },
+  {
+   "fieldname": "learning_section",
+   "fieldtype": "Section Break",
+   "idx": 32,
+   "label": "Learning"
+  },
+  {
+   "fieldname": "upvotes",
+   "fieldtype": "Int",
+   "idx": 33,
+   "label": "Upvotes"
+  },
+  {
+   "fieldname": "downvotes",
+   "fieldtype": "Int",
+   "idx": 34,
+   "label": "Downvotes"
+  },
+  {
+   "fieldname": "custom_context",
+   "fieldtype": "Link",
+   "idx": 35,
+   "label": "Custom Context",
+   "options": "Custom Context"
+  },
+  {
+   "fieldname": "learning_col",
+   "fieldtype": "Column Break",
+   "idx": 36
+  },
+  {
+   "fieldname": "addressed_at",
+   "fieldtype": "Datetime",
+   "idx": 37,
+   "label": "Addressed At"
+  },
+  {
+   "fieldname": "addressed_in_sha",
+   "fieldtype": "Data",
+   "idx": 38,
+   "label": "Addressed In Sha"
+  },
+  {
+   "fieldname": "author",
+   "fieldtype": "Data",
+   "idx": 39,
+   "label": "Author",
+   "search_index": 1
+  },
+  {
+   "fieldname": "sandbox_log",
+   "fieldtype": "Long Text",
+   "idx": 40,
+   "label": "Sandbox Log"
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "modified": "2026-10-20 10:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Guard",
+ "name": "Review Finding",
+ "naming_rule": "Random",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Guard Admin",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "export": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Guard Viewer"
+  },
+  {
+   "export": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Guard Member",
+   "write": 1
+  }
+ ],
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": [],
+ "title_field": "title"
+}

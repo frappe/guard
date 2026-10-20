@@ -1,0 +1,174 @@
+{
+ "actions": [],
+ "allow_rename": 0,
+ "autoname": "hash",
+ "creation": "2026-10-20 10:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "repository",
+  "branch",
+  "status",
+  "sha",
+  "parser_version",
+  "index_col",
+  "files_processed",
+  "num_files",
+  "entity_count",
+  "edge_count",
+  "chunk_count",
+  "timing_section",
+  "started_at",
+  "completed_at",
+  "error"
+ ],
+ "fields": [
+  {
+   "fieldname": "repository",
+   "fieldtype": "Link",
+   "idx": 1,
+   "in_list_view": 1,
+   "label": "Repository",
+   "options": "Code Repository",
+   "reqd": 1,
+   "search_index": 1
+  },
+  {
+   "fieldname": "branch",
+   "fieldtype": "Data",
+   "idx": 2,
+   "in_list_view": 1,
+   "label": "Branch",
+   "reqd": 1
+  },
+  {
+   "default": "submitted",
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "idx": 3,
+   "in_list_view": 1,
+   "label": "Status",
+   "options": "submitted\ncloning\nprocessing\ncompleted\nfailed"
+  },
+  {
+   "fieldname": "sha",
+   "fieldtype": "Data",
+   "idx": 4,
+   "in_list_view": 1,
+   "label": "Sha"
+  },
+  {
+   "fieldname": "parser_version",
+   "fieldtype": "Int",
+   "idx": 5,
+   "label": "Parser Version"
+  },
+  {
+   "fieldname": "index_col",
+   "fieldtype": "Column Break",
+   "idx": 6
+  },
+  {
+   "fieldname": "files_processed",
+   "fieldtype": "Int",
+   "idx": 7,
+   "label": "Files Processed"
+  },
+  {
+   "fieldname": "num_files",
+   "fieldtype": "Int",
+   "idx": 8,
+   "label": "Num Files"
+  },
+  {
+   "fieldname": "entity_count",
+   "fieldtype": "Int",
+   "idx": 9,
+   "label": "Entity Count"
+  },
+  {
+   "fieldname": "edge_count",
+   "fieldtype": "Int",
+   "idx": 10,
+   "label": "Edge Count"
+  },
+  {
+   "fieldname": "chunk_count",
+   "fieldtype": "Int",
+   "idx": 11,
+   "label": "Chunk Count"
+  },
+  {
+   "fieldname": "timing_section",
+   "fieldtype": "Section Break",
+   "idx": 12
+  },
+  {
+   "fieldname": "started_at",
+   "fieldtype": "Datetime",
+   "idx": 13,
+   "label": "Started At"
+  },
+  {
+   "fieldname": "completed_at",
+   "fieldtype": "Datetime",
+   "idx": 14,
+   "label": "Completed At"
+  },
+  {
+   "fieldname": "error",
+   "fieldtype": "Long Text",
+   "idx": 15,
+   "label": "Error"
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "modified": "2026-10-20 10:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Guard",
+ "name": "Repository Index",
+ "naming_rule": "Random",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Guard Admin",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "export": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Guard Member"
+  },
+  {
+   "export": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Guard Viewer"
+  }
+ ],
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": []
+}

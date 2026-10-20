@@ -1,0 +1,418 @@
+{
+ "actions": [],
+ "allow_rename": 0,
+ "autoname": "hash",
+ "creation": "2026-10-20 10:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "gateway_tab",
+  "gateway_url",
+  "gateway_api_key",
+  "gateway_dialect",
+  "request_timeout",
+  "gateway_col",
+  "base_model",
+  "plus_model",
+  "apex_model",
+  "fast_model",
+  "embedding_section",
+  "embedding_model",
+  "embedding_col",
+  "embedding_dimensions",
+  "turns_section",
+  "max_turns_base",
+  "turns_col1",
+  "max_turns_plus",
+  "turns_col2",
+  "max_turns_apex",
+  "bot_tab",
+  "trigger_handles",
+  "bot_logins",
+  "bot_col",
+  "public_url",
+  "default_coding_agents",
+  "permission_section",
+  "trigger_by_authoring",
+  "trigger_by_tagging",
+  "permission_col",
+  "chat_permission",
+  "teach_permission",
+  "org_section",
+  "monthly_credit_cap",
+  "auto_enable_new_repositories",
+  "org_col",
+  "feature_tips",
+  "learn_from_activity",
+  "polling_enabled",
+  "sandbox_tab",
+  "sandbox_enabled",
+  "sandbox_when",
+  "sandbox_runtime",
+  "sandbox_col",
+  "sandbox_image",
+  "sandbox_setup_command",
+  "sandbox_timeout",
+  "sandbox_network"
+ ],
+ "fields": [
+  {
+   "fieldname": "gateway_tab",
+   "fieldtype": "Tab Break",
+   "idx": 1,
+   "label": "AI Gateway"
+  },
+  {
+   "description": "Base URL of the AI gateway, for example a Grove gateway. Leave blank for offline mode.",
+   "fieldname": "gateway_url",
+   "fieldtype": "Data",
+   "idx": 2,
+   "label": "Gateway URL"
+  },
+  {
+   "fieldname": "gateway_api_key",
+   "fieldtype": "Password",
+   "idx": 3,
+   "label": "Gateway API Key",
+   "length": 512
+  },
+  {
+   "default": "openai",
+   "fieldname": "gateway_dialect",
+   "fieldtype": "Select",
+   "idx": 4,
+   "label": "Dialect",
+   "options": "openai\nanthropic"
+  },
+  {
+   "default": "300",
+   "description": "Seconds",
+   "fieldname": "request_timeout",
+   "fieldtype": "Int",
+   "idx": 5,
+   "label": "Request Timeout"
+  },
+  {
+   "fieldname": "gateway_col",
+   "fieldtype": "Column Break",
+   "idx": 6
+  },
+  {
+   "description": "Model id, for example anthropic/claude-sonnet-5-5",
+   "fieldname": "base_model",
+   "fieldtype": "Data",
+   "idx": 7,
+   "label": "Base Model"
+  },
+  {
+   "fieldname": "plus_model",
+   "fieldtype": "Data",
+   "idx": 8,
+   "label": "Plus Model"
+  },
+  {
+   "fieldname": "apex_model",
+   "fieldtype": "Data",
+   "idx": 9,
+   "label": "Apex Model"
+  },
+  {
+   "description": "Classifiers, titles, small summaries",
+   "fieldname": "fast_model",
+   "fieldtype": "Data",
+   "idx": 10,
+   "label": "Fast Model"
+  },
+  {
+   "fieldname": "embedding_section",
+   "fieldtype": "Section Break",
+   "idx": 11,
+   "label": "Embeddings"
+  },
+  {
+   "description": "Blank means hash embeddings",
+   "fieldname": "embedding_model",
+   "fieldtype": "Data",
+   "idx": 12,
+   "label": "Embedding Model"
+  },
+  {
+   "fieldname": "embedding_col",
+   "fieldtype": "Column Break",
+   "idx": 13
+  },
+  {
+   "default": "1024",
+   "description": "Changing this rebuilds all vectors",
+   "fieldname": "embedding_dimensions",
+   "fieldtype": "Int",
+   "idx": 14,
+   "label": "Embedding Dimensions"
+  },
+  {
+   "fieldname": "turns_section",
+   "fieldtype": "Section Break",
+   "idx": 15,
+   "label": "Agent Turns"
+  },
+  {
+   "default": "15",
+   "fieldname": "max_turns_base",
+   "fieldtype": "Int",
+   "idx": 16,
+   "label": "Max Turns (Base)"
+  },
+  {
+   "fieldname": "turns_col1",
+   "fieldtype": "Column Break",
+   "idx": 17
+  },
+  {
+   "default": "30",
+   "fieldname": "max_turns_plus",
+   "fieldtype": "Int",
+   "idx": 18,
+   "label": "Max Turns (Plus)"
+  },
+  {
+   "fieldname": "turns_col2",
+   "fieldtype": "Column Break",
+   "idx": 19
+  },
+  {
+   "default": "50",
+   "fieldname": "max_turns_apex",
+   "fieldtype": "Int",
+   "idx": 20,
+   "label": "Max Turns (Apex)"
+  },
+  {
+   "fieldname": "bot_tab",
+   "fieldtype": "Tab Break",
+   "idx": 21,
+   "label": "Bot"
+  },
+  {
+   "default": "@guard",
+   "description": "One handle each line",
+   "fieldname": "trigger_handles",
+   "fieldtype": "Small Text",
+   "idx": 22,
+   "label": "Trigger Handles"
+  },
+  {
+   "description": "Provider logins that are Guard itself, one each line",
+   "fieldname": "bot_logins",
+   "fieldtype": "Small Text",
+   "idx": 23,
+   "label": "Bot Logins"
+  },
+  {
+   "fieldname": "bot_col",
+   "fieldtype": "Column Break",
+   "idx": 24
+  },
+  {
+   "description": "Base URL for links in comments. Blank means the site URL.",
+   "fieldname": "public_url",
+   "fieldtype": "Data",
+   "idx": 25,
+   "label": "Public URL"
+  },
+  {
+   "default": "Claude Code\nCodex\nCursor",
+   "fieldname": "default_coding_agents",
+   "fieldtype": "Small Text",
+   "idx": 26,
+   "label": "Default Coding Agents"
+  },
+  {
+   "fieldname": "permission_section",
+   "fieldtype": "Section Break",
+   "idx": 27,
+   "label": "Who Guard Answers"
+  },
+  {
+   "default": "Everyone",
+   "fieldname": "trigger_by_authoring",
+   "fieldtype": "Select",
+   "idx": 28,
+   "label": "Trigger By Authoring",
+   "options": "Everyone\nOrganization members\nGuard users"
+  },
+  {
+   "default": "Everyone",
+   "fieldname": "trigger_by_tagging",
+   "fieldtype": "Select",
+   "idx": 29,
+   "label": "Trigger By Tagging",
+   "options": "Everyone\nOrganization members\nGuard users"
+  },
+  {
+   "fieldname": "permission_col",
+   "fieldtype": "Column Break",
+   "idx": 30
+  },
+  {
+   "default": "Everyone",
+   "fieldname": "chat_permission",
+   "fieldtype": "Select",
+   "idx": 31,
+   "label": "Chat Permission",
+   "options": "Everyone\nOrganization members\nGuard users"
+  },
+  {
+   "default": "Everyone",
+   "fieldname": "teach_permission",
+   "fieldtype": "Select",
+   "idx": 32,
+   "label": "Teach Permission",
+   "options": "Everyone\nOrganization members\nGuard users"
+  },
+  {
+   "fieldname": "org_section",
+   "fieldtype": "Section Break",
+   "idx": 33,
+   "label": "Organization"
+  },
+  {
+   "default": "0",
+   "description": "0 means no cap",
+   "fieldname": "monthly_credit_cap",
+   "fieldtype": "Int",
+   "idx": 34,
+   "label": "Monthly Credit Cap"
+  },
+  {
+   "default": "1",
+   "fieldname": "auto_enable_new_repositories",
+   "fieldtype": "Check",
+   "idx": 35,
+   "label": "Auto Enable New Repositories"
+  },
+  {
+   "fieldname": "org_col",
+   "fieldtype": "Column Break",
+   "idx": 36
+  },
+  {
+   "default": "0",
+   "fieldname": "feature_tips",
+   "fieldtype": "Check",
+   "idx": 37,
+   "label": "Feature Tips"
+  },
+  {
+   "default": "1",
+   "fieldname": "learn_from_activity",
+   "fieldtype": "Check",
+   "idx": 38,
+   "label": "Learn From Activity"
+  },
+  {
+   "default": "0",
+   "description": "List open pull requests every 5 minutes. Use when webhooks cannot reach this site.",
+   "fieldname": "polling_enabled",
+   "fieldtype": "Check",
+   "idx": 39,
+   "label": "Poll Providers"
+  },
+  {
+   "fieldname": "sandbox_tab",
+   "fieldtype": "Tab Break",
+   "idx": 40,
+   "label": "Runtime Validation"
+  },
+  {
+   "default": "0",
+   "fieldname": "sandbox_enabled",
+   "fieldtype": "Check",
+   "idx": 41,
+   "label": "Enable Runtime Validation"
+  },
+  {
+   "default": "On request",
+   "fieldname": "sandbox_when",
+   "fieldtype": "Select",
+   "idx": 42,
+   "label": "Run",
+   "options": "On request\nAlways\nNever"
+  },
+  {
+   "default": "podman",
+   "fieldname": "sandbox_runtime",
+   "fieldtype": "Select",
+   "idx": 43,
+   "label": "Container Runtime",
+   "options": "podman\ndocker"
+  },
+  {
+   "fieldname": "sandbox_col",
+   "fieldtype": "Column Break",
+   "idx": 44
+  },
+  {
+   "default": "docker.io/library/python:3.14-slim",
+   "fieldname": "sandbox_image",
+   "fieldtype": "Data",
+   "idx": 45,
+   "label": "Sandbox Image"
+  },
+  {
+   "fieldname": "sandbox_setup_command",
+   "fieldtype": "Small Text",
+   "idx": 46,
+   "label": "Sandbox Setup Command"
+  },
+  {
+   "default": "600",
+   "fieldname": "sandbox_timeout",
+   "fieldtype": "Int",
+   "idx": 47,
+   "label": "Timeout (seconds)"
+  },
+  {
+   "default": "0",
+   "fieldname": "sandbox_network",
+   "fieldtype": "Check",
+   "idx": 48,
+   "label": "Allow Network"
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "issingle": 1,
+ "links": [],
+ "modified": "2026-10-20 10:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Guard",
+ "name": "Guard Settings",
+ "naming_rule": "Random",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 0,
+   "delete": 0,
+   "read": 1,
+   "role": "System Manager",
+   "write": 1
+  },
+  {
+   "create": 0,
+   "delete": 0,
+   "read": 1,
+   "role": "Guard Admin",
+   "write": 1
+  },
+  {
+   "read": 1,
+   "role": "Guard Member"
+  },
+  {
+   "read": 1,
+   "role": "Guard Viewer"
+  }
+ ],
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": []
+}

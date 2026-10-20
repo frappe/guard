@@ -1,0 +1,136 @@
+{
+ "actions": [],
+ "allow_rename": 0,
+ "autoname": "hash",
+ "creation": "2026-10-20 10:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "finding",
+  "pull_request",
+  "repository",
+  "author",
+  "kind",
+  "sentiment",
+  "body",
+  "provider_ref",
+  "processed"
+ ],
+ "fields": [
+  {
+   "fieldname": "finding",
+   "fieldtype": "Link",
+   "idx": 1,
+   "in_list_view": 1,
+   "label": "Finding",
+   "options": "Review Finding",
+   "search_index": 1
+  },
+  {
+   "fieldname": "pull_request",
+   "fieldtype": "Link",
+   "idx": 2,
+   "label": "Pull Request",
+   "options": "Pull Request"
+  },
+  {
+   "fieldname": "repository",
+   "fieldtype": "Link",
+   "idx": 3,
+   "in_standard_filter": 1,
+   "label": "Repository",
+   "options": "Code Repository"
+  },
+  {
+   "fieldname": "author",
+   "fieldtype": "Data",
+   "idx": 4,
+   "in_list_view": 1,
+   "label": "Author"
+  },
+  {
+   "fieldname": "kind",
+   "fieldtype": "Select",
+   "idx": 5,
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Kind",
+   "options": "Upvote\nDownvote\nReply\nAddressed\nIgnored"
+  },
+  {
+   "fieldname": "sentiment",
+   "fieldtype": "Select",
+   "idx": 6,
+   "label": "Sentiment",
+   "options": "\nAgree\nDisagree\nContext\nQuestion\nNeutral"
+  },
+  {
+   "fieldname": "body",
+   "fieldtype": "Long Text",
+   "idx": 7,
+   "label": "Body"
+  },
+  {
+   "fieldname": "provider_ref",
+   "fieldtype": "Data",
+   "idx": 8,
+   "label": "Provider Ref"
+  },
+  {
+   "default": "0",
+   "fieldname": "processed",
+   "fieldtype": "Check",
+   "idx": 9,
+   "label": "Processed"
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "modified": "2026-10-20 10:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Guard",
+ "name": "Review Feedback",
+ "naming_rule": "Random",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Guard Admin",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "export": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Guard Member"
+  },
+  {
+   "export": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Guard Viewer"
+  }
+ ],
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": []
+}

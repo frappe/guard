@@ -1,0 +1,199 @@
+{
+ "actions": [],
+ "allow_rename": 0,
+ "autoname": "field:title",
+ "creation": "2026-10-20 10:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "title",
+  "provider_type",
+  "enabled",
+  "api_url",
+  "web_url",
+  "main_col",
+  "auth_mode",
+  "bot_username",
+  "verify_ssl",
+  "app_section",
+  "app_id",
+  "app_slug",
+  "private_key",
+  "secret_section",
+  "token",
+  "webhook_secret",
+  "webhook_url"
+ ],
+ "fields": [
+  {
+   "fieldname": "title",
+   "fieldtype": "Data",
+   "idx": 1,
+   "in_list_view": 1,
+   "label": "Title",
+   "reqd": 1,
+   "unique": 1
+  },
+  {
+   "fieldname": "provider_type",
+   "fieldtype": "Select",
+   "idx": 2,
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Provider Type",
+   "options": "GitHub\nGitLab\nGitea\nBitbucket",
+   "reqd": 1
+  },
+  {
+   "default": "1",
+   "fieldname": "enabled",
+   "fieldtype": "Check",
+   "idx": 3,
+   "in_list_view": 1,
+   "label": "Enabled"
+  },
+  {
+   "description": "Blank means the public cloud API",
+   "fieldname": "api_url",
+   "fieldtype": "Data",
+   "idx": 4,
+   "label": "API URL"
+  },
+  {
+   "fieldname": "web_url",
+   "fieldtype": "Data",
+   "idx": 5,
+   "label": "Web URL"
+  },
+  {
+   "fieldname": "main_col",
+   "fieldtype": "Column Break",
+   "idx": 6
+  },
+  {
+   "default": "Token",
+   "fieldname": "auth_mode",
+   "fieldtype": "Select",
+   "idx": 7,
+   "label": "Auth Mode",
+   "options": "Token\nApp"
+  },
+  {
+   "fieldname": "bot_username",
+   "fieldtype": "Data",
+   "idx": 8,
+   "label": "Bot Username"
+  },
+  {
+   "default": "1",
+   "fieldname": "verify_ssl",
+   "fieldtype": "Check",
+   "idx": 9,
+   "label": "Verify SSL"
+  },
+  {
+   "depends_on": "eval:doc.auth_mode=='App'",
+   "fieldname": "app_section",
+   "fieldtype": "Section Break",
+   "idx": 10,
+   "label": "GitHub App"
+  },
+  {
+   "fieldname": "app_id",
+   "fieldtype": "Data",
+   "idx": 11,
+   "label": "App ID"
+  },
+  {
+   "fieldname": "app_slug",
+   "fieldtype": "Data",
+   "idx": 12,
+   "label": "App Slug"
+  },
+  {
+   "fieldname": "private_key",
+   "fieldtype": "Password",
+   "idx": 13,
+   "label": "Private Key",
+   "length": 8000
+  },
+  {
+   "fieldname": "secret_section",
+   "fieldtype": "Section Break",
+   "idx": 14,
+   "label": "Secrets"
+  },
+  {
+   "depends_on": "eval:doc.auth_mode=='Token'",
+   "fieldname": "token",
+   "fieldtype": "Password",
+   "idx": 15,
+   "label": "Token",
+   "length": 1024
+  },
+  {
+   "fieldname": "webhook_secret",
+   "fieldtype": "Password",
+   "idx": 16,
+   "label": "Webhook Secret",
+   "length": 512
+  },
+  {
+   "fieldname": "webhook_url",
+   "fieldtype": "Data",
+   "idx": 17,
+   "label": "Webhook URL",
+   "read_only": 1
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "modified": "2026-10-20 10:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Guard",
+ "name": "Code Provider",
+ "naming_rule": "By fieldname",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Guard Admin",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "export": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Guard Member"
+  },
+  {
+   "export": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Guard Viewer"
+  }
+ ],
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}

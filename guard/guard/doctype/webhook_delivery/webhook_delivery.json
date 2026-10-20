@@ -1,0 +1,117 @@
+{
+ "actions": [],
+ "allow_rename": 0,
+ "autoname": "hash",
+ "creation": "2026-10-20 10:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "code_provider",
+  "delivery_id",
+  "event",
+  "action",
+  "repository_full_name",
+  "status",
+  "payload",
+  "error"
+ ],
+ "fields": [
+  {
+   "fieldname": "code_provider",
+   "fieldtype": "Link",
+   "idx": 1,
+   "in_standard_filter": 1,
+   "label": "Code Provider",
+   "options": "Code Provider"
+  },
+  {
+   "fieldname": "delivery_id",
+   "fieldtype": "Data",
+   "idx": 2,
+   "label": "Delivery Id",
+   "unique": 1
+  },
+  {
+   "fieldname": "event",
+   "fieldtype": "Data",
+   "idx": 3,
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Event"
+  },
+  {
+   "fieldname": "action",
+   "fieldtype": "Data",
+   "idx": 4,
+   "in_list_view": 1,
+   "label": "Action"
+  },
+  {
+   "fieldname": "repository_full_name",
+   "fieldtype": "Data",
+   "idx": 5,
+   "in_list_view": 1,
+   "label": "Repository Full Name"
+  },
+  {
+   "default": "Received",
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "idx": 6,
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Status",
+   "options": "Received\nProcessed\nIgnored\nFailed"
+  },
+  {
+   "fieldname": "payload",
+   "fieldtype": "Code",
+   "idx": 7,
+   "label": "Payload",
+   "options": "JSON"
+  },
+  {
+   "fieldname": "error",
+   "fieldtype": "Long Text",
+   "idx": 8,
+   "label": "Error"
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "modified": "2026-10-20 10:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Guard",
+ "name": "Webhook Delivery",
+ "naming_rule": "Random",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Guard Admin",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": []
+}

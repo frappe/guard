@@ -1,0 +1,453 @@
+{
+ "actions": [],
+ "allow_rename": 0,
+ "autoname": "format:CR-{######}",
+ "creation": "2026-10-20 10:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "pull_request",
+  "repository",
+  "source",
+  "status",
+  "stage",
+  "trigger",
+  "requested_by",
+  "triggered_by_user",
+  "main_col",
+  "requested_tier",
+  "tier",
+  "strictness",
+  "review_number",
+  "head_sha",
+  "base_sha",
+  "merge_base_sha",
+  "branch",
+  "instructions_section",
+  "instructions",
+  "verdict_section",
+  "confidence_score",
+  "confidence_reason",
+  "verdict_col",
+  "risk_level",
+  "risk_reason",
+  "summary",
+  "diagram_type",
+  "diagram",
+  "counts_section",
+  "files_reviewed",
+  "findings_count",
+  "counts_col1",
+  "posted_count",
+  "suppressed_count",
+  "counts_col2",
+  "credits",
+  "input_tokens",
+  "output_tokens",
+  "timing_section",
+  "started_at",
+  "completed_at",
+  "timing_col",
+  "duration",
+  "job_id",
+  "cancel_requested",
+  "data_section",
+  "important_files",
+  "context_used",
+  "changed_files",
+  "config_snapshot",
+  "cli_payload",
+  "body",
+  "error"
+ ],
+ "fields": [
+  {
+   "fieldname": "pull_request",
+   "fieldtype": "Link",
+   "idx": 1,
+   "in_list_view": 1,
+   "label": "Pull Request",
+   "options": "Pull Request",
+   "search_index": 1
+  },
+  {
+   "fieldname": "repository",
+   "fieldtype": "Link",
+   "idx": 2,
+   "in_standard_filter": 1,
+   "label": "Repository",
+   "options": "Code Repository",
+   "search_index": 1
+  },
+  {
+   "default": "pull_request",
+   "fieldname": "source",
+   "fieldtype": "Select",
+   "idx": 3,
+   "label": "Source",
+   "options": "pull_request\ncli\napi"
+  },
+  {
+   "default": "Queued",
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "idx": 4,
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Status",
+   "options": "Queued\nRunning\nCompleted\nFailed\nCancelled\nSkipped"
+  },
+  {
+   "fieldname": "stage",
+   "fieldtype": "Data",
+   "idx": 5,
+   "label": "Stage",
+   "read_only": 1
+  },
+  {
+   "fieldname": "trigger",
+   "fieldtype": "Select",
+   "idx": 6,
+   "in_standard_filter": 1,
+   "label": "Trigger",
+   "options": "open\npush\nrebase\nmention\nretrigger\nmanual\ncli\napi"
+  },
+  {
+   "fieldname": "requested_by",
+   "fieldtype": "Data",
+   "idx": 7,
+   "label": "Requested By"
+  },
+  {
+   "fieldname": "triggered_by_user",
+   "fieldtype": "Link",
+   "idx": 8,
+   "label": "Triggered By User",
+   "options": "User"
+  },
+  {
+   "fieldname": "main_col",
+   "fieldtype": "Column Break",
+   "idx": 9
+  },
+  {
+   "fieldname": "requested_tier",
+   "fieldtype": "Select",
+   "idx": 10,
+   "label": "Requested Tier",
+   "options": "\nbase\nplus\napex\nauto"
+  },
+  {
+   "fieldname": "tier",
+   "fieldtype": "Select",
+   "idx": 11,
+   "in_list_view": 1,
+   "label": "Tier",
+   "options": "\nbase\nplus\napex"
+  },
+  {
+   "fieldname": "strictness",
+   "fieldtype": "Int",
+   "idx": 12,
+   "label": "Strictness"
+  },
+  {
+   "fieldname": "review_number",
+   "fieldtype": "Int",
+   "idx": 13,
+   "label": "Review Number"
+  },
+  {
+   "fieldname": "head_sha",
+   "fieldtype": "Data",
+   "idx": 14,
+   "label": "Head Sha"
+  },
+  {
+   "fieldname": "base_sha",
+   "fieldtype": "Data",
+   "idx": 15,
+   "label": "Base Sha"
+  },
+  {
+   "fieldname": "merge_base_sha",
+   "fieldtype": "Data",
+   "idx": 16,
+   "label": "Merge Base Sha"
+  },
+  {
+   "fieldname": "branch",
+   "fieldtype": "Data",
+   "idx": 17,
+   "label": "Branch"
+  },
+  {
+   "fieldname": "instructions_section",
+   "fieldtype": "Section Break",
+   "idx": 18,
+   "label": "Instructions"
+  },
+  {
+   "fieldname": "instructions",
+   "fieldtype": "Long Text",
+   "idx": 19,
+   "label": "Instructions"
+  },
+  {
+   "fieldname": "verdict_section",
+   "fieldtype": "Section Break",
+   "idx": 20,
+   "label": "Verdict"
+  },
+  {
+   "fieldname": "confidence_score",
+   "fieldtype": "Int",
+   "idx": 21,
+   "in_list_view": 1,
+   "label": "Confidence Score"
+  },
+  {
+   "fieldname": "confidence_reason",
+   "fieldtype": "Small Text",
+   "idx": 22,
+   "label": "Confidence Reason"
+  },
+  {
+   "fieldname": "verdict_col",
+   "fieldtype": "Column Break",
+   "idx": 23
+  },
+  {
+   "fieldname": "risk_level",
+   "fieldtype": "Select",
+   "idx": 24,
+   "label": "Risk Level",
+   "options": "\nlow\nmedium\nhigh\ncritical"
+  },
+  {
+   "fieldname": "risk_reason",
+   "fieldtype": "Small Text",
+   "idx": 25,
+   "label": "Risk Reason"
+  },
+  {
+   "fieldname": "summary",
+   "fieldtype": "Markdown Editor",
+   "idx": 26,
+   "label": "Summary"
+  },
+  {
+   "fieldname": "diagram_type",
+   "fieldtype": "Select",
+   "idx": 27,
+   "label": "Diagram Type",
+   "options": "\nsequence\ner\nclass\nflow"
+  },
+  {
+   "fieldname": "diagram",
+   "fieldtype": "Code",
+   "idx": 28,
+   "label": "Diagram",
+   "options": "Markdown"
+  },
+  {
+   "fieldname": "counts_section",
+   "fieldtype": "Section Break",
+   "idx": 29,
+   "label": "Counts"
+  },
+  {
+   "fieldname": "files_reviewed",
+   "fieldtype": "Int",
+   "idx": 30,
+   "label": "Files Reviewed"
+  },
+  {
+   "fieldname": "findings_count",
+   "fieldtype": "Int",
+   "idx": 31,
+   "label": "Findings Count"
+  },
+  {
+   "fieldname": "counts_col1",
+   "fieldtype": "Column Break",
+   "idx": 32
+  },
+  {
+   "fieldname": "posted_count",
+   "fieldtype": "Int",
+   "idx": 33,
+   "label": "Posted Count"
+  },
+  {
+   "fieldname": "suppressed_count",
+   "fieldtype": "Int",
+   "idx": 34,
+   "label": "Suppressed Count"
+  },
+  {
+   "fieldname": "counts_col2",
+   "fieldtype": "Column Break",
+   "idx": 35
+  },
+  {
+   "fieldname": "credits",
+   "fieldtype": "Int",
+   "idx": 36,
+   "label": "Credits"
+  },
+  {
+   "fieldname": "input_tokens",
+   "fieldtype": "Int",
+   "idx": 37,
+   "label": "Input Tokens"
+  },
+  {
+   "fieldname": "output_tokens",
+   "fieldtype": "Int",
+   "idx": 38,
+   "label": "Output Tokens"
+  },
+  {
+   "fieldname": "timing_section",
+   "fieldtype": "Section Break",
+   "idx": 39,
+   "label": "Timing"
+  },
+  {
+   "fieldname": "started_at",
+   "fieldtype": "Datetime",
+   "idx": 40,
+   "label": "Started At"
+  },
+  {
+   "fieldname": "completed_at",
+   "fieldtype": "Datetime",
+   "idx": 41,
+   "label": "Completed At"
+  },
+  {
+   "fieldname": "timing_col",
+   "fieldtype": "Column Break",
+   "idx": 42
+  },
+  {
+   "description": "Seconds",
+   "fieldname": "duration",
+   "fieldtype": "Float",
+   "idx": 43,
+   "label": "Duration"
+  },
+  {
+   "fieldname": "job_id",
+   "fieldtype": "Data",
+   "idx": 44,
+   "label": "Job Id"
+  },
+  {
+   "default": "0",
+   "fieldname": "cancel_requested",
+   "fieldtype": "Check",
+   "idx": 45,
+   "label": "Cancel Requested"
+  },
+  {
+   "collapsible": 1,
+   "fieldname": "data_section",
+   "fieldtype": "Section Break",
+   "idx": 46,
+   "label": "Data"
+  },
+  {
+   "fieldname": "important_files",
+   "fieldtype": "JSON",
+   "idx": 47,
+   "label": "Important Files"
+  },
+  {
+   "fieldname": "context_used",
+   "fieldtype": "JSON",
+   "idx": 48,
+   "label": "Context Used"
+  },
+  {
+   "fieldname": "changed_files",
+   "fieldtype": "JSON",
+   "idx": 49,
+   "label": "Changed Files"
+  },
+  {
+   "fieldname": "config_snapshot",
+   "fieldtype": "JSON",
+   "idx": 50,
+   "label": "Config Snapshot"
+  },
+  {
+   "fieldname": "cli_payload",
+   "fieldtype": "JSON",
+   "idx": 51,
+   "label": "Cli Payload"
+  },
+  {
+   "fieldname": "body",
+   "fieldtype": "Long Text",
+   "idx": 52,
+   "label": "Body"
+  },
+  {
+   "fieldname": "error",
+   "fieldtype": "Long Text",
+   "idx": 53,
+   "label": "Error"
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "modified": "2026-10-20 10:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Guard",
+ "name": "Code Review",
+ "naming_rule": "Expression",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Guard Admin",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "export": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Guard Member"
+  },
+  {
+   "export": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Guard Viewer"
+  }
+ ],
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": []
+}

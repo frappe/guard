@@ -1,0 +1,134 @@
+{
+ "actions": [],
+ "allow_rename": 0,
+ "autoname": "hash",
+ "creation": "2026-10-20 10:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "index",
+  "repository",
+  "path",
+  "entity",
+  "start_line",
+  "end_line",
+  "language",
+  "content",
+  "content_hash"
+ ],
+ "fields": [
+  {
+   "fieldname": "index",
+   "fieldtype": "Link",
+   "idx": 1,
+   "label": "Index",
+   "options": "Repository Index",
+   "reqd": 1,
+   "search_index": 1
+  },
+  {
+   "fieldname": "repository",
+   "fieldtype": "Link",
+   "idx": 2,
+   "label": "Repository",
+   "options": "Code Repository",
+   "reqd": 1
+  },
+  {
+   "fieldname": "path",
+   "fieldtype": "Small Text",
+   "idx": 3,
+   "in_list_view": 1,
+   "label": "Path",
+   "reqd": 1
+  },
+  {
+   "fieldname": "entity",
+   "fieldtype": "Data",
+   "idx": 4,
+   "label": "Entity"
+  },
+  {
+   "fieldname": "start_line",
+   "fieldtype": "Int",
+   "idx": 5,
+   "in_list_view": 1,
+   "label": "Start Line"
+  },
+  {
+   "fieldname": "end_line",
+   "fieldtype": "Int",
+   "idx": 6,
+   "in_list_view": 1,
+   "label": "End Line"
+  },
+  {
+   "fieldname": "language",
+   "fieldtype": "Data",
+   "idx": 7,
+   "label": "Language"
+  },
+  {
+   "fieldname": "content",
+   "fieldtype": "Long Text",
+   "idx": 8,
+   "label": "Content"
+  },
+  {
+   "fieldname": "content_hash",
+   "fieldtype": "Data",
+   "idx": 9,
+   "label": "Content Hash"
+  }
+ ],
+ "in_create": 1,
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "modified": "2026-10-20 10:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Guard",
+ "name": "Code Chunk",
+ "naming_rule": "Random",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Guard Admin",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "export": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Guard Member"
+  },
+  {
+   "export": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Guard Viewer"
+  }
+ ],
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": []
+}

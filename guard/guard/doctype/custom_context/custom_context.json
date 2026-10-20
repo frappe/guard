@@ -1,0 +1,242 @@
+{
+ "actions": [],
+ "allow_rename": 0,
+ "autoname": "hash",
+ "creation": "2026-10-20 10:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "context_type",
+  "title",
+  "status",
+  "severity",
+  "main_col",
+  "team",
+  "source",
+  "rule_id",
+  "body_section",
+  "body",
+  "file_path",
+  "scope_section",
+  "repository_scope",
+  "scope_col",
+  "path_scope",
+  "metrics_section",
+  "usage_count",
+  "merged_count",
+  "metrics_col",
+  "addressed_count",
+  "addressed_rate",
+  "evidence"
+ ],
+ "fields": [
+  {
+   "default": "Rule",
+   "fieldname": "context_type",
+   "fieldtype": "Select",
+   "idx": 1,
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Context Type",
+   "options": "Rule\nFile\nInstruction\nOther\nPattern",
+   "reqd": 1
+  },
+  {
+   "fieldname": "title",
+   "fieldtype": "Data",
+   "idx": 2,
+   "in_list_view": 1,
+   "label": "Title"
+  },
+  {
+   "default": "Active",
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "idx": 3,
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Status",
+   "options": "Active\nInactive\nSuggested\nIgnored"
+  },
+  {
+   "fieldname": "severity",
+   "fieldtype": "Select",
+   "idx": 4,
+   "label": "Severity",
+   "options": "\nlow\nmedium\nhigh"
+  },
+  {
+   "fieldname": "main_col",
+   "fieldtype": "Column Break",
+   "idx": 5
+  },
+  {
+   "description": "Blank means organization scope",
+   "fieldname": "team",
+   "fieldtype": "Link",
+   "idx": 6,
+   "label": "Team",
+   "options": "Guard Team"
+  },
+  {
+   "default": "Dashboard",
+   "fieldname": "source",
+   "fieldtype": "Select",
+   "idx": 7,
+   "in_standard_filter": 1,
+   "label": "Source",
+   "options": "Dashboard\nLearned\nSuggested\nMCP\nChat"
+  },
+  {
+   "description": "Stable id. Config files can turn the rule off with disabledRules.",
+   "fieldname": "rule_id",
+   "fieldtype": "Data",
+   "idx": 8,
+   "label": "Rule Id"
+  },
+  {
+   "fieldname": "body_section",
+   "fieldtype": "Section Break",
+   "idx": 9,
+   "label": "Content"
+  },
+  {
+   "fieldname": "body",
+   "fieldtype": "Long Text",
+   "idx": 10,
+   "label": "Body",
+   "reqd": 1
+  },
+  {
+   "depends_on": "eval:doc.context_type=='File'",
+   "fieldname": "file_path",
+   "fieldtype": "Data",
+   "idx": 11,
+   "label": "File Path"
+  },
+  {
+   "fieldname": "scope_section",
+   "fieldtype": "Section Break",
+   "idx": 12,
+   "label": "Scope"
+  },
+  {
+   "description": "One pattern each line, for example acme/* . Blank means all.",
+   "fieldname": "repository_scope",
+   "fieldtype": "Small Text",
+   "idx": 13,
+   "label": "Repository Scope"
+  },
+  {
+   "fieldname": "scope_col",
+   "fieldtype": "Column Break",
+   "idx": 14
+  },
+  {
+   "description": "One glob each line. Blank means all.",
+   "fieldname": "path_scope",
+   "fieldtype": "Small Text",
+   "idx": 15,
+   "label": "Path Scope"
+  },
+  {
+   "fieldname": "metrics_section",
+   "fieldtype": "Section Break",
+   "idx": 16,
+   "label": "Metrics"
+  },
+  {
+   "fieldname": "usage_count",
+   "fieldtype": "Int",
+   "idx": 17,
+   "label": "Usage Count",
+   "read_only": 1
+  },
+  {
+   "fieldname": "merged_count",
+   "fieldtype": "Int",
+   "idx": 18,
+   "label": "Merged Count",
+   "read_only": 1
+  },
+  {
+   "fieldname": "metrics_col",
+   "fieldtype": "Column Break",
+   "idx": 19
+  },
+  {
+   "fieldname": "addressed_count",
+   "fieldtype": "Int",
+   "idx": 20,
+   "label": "Addressed Count",
+   "read_only": 1
+  },
+  {
+   "fieldname": "addressed_rate",
+   "fieldtype": "Percent",
+   "idx": 21,
+   "label": "Addressed Rate",
+   "read_only": 1
+  },
+  {
+   "fieldname": "evidence",
+   "fieldtype": "JSON",
+   "idx": 22,
+   "label": "Evidence",
+   "read_only": 1
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "modified": "2026-10-20 10:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Guard",
+ "name": "Custom Context",
+ "naming_rule": "Random",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Guard Admin",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "export": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Guard Viewer"
+  },
+  {
+   "create": 1,
+   "export": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Guard Member",
+   "write": 1
+  }
+ ],
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": [],
+ "title_field": "title",
+ "track_changes": 1
+}

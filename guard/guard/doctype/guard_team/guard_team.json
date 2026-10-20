@@ -1,0 +1,137 @@
+{
+ "actions": [],
+ "allow_rename": 0,
+ "autoname": "hash",
+ "creation": "2026-10-20 10:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "team_name",
+  "code_provider",
+  "namespace",
+  "team_col",
+  "provider_namespace_id",
+  "installation_id",
+  "avatar_url",
+  "members_section",
+  "members"
+ ],
+ "fields": [
+  {
+   "fieldname": "team_name",
+   "fieldtype": "Data",
+   "idx": 1,
+   "in_list_view": 1,
+   "label": "Team Name",
+   "reqd": 1
+  },
+  {
+   "fieldname": "code_provider",
+   "fieldtype": "Link",
+   "idx": 2,
+   "in_list_view": 1,
+   "label": "Code Provider",
+   "options": "Code Provider",
+   "reqd": 1
+  },
+  {
+   "description": "GitHub organization, GitLab group, Gitea organization or Bitbucket workspace",
+   "fieldname": "namespace",
+   "fieldtype": "Data",
+   "idx": 3,
+   "in_list_view": 1,
+   "label": "Namespace",
+   "reqd": 1
+  },
+  {
+   "fieldname": "team_col",
+   "fieldtype": "Column Break",
+   "idx": 4
+  },
+  {
+   "fieldname": "provider_namespace_id",
+   "fieldtype": "Data",
+   "idx": 5,
+   "label": "Provider Namespace Id"
+  },
+  {
+   "description": "GitHub App installation",
+   "fieldname": "installation_id",
+   "fieldtype": "Data",
+   "idx": 6,
+   "label": "Installation Id"
+  },
+  {
+   "fieldname": "avatar_url",
+   "fieldtype": "Data",
+   "idx": 7,
+   "label": "Avatar Url",
+   "options": "URL"
+  },
+  {
+   "fieldname": "members_section",
+   "fieldtype": "Section Break",
+   "idx": 8,
+   "label": "Members"
+  },
+  {
+   "fieldname": "members",
+   "fieldtype": "Table",
+   "idx": 9,
+   "label": "Members",
+   "options": "Guard Team Member"
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "modified": "2026-10-20 10:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Guard",
+ "name": "Guard Team",
+ "naming_rule": "Random",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Guard Admin",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "export": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Guard Member"
+  },
+  {
+   "export": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Guard Viewer"
+  }
+ ],
+ "search_fields": "namespace",
+ "show_title_field_in_link": 1,
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": [],
+ "title_field": "team_name"
+}

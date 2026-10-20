@@ -1,0 +1,60 @@
+{
+ "actions": [],
+ "allow_rename": 0,
+ "autoname": "hash",
+ "creation": "2026-10-20 10:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "label",
+  "enabled",
+  "conditions",
+  "review_tier"
+ ],
+ "fields": [
+  {
+   "fieldname": "label",
+   "fieldtype": "Data",
+   "idx": 1,
+   "in_list_view": 1,
+   "label": "Label"
+  },
+  {
+   "default": "1",
+   "fieldname": "enabled",
+   "fieldtype": "Check",
+   "idx": 2,
+   "in_list_view": 1,
+   "label": "Enabled"
+  },
+  {
+   "fieldname": "conditions",
+   "fieldtype": "JSON",
+   "idx": 3,
+   "in_list_view": 1,
+   "label": "Conditions",
+   "reqd": 1
+  },
+  {
+   "fieldname": "review_tier",
+   "fieldtype": "Select",
+   "idx": 4,
+   "in_list_view": 1,
+   "label": "Review Tier",
+   "options": "\nbase\nplus\napex\nauto"
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "istable": 1,
+ "links": [],
+ "modified": "2026-10-20 10:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Guard",
+ "name": "Review Filter Rule",
+ "naming_rule": "Random",
+ "owner": "Administrator",
+ "permissions": [],
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": []
+}

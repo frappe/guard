@@ -1,0 +1,247 @@
+{
+ "actions": [],
+ "allow_rename": 0,
+ "autoname": "hash",
+ "creation": "2026-10-20 10:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "full_name",
+  "code_provider",
+  "team",
+  "reviews_enabled",
+  "main_col",
+  "provider_repo_id",
+  "default_branch",
+  "clone_url",
+  "web_url",
+  "is_private",
+  "overrides_section",
+  "review_tier",
+  "overrides_col",
+  "strictness",
+  "index_section",
+  "index_status",
+  "default_index",
+  "languages",
+  "index_col",
+  "kb_status",
+  "kb_version",
+  "size_kb"
+ ],
+ "fields": [
+  {
+   "description": "owner/repo",
+   "fieldname": "full_name",
+   "fieldtype": "Data",
+   "idx": 1,
+   "in_list_view": 1,
+   "label": "Full Name",
+   "reqd": 1,
+   "search_index": 1
+  },
+  {
+   "fieldname": "code_provider",
+   "fieldtype": "Link",
+   "idx": 2,
+   "in_standard_filter": 1,
+   "label": "Code Provider",
+   "options": "Code Provider",
+   "reqd": 1
+  },
+  {
+   "fieldname": "team",
+   "fieldtype": "Link",
+   "idx": 3,
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Team",
+   "options": "Guard Team"
+  },
+  {
+   "default": "0",
+   "fieldname": "reviews_enabled",
+   "fieldtype": "Check",
+   "idx": 4,
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Reviews Enabled"
+  },
+  {
+   "fieldname": "main_col",
+   "fieldtype": "Column Break",
+   "idx": 5
+  },
+  {
+   "fieldname": "provider_repo_id",
+   "fieldtype": "Data",
+   "idx": 6,
+   "label": "Provider Repo Id",
+   "search_index": 1
+  },
+  {
+   "default": "main",
+   "fieldname": "default_branch",
+   "fieldtype": "Data",
+   "idx": 7,
+   "label": "Default Branch"
+  },
+  {
+   "fieldname": "clone_url",
+   "fieldtype": "Data",
+   "idx": 8,
+   "label": "Clone Url"
+  },
+  {
+   "fieldname": "web_url",
+   "fieldtype": "Data",
+   "idx": 9,
+   "label": "Web Url"
+  },
+  {
+   "default": "0",
+   "fieldname": "is_private",
+   "fieldtype": "Check",
+   "idx": 10,
+   "label": "Is Private"
+  },
+  {
+   "fieldname": "overrides_section",
+   "fieldtype": "Section Break",
+   "idx": 11,
+   "label": "Overrides"
+  },
+  {
+   "fieldname": "review_tier",
+   "fieldtype": "Select",
+   "idx": 12,
+   "label": "Review Tier",
+   "options": "\nbase\nplus\napex\nauto"
+  },
+  {
+   "fieldname": "overrides_col",
+   "fieldtype": "Column Break",
+   "idx": 13
+  },
+  {
+   "fieldname": "strictness",
+   "fieldtype": "Select",
+   "idx": 14,
+   "label": "Strictness",
+   "options": "\n1\n2\n3"
+  },
+  {
+   "fieldname": "index_section",
+   "fieldtype": "Section Break",
+   "idx": 15,
+   "label": "Index"
+  },
+  {
+   "default": "Not Indexed",
+   "fieldname": "index_status",
+   "fieldtype": "Select",
+   "idx": 16,
+   "in_list_view": 1,
+   "label": "Index Status",
+   "options": "Not Indexed\nQueued\nIndexing\nIndexed\nFailed",
+   "read_only": 1
+  },
+  {
+   "fieldname": "default_index",
+   "fieldtype": "Link",
+   "idx": 17,
+   "label": "Default Index",
+   "options": "Repository Index",
+   "read_only": 1
+  },
+  {
+   "fieldname": "languages",
+   "fieldtype": "JSON",
+   "idx": 18,
+   "label": "Languages",
+   "read_only": 1
+  },
+  {
+   "fieldname": "index_col",
+   "fieldtype": "Column Break",
+   "idx": 19
+  },
+  {
+   "default": "None",
+   "fieldname": "kb_status",
+   "fieldtype": "Select",
+   "idx": 20,
+   "label": "Knowledge Base Status",
+   "options": "None\nBuilding\nReady\nFailed",
+   "read_only": 1
+  },
+  {
+   "fieldname": "kb_version",
+   "fieldtype": "Data",
+   "idx": 21,
+   "label": "Knowledge Base Version",
+   "read_only": 1
+  },
+  {
+   "fieldname": "size_kb",
+   "fieldtype": "Int",
+   "idx": 22,
+   "label": "Size Kb",
+   "read_only": 1
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "modified": "2026-10-20 10:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Guard",
+ "name": "Code Repository",
+ "naming_rule": "Random",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Guard Admin",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "export": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Guard Viewer"
+  },
+  {
+   "export": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Guard Member",
+   "write": 1
+  }
+ ],
+ "search_fields": "full_name",
+ "show_title_field_in_link": 1,
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": [],
+ "title_field": "full_name",
+ "track_changes": 1
+}
