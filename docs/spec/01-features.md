@@ -1,0 +1,270 @@
+# Features
+
+Each feature has an ID. Code, tests and commits refer to these IDs. A feature is done when every acceptance criterion passes.
+
+## R: Reviews
+
+### R1. Automatic pull request review
+
+Guard reviews a pull request when a configured event happens.
+
+- Events: `open` (opened, reopened, marked ready, trigger label added), `push` (a push that adds commits), `rebase` (a push that rewrites history).
+- Each event implies the events before it. `["rebase"]` means all three. `[]` means never.
+- Guard skips draft pull requests unless `triggerOnDrafts` is true or the trigger comment asks for a draft review.
+- Guard adds the 👀 reaction when it starts and replaces it with 👍 when it is done. On failure it adds 😕.
+- A review on a medium pull request finishes in less than 5 minutes with the base tier.
+
+### R2. Manual trigger
+
+- A comment that contains a trigger handle (`@guard` by default, more handles in settings) starts a review.
+- `@guard review this draft` reviews a draft.
+- `@guard review this at apex`, `@guard apex review` and `@guard effort: plus` raise the tier for that review only. A comment cannot lower the tier.
+- Free text after the handle becomes extra instructions for that review, for example `@guard check for memory leaks`.
+- The **Re-trigger** link in the summary footer starts a new review without a comment.
+- A "re-run" on the provider status check starts a new review.
+
+### R3. Codebase context
+
+- Every review queries the graph for each changed function, class and file: callers, callees, imports, sibling implementations and similar code.
+- The review states the impact of a change on its callers when the change alters a contract (signature, return type, raised errors, side effects).
+- The review compares new code with similar existing code and flags differences in validation, error handling and query style.
+- The reviewer can read any file at the head or the base commit, search the code, and walk the graph with tools.
+
+### R4. Summary comment
+
+The summary comment has these sections. Each section can be turned on or off, made collapsible and set open or closed.
+
+1. **Summary**: what the pull request does, who it affects, why. Major improvements and issues.
+2. **Confidence score**: 0 to 5, with a short reason. Plus and apex reviews show the tier next to the score.
+3. **Findings table**: each unresolved finding with severity, file, a one-line title and a link to the inline comment.
+4. **Important files changed**: a table of the main files with a one-line overview each.
+5. **Diagram**: a Mermaid diagram. The type is sequence, entity relation, class or flow. Guard picks the type from what changed. No diagram for trivial changes.
+6. **Context used**: tickets, pages and cross-repo files that the review read.
+7. **Footer**: review counter ("Reviews (2)"), last reviewed commit with its message, a **Re-trigger** link, a **Fix All** link.
+
+On a new review Guard edits the same summary comment. It does not post a second one. If `shouldUpdateDescription` is true, Guard writes the summary into the pull request description between markers instead.
+
+### R5. Inline comments
+
+- Each finding becomes an inline comment on the changed line or line range.
+- Each comment has a severity badge (P0, P1, P2), a comment type and a short title.
+- Most comments have a suggested fix. On GitHub and Gitea the fix uses a `suggestion` block that the author can apply in one click.
+- If `fixWithAI` is true, each comment has a collapsed "Prompt for AI agents" block and a **Fix with your agent** link.
+- A finding outside the diff goes into the summary under "Comments outside the diff", unless the setting turns this off.
+- If `updateSummaryOnly` is true, Guard posts no inline comments.
+- The reviewer can attach a clarification question when the intent of a change is not clear.
+
+### R6. Severity, comment types and strictness
+
+- Severity: P0 must fix (security, data loss, crash), P1 should fix (bug, wrong behavior, edge case), P2 consider (quality, maintainability).
+- `commentTypes` limits the posted types to a subset of `logic`, `syntax`, `style`.
+- Strictness 1 posts all findings. Strictness 2 drops low-confidence P2 findings. Strictness 3 posts only P0 and P1.
+
+### R7. Review tiers
+
+| Tier | Credits | Behavior |
+| - | - | - |
+| base | 1 | One agent pass with full graph context. |
+| plus | 3 | More agent turns, a stronger model, and a verification pass that removes false positives. |
+| apex | 10 | Per-area agent passes, a cross-cutting pass, a verification pass, the strongest model. |
+| auto | 1, 3 or 10 | Guard picks a tier from size, risk and complexity. |
+
+- The tier that runs is the highest of: dashboard tier, repository override, directory configs that the pull request touches, a matching tier rule, and a request in the trigger comment.
+- `auto` counts as no tier in that comparison, except a matching tier rule set to `auto`.
+
+### R8. Status check
+
+- Guard posts a pending status when it starts and a final status when it is done.
+- The status is `success` unless the review found a P0 finding. Then it is `failure`.
+- `statusCheck: false` turns the status off.
+- With the status off and no findings, Guard posts a short "N files reviewed, no comments" note if `statusCommentsEnabled` is true.
+
+### R9. Re-reviews and deduplication
+
+- A re-review does not repost a finding that is still open on the pull request.
+- A re-review marks old findings as outdated when their lines are gone.
+- The review counter in the footer goes up by one.
+
+### R10. Local and branch reviews
+
+- The CLI sends a branch diff to Guard and gets a review back without a pull request.
+- The result has the same findings, severity and summary as a pull request review.
+
+### R11. Auto-approve
+
+- Guard approves a pull request only after a review with score 5/5, no findings, and a risk level at or below the risk ceiling.
+- Filters exclude pull requests by path, author, branch, label, keyword and repository.
+- Draft, closed and merged pull requests, new commits after the review started, and the labels `do-not-merge` and `manual-review` block approval.
+- Guard reads the policy from the base branch, so a pull request cannot loosen its own policy.
+- New commits dismiss an earlier approval.
+- Admins write natural-language risk definitions in the dashboard. Config files cannot set them.
+
+### R12. Runtime validation
+
+- When enabled, the reviewer can run commands in a sandbox container at the head commit.
+- It can write targeted tests, run them and attach logs to a finding.
+- Settings: enable, when to run (always, on request, never), container image, setup command, time limit, network on or off.
+
+## C: Configuration
+
+### C1. Dashboard settings
+
+Organization-level review settings that every team inherits. A team can override them and can sync back to the organization.
+
+### C2. Repository config files
+
+- `.guard/config.json`, `.guard/rules.md` and `.guard/files.json` in any directory.
+- `guard.json` at any directory level, for teams that want a single file.
+- If `.guard/` and `guard.json` are in the same directory, `.guard/` wins.
+- Settings cascade from the root to the file. The closest value wins. Rules, files and instructions add up.
+- A child config can turn off an inherited rule with `disabledRules`.
+- Guard reads config from the source branch, except `autoApprove`, which it reads from the base branch.
+
+### C3. Filters
+
+Label, author, branch, keyword and path filters, with globs. Matching is case-insensitive. See [06-configuration.md](06-configuration.md).
+
+### C4. Ignore patterns
+
+`ignorePatterns` uses `.gitignore` syntax. Guard does not review matching files. The index still includes them.
+
+### C5. Custom context
+
+- Rules with scope (repository wildcards, path globs), severity and status (active, inactive, suggested).
+- File references to docs in the repository.
+- Free-form instructions and other context.
+- Each rule shows its usage count and addressed rate.
+- An **Improve with AI** action rewrites a vague rule into a specific one.
+
+### C6. Project rule files
+
+Guard reads `CLAUDE.md`, `AGENTS.md`, `.cursorrules`, `.cursor/rules/*` and `.github/copilot-instructions.md` as review context when they exist.
+
+### C7. Model and turn settings
+
+Admins pick the LLM provider, the model for each tier, a fast model for small tasks, the embedding model, and the maximum agent turns for each tier.
+
+## L: Learning
+
+### L1. Reactions
+
+👍 and 👎 on a Guard comment are feedback. Other emoji are neutral.
+
+### L2. Replies
+
+A reply to a Guard comment is feedback. Guard classifies it as agree, disagree, context or question, and learns from it.
+
+### L3. Addressed detection
+
+- When a push changes the flagged lines, Guard checks if the change fixes the finding. If yes, it marks the finding addressed and resolves the thread.
+- When a pull request closes, Guard compares the first and last commit and marks findings addressed or ignored.
+
+### L4. Memories
+
+Guard turns context replies and repeated feedback into memories. A memory is custom context with source "Learned". The reviewer reads memories on later reviews.
+
+### L5. Suppression
+
+- Guard does not post a finding that matches past findings the team down-voted or ignored three or more times.
+- Guard never suppresses P0 findings or findings with a security category.
+- A comment type that the team almost never addresses (less than 10 percent over 10 or more comments) drops to strictness 3 for that repository.
+
+### L6. Suggested rules
+
+After about 10 merged pull requests, Guard reads human review comments and proposes rules with status "Suggested". Admins approve, edit or ignore them.
+
+## K: Knowledge and context
+
+### K1. Knowledge base
+
+Each repository gets an `index.md` (architecture overview, glossary, file map, system diagram), one document for each main area or flow, and a reverts document. Guard keeps it in sync on pushes to the default branch. People can read and edit it.
+
+### K2. Cross-repo context
+
+- `context.repos` in config lists related repositories.
+- A repository cluster groups repositories. Each member reads the others during reviews.
+- Guard suggests clusters from shared contributors over the last 90 days.
+
+### K3. Issue tracker context
+
+Jira (with Confluence) and Linear. Guard finds tickets from the title, the description and the branch name. It reviews the code against the ticket and cites what it read.
+
+## I: Interaction
+
+### I1. Questions in comments
+
+`@guard <question>` gets an answer in the thread, with codebase context. Examples: explain this file, write a test, generate a class diagram.
+
+### I2. Thread replies
+
+Guard answers follow-up comments in its own review threads without a mention. A classifier skips thanks, approvals and talk between people.
+
+### I3. Chat with PR
+
+A chat panel on the Pull Request form in Desk. The user can select code or review text as context. Chat can propose actions: comment, reply, resolve or reopen a thread, request review, approve, request changes, update the description, update the branch, merge, close, reopen, create a rule. Permission modes: ask every time, allow routine actions, full access.
+
+### I4. Tour
+
+A guided walk through the diff. Each step groups related hunks and explains them.
+
+### I5. Codebase chat
+
+Ask questions about one or more indexed repositories. Answers cite files and lines.
+
+## S: Surfaces
+
+### S1. Desk UI
+
+Guard has no separate front end. Every screen is Frappe Desk:
+
+- A **Guard** workspace with shortcuts, number cards and charts.
+- Pull Request form: overview (summary, score, findings), tour, full diff, Chat with PR, review actions, keyboard shortcuts.
+- Lists and forms for repositories, reviews, findings, custom context, knowledge base, clusters, integrations and settings.
+- Script reports for analytics and for the findings table.
+- **My Guard** stats: each employee sees reviews, findings and addressed rate for their own pull requests.
+
+### S2. Query API
+
+Index a repository, get its status, ask a question, search code.
+
+### S3. MCP server
+
+Tools for account, repositories, pull requests, reviews, comment search, custom context, knowledge base and analytics.
+
+### S4. CLI
+
+`guard review`, `review show`, `review status`, `config [path]`, `login`, `logout`, `whoami`, `settings`, `fix`.
+
+### S5. Fix with your agent
+
+Each comment links to the finding in Desk. The form gives a prompt, a copy button, deep links, and a local bridge command. **Fix All** sends every open finding at once. Supported agents: Claude Code, Codex, Cursor, Conductor, Devin.
+
+### S6. Analytics
+
+Summary cards, time series, leaderboards, a findings table, filters, CSV export.
+
+## A: Administration
+
+### A1. Organization and teams
+
+One site is one organization. Each connected provider namespace is a team. Teams inherit settings.
+
+### A2. Roles
+
+Guard Admin, Guard Member, Guard Viewer. Team admin and team member inside a team.
+
+### A3. Who Guard answers
+
+Four permissions, each "everyone", "organization members" or "Guard users": trigger by authoring, trigger by tagging, chat, teach.
+
+### A4. Repositories
+
+Enable and disable repositories. Auto-enable new repositories. Index status for each repository.
+
+### A5. Usage limits
+
+Count credits per review. Stop new reviews when the monthly cap is reached.
+
+### A6. Feature tips
+
+When on, Guard adds a short tip to a comment the first time a feature can help.
