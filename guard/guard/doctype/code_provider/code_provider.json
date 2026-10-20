@@ -35,13 +35,14 @@
    "unique": 1
   },
   {
+   "default": "GitHub",
+   "description": "GitHub.com or GitHub Enterprise Server",
    "fieldname": "provider_type",
    "fieldtype": "Select",
    "idx": 2,
    "in_list_view": 1,
-   "in_standard_filter": 1,
    "label": "Provider Type",
-   "options": "GitHub\nGitLab\nGitea\nBitbucket",
+   "options": "GitHub",
    "reqd": 1
   },
   {
@@ -53,7 +54,7 @@
    "label": "Enabled"
   },
   {
-   "description": "Blank means the public cloud API",
+   "description": "Blank means https://api.github.com. For Enterprise Server: https://<host>/api/v3",
    "fieldname": "api_url",
    "fieldtype": "Data",
    "idx": 4,

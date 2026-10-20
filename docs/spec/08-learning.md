@@ -6,7 +6,7 @@ Learning makes reviews fit the team. It has five parts: feedback, addressed dete
 
 | Source | How Guard gets it | Review Feedback kind |
 | - | - | - |
-| 👍 on a Guard comment | GitLab: emoji webhook. GitHub, Gitea: a job every 15 minutes reads reactions on findings of pull requests that changed in the last 14 days. | Upvote |
+| 👍 on a Guard comment | GitHub sends no reaction webhook. A job every 15 minutes reads reactions on findings of pull requests that changed in the last 14 days. | Upvote |
 | 👎 on a Guard comment | Same | Downvote |
 | A reply in a Guard thread | Webhook | Reply, with a sentiment |
 | A push that fixes the finding | Addressed detection | Addressed |
@@ -99,7 +99,7 @@ Guard approves a pull request when every condition is true:
 7. The pull request is open, not a draft, and its head is still the reviewed commit.
 8. The pull request has no `do-not-merge` and no `manual-review` label.
 
-If any condition fails, Guard does not approve and does not comment. On GitHub the approval has no body. On GitLab and Bitbucket it has one line: "Approved by Guard: low risk, no findings."
+If any condition fails, Guard does not approve and does not comment. The approval review has no body.
 
 When new commits arrive, Guard dismisses its earlier approval. The next passing review approves again.
 

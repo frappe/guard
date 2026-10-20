@@ -20,7 +20,7 @@ class CodeProvider(Document):
 		bot_username: DF.Data | None
 		enabled: DF.Check
 		private_key: DF.Password | None
-		provider_type: DF.Literal["GitHub", "GitLab", "Gitea", "Bitbucket"]
+		provider_type: DF.Literal["GitHub"]
 		title: DF.Data
 		token: DF.Password | None
 		verify_ssl: DF.Check

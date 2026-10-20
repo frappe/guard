@@ -11,9 +11,6 @@ if TYPE_CHECKING:
 
 ADAPTERS = {
 	"GitHub": "guard.providers.github.GitHubAdapter",
-	"GitLab": "guard.providers.gitlab.GitLabAdapter",
-	"Gitea": "guard.providers.gitea.GiteaAdapter",
-	"Bitbucket": "guard.providers.bitbucket.BitbucketAdapter",
 }
 
 

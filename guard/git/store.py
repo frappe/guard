@@ -62,6 +62,13 @@ class GitStore:
 		self.fetch(f"+{pull_ref}:{ref}")
 		return self.rev_parse(ref)
 
+	def fetch_branch(self, branch: str, number: int, url: str | None = None) -> str:
+		"""Fetch a head branch, from a fork when `url` is given, into `refs/guard/pr/<n>`."""
+		self.ensure()
+		ref = f"refs/guard/pr/{number}"
+		self._git("fetch", "--quiet", "--no-tags", url or "origin", f"+refs/heads/{branch}:{ref}", auth=True)
+		return self.rev_parse(ref)
+
 	def fetch_sha(self, sha: str, url: str | None = None) -> None:
 		"""Fetch one commit, from a fork when `url` is given."""
 		self.ensure()

@@ -35,7 +35,7 @@
    "reqd": 1
   },
   {
-   "description": "GitHub organization, GitLab group, Gitea organization or Bitbucket workspace",
+   "description": "GitHub organization or user",
    "fieldname": "namespace",
    "fieldtype": "Data",
    "idx": 3,

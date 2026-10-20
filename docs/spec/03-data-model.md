@@ -65,7 +65,7 @@ Fields: `author`, `target_branch`, `source_branch`, `label`, `title`, `keyword`,
 
 ### Code Provider
 
-`title`, `provider_type` (GitHub, GitLab, Gitea, Bitbucket), `api_url`, `web_url`, `auth_mode` (App, Token), `app_id`, `app_slug`, `private_key` (Password), `token` (Password), `webhook_secret` (Password), `bot_username`, `enabled`, `verify_ssl`.
+`title`, `provider_type` (GitHub), `api_url`, `web_url`, `auth_mode` (App, Token), `app_id`, `app_slug`, `private_key` (Password), `token` (Password), `webhook_secret` (Password), `bot_username`, `enabled`, `verify_ssl`.
 
 ### Guard Team
 
@@ -75,7 +75,7 @@ Fields: `author`, `target_branch`, `source_branch`, `label`, `title`, `keyword`,
 
 One record for each Frappe user. Name = user id.
 
-`user`, `github_login`, `gitlab_login`, `gitea_login`, `bitbucket_login`, `github_token`, `gitlab_token`, `gitea_token`, `bitbucket_token` (Password), `coding_agents`, `show_summary`, `show_diagram`, `collapsible_sections`, `bridge_seen_at`.
+`user`, `github_login`, `github_token` (Password), `coding_agents`, `show_summary`, `show_diagram`, `collapsible_sections`, `bridge_seen_at`.
 
 ### Code Repository
 

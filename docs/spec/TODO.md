@@ -26,7 +26,6 @@ Build order. Each milestone ends with passing tests and one commit or more. Feat
 ## M3. Providers and webhooks
 
 - [ ] `ProviderAdapter` base and the GitHub adapter (App and token).
-- [ ] GitLab, Gitea and Bitbucket adapters.
 - [ ] Webhook endpoints with signature checks and Webhook Delivery.
 - [ ] Event mapping, push or rebase detection.
 - [ ] Installation sync, repository sync, auto-enable.
@@ -71,7 +70,7 @@ Build order. Each milestone ends with passing tests and one commit or more. Feat
 
 ## M8. Learning
 
-- [ ] Reaction polling and the GitLab emoji hook.
+- [ ] Reaction polling.
 - [ ] Reply sentiment.
 - [ ] Addressed detection on push and on close. Thread resolve.
 - [ ] Memories with dedupe.

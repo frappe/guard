@@ -1,17 +1,16 @@
 # Integrations
 
-## Code providers
+## GitHub
 
-| Provider | Auth | Events |
-| - | - | - |
-| GitHub (github.com, Enterprise Server) | GitHub App (preferred) or a bot token | App webhooks, or a repository/organization webhook with a secret |
-| GitLab (gitlab.com, self-managed) | Bot access token | Group or project webhook with a secret token |
-| Gitea | Bot access token | Organization or repository webhook with a secret |
-| Bitbucket Cloud | Workspace access token or app password | Workspace or repository webhook with a secret |
+Guard supports one code provider: GitHub (github.com and GitHub Enterprise Server).
+
+| Auth | Events |
+| - | - |
+| GitHub App (preferred) or a bot token | App webhooks, or a repository or organization webhook with a secret |
 
 ### Adapter interface
 
-`guard.providers.base.ProviderAdapter`. One subclass for each provider. The review engine calls only this interface.
+`guard.providers.base.ProviderAdapter` is the interface. `guard.providers.github.GitHubAdapter` is the only implementation. The review engine calls only the interface, and tests use a fake adapter.
 
 | Group | Methods |
 | - | - |
@@ -35,26 +34,24 @@ An adapter raises `UnsupportedAction` for an action that the provider does not h
 
 ### Webhook endpoints
 
-| Provider | URL | Signature check |
-| - | - | - |
-| GitHub | `/api/method/guard.webhooks.endpoint.github` | `X-Hub-Signature-256` HMAC SHA-256 |
-| GitLab | `/api/method/guard.webhooks.endpoint.gitlab` | `X-Gitlab-Token` equals the secret |
-| Gitea | `/api/method/guard.webhooks.endpoint.gitea` | `X-Gitea-Signature` HMAC SHA-256 |
-| Bitbucket | `/api/method/guard.webhooks.endpoint.bitbucket` | `X-Hub-Signature` HMAC SHA-256 |
+| URL | Signature check |
+| - | - |
+| `/api/method/guard.webhooks.endpoint.github` | `X-Hub-Signature-256` HMAC SHA-256 |
 
-Each endpoint finds the Code Provider from the `provider` query parameter, checks the signature, stores a Webhook Delivery (unique delivery id), queues the handler, and returns `200`. A repeated delivery id is ignored.
+The endpoint finds the Code Provider from the `provider` query parameter, checks the signature, stores a Webhook Delivery (unique delivery id), queues the handler, and returns `200`. A repeated delivery id is ignored.
 
 ### Event mapping
 
-| Guard event | GitHub | GitLab | Gitea | Bitbucket |
-| - | - | - | - | - |
-| open | `pull_request` opened, reopened, ready_for_review, labeled (trigger label) | MR open, reopen, draft to ready | `pull_request` opened, reopened | `pullrequest:created` |
-| push or rebase | `pull_request` synchronize | MR update with `oldrev` | `pull_request` synchronized | `pullrequest:updated` with a new head |
-| closed | `pull_request` closed | MR close, merge | `pull_request` closed | `pullrequest:fulfilled`, `pullrequest:rejected` |
-| comment | `issue_comment`, `pull_request_review_comment` | Note on MR | `issue_comment`, `pull_request_comment` | `pullrequest:comment_created` |
-| reaction | none (poll) | Emoji hook | none (poll) | none |
-| default branch push | `push` | Push hook | `push` | `repo:push` |
-| re-run | `check_run` rerequested | none | none | none |
+| Guard event | GitHub event |
+| - | - |
+| open | `pull_request` opened, reopened, ready_for_review, labeled with a label from `labels` |
+| push or rebase | `pull_request` synchronize |
+| closed | `pull_request` closed (merged or not) |
+| comment | `issue_comment` on a pull request, `pull_request_review_comment`, `pull_request_review` with a body |
+| reaction | none: Guard polls reactions |
+| default branch push | `push` |
+| re-run | `check_run` rerequested |
+| installation | `installation`, `installation_repositories` |
 
 Guard tells push from rebase with `git merge-base --is-ancestor <before> <after>` after the fetch. If the old head is an ancestor of the new head, it is a push. Otherwise it is a rebase.
 

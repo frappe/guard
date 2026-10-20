@@ -48,7 +48,7 @@ On a new review Guard edits the same summary comment. It does not post a second 
 
 - Each finding becomes an inline comment on the changed line or line range.
 - Each comment has a severity badge (P0, P1, P2), a comment type and a short title.
-- Most comments have a suggested fix. On GitHub and Gitea the fix uses a `suggestion` block that the author can apply in one click.
+- Most comments have a suggested fix. The fix uses a GitHub `suggestion` block that the author can apply in one click.
 - If `fix_with_ai` is true, each comment has a collapsed "Prompt for AI agents" block and a **Fix with your agent** link.
 - A finding outside the diff goes into the summary under "Comments outside the diff", unless the setting turns this off.
 - If `update_summary_only` is true, Guard posts no inline comments.
@@ -247,7 +247,7 @@ Summary cards, time series, leaderboards, a findings table, filters, CSV export.
 
 ### A1. Organization and teams
 
-One site is one organization. Each connected provider namespace is a team. Teams inherit settings.
+One site is one organization. Each connected GitHub organization or user is a team. Teams inherit settings.
 
 ### A2. Roles
 

@@ -40,14 +40,14 @@ Use these names. Do not use other names for the same thing.
 
 | Term | Meaning |
 | - | - |
-| Code provider | A connected source code host: GitHub, GitLab, Gitea or Bitbucket. |
-| Team | One provider namespace: a GitHub organization, a GitLab group, a Gitea organization or a Bitbucket workspace. |
+| Code provider | A connected GitHub: github.com or GitHub Enterprise Server. |
+| Team | One GitHub organization or user account. |
 | Repository | One repository on a code provider. |
 | Index | The graph, the chunks and the vectors of one repository at one branch. |
 | Entity | A node in the graph: a file, a class, a function, a method, a variable or a type. |
 | Edge | A directed link between two entities: contains, imports, calls, inherits or references. |
 | Chunk | A slice of source text that the search uses. A chunk usually maps to one entity. |
-| Pull request | A pull request or a merge request. Guard uses "pull request" for both. |
+| Pull request | A GitHub pull request. |
 | Review | One run of the review engine on one pull request (or one branch) at one commit. |
 | Finding | One issue that a review reports. A finding becomes an inline comment. |
 | Summary comment | The top-level comment of a review. |
@@ -83,6 +83,6 @@ Out of scope:
 
 - Billing and payment. Guard counts credits and enforces a usage cap. It does not charge money.
 - SAML and directory sync. Frappe login, OAuth and LDAP cover sign-in.
-- Perforce and other hosts that are not listed in [10-integrations.md](10-integrations.md).
+- Code hosts other than GitHub.
 - Hosted multi-tenant operation. One Frappe site is one organization: one company.
 - A separate front end. Employees use Frappe Desk. Each employee sees their own stats there.

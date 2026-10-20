@@ -118,8 +118,8 @@ guard/
   learning/             feedback.py, addressed.py, memories.py, suppression.py, suggestions.py
   llm/                  client.py, openai_dialect.py, anthropic_dialect.py, offline.py, embeddings.py
   mcp/                  server.py, tools.py
-  providers/            base.py, github.py, gitlab.py, gitea.py, bitbucket.py
+  providers/            base.py, github.py
   review/               pipeline.py, context.py, agent.py, tools.py, prompts.py, findings.py,
                         scoring.py, render.py, publish.py, approve.py, sandbox.py
-  webhooks/             endpoint.py, github.py, gitlab.py, gitea.py, bitbucket.py
+  webhooks/             endpoint.py, events.py, github.py, handler.py
 ```

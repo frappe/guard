@@ -7,18 +7,10 @@
  "engine": "InnoDB",
  "field_order": [
   "user",
-  "logins_section",
+  "github_section",
   "github_login",
-  "gitlab_login",
-  "logins_col",
-  "gitea_login",
-  "bitbucket_login",
-  "tokens_section",
+  "github_col",
   "github_token",
-  "gitlab_token",
-  "tokens_col",
-  "gitea_token",
-  "bitbucket_token",
   "prefs_section",
   "coding_agents",
   "prefs_col",
@@ -39,127 +31,75 @@
    "unique": 1
   },
   {
-   "fieldname": "logins_section",
+   "fieldname": "github_section",
    "fieldtype": "Section Break",
    "idx": 2,
-   "label": "Provider Logins"
+   "label": "GitHub"
   },
   {
    "fieldname": "github_login",
    "fieldtype": "Data",
    "idx": 3,
    "label": "GitHub Login",
-   "search_index": 1
+   "search_index": 1,
+   "unique": 1
   },
   {
-   "fieldname": "gitlab_login",
-   "fieldtype": "Data",
-   "idx": 4,
-   "label": "GitLab Login",
-   "search_index": 1
-  },
-  {
-   "fieldname": "logins_col",
+   "fieldname": "github_col",
    "fieldtype": "Column Break",
-   "idx": 5
+   "idx": 4
   },
   {
-   "fieldname": "gitea_login",
-   "fieldtype": "Data",
-   "idx": 6,
-   "label": "Gitea Login",
-   "search_index": 1
-  },
-  {
-   "fieldname": "bitbucket_login",
-   "fieldtype": "Data",
-   "idx": 7,
-   "label": "Bitbucket Login",
-   "search_index": 1
-  },
-  {
-   "description": "Chat actions run with these tokens.",
-   "fieldname": "tokens_section",
-   "fieldtype": "Section Break",
-   "idx": 8,
-   "label": "Provider Tokens"
-  },
-  {
+   "description": "Chat actions run with this token.",
    "fieldname": "github_token",
    "fieldtype": "Password",
-   "idx": 9,
+   "idx": 5,
    "label": "GitHub Token",
-   "length": 1024
-  },
-  {
-   "fieldname": "gitlab_token",
-   "fieldtype": "Password",
-   "idx": 10,
-   "label": "GitLab Token",
-   "length": 1024
-  },
-  {
-   "fieldname": "tokens_col",
-   "fieldtype": "Column Break",
-   "idx": 11
-  },
-  {
-   "fieldname": "gitea_token",
-   "fieldtype": "Password",
-   "idx": 12,
-   "label": "Gitea Token",
-   "length": 1024
-  },
-  {
-   "fieldname": "bitbucket_token",
-   "fieldtype": "Password",
-   "idx": 13,
-   "label": "Bitbucket Token",
    "length": 1024
   },
   {
    "fieldname": "prefs_section",
    "fieldtype": "Section Break",
-   "idx": 14,
+   "idx": 6,
    "label": "Preferences"
   },
   {
    "description": "One agent each line: Claude Code, Codex, Cursor, Conductor, Devin",
    "fieldname": "coding_agents",
    "fieldtype": "Small Text",
-   "idx": 15,
+   "idx": 7,
    "label": "Coding Agents"
   },
   {
    "fieldname": "prefs_col",
    "fieldtype": "Column Break",
-   "idx": 16
+   "idx": 8
   },
   {
    "default": "1",
    "fieldname": "show_summary",
    "fieldtype": "Check",
-   "idx": 17,
+   "idx": 9,
    "label": "Show Summary"
   },
   {
    "default": "1",
    "fieldname": "show_diagram",
    "fieldtype": "Check",
-   "idx": 18,
+   "idx": 10,
    "label": "Show Diagram"
   },
   {
    "default": "0",
    "fieldname": "collapsible_sections",
    "fieldtype": "Check",
-   "idx": 19,
+   "idx": 11,
    "label": "Collapsible Sections"
   },
   {
    "fieldname": "bridge_seen_at",
    "fieldtype": "Datetime",
-   "idx": 20,
+   "idx": 12,
    "label": "Bridge Seen At",
    "read_only": 1
   }

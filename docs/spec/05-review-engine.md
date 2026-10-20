@@ -232,13 +232,13 @@ Severity marks: 🔴 P0, 🟠 P1, 🟡 P2.
 
 ### Provider calls
 
-| Step | GitHub | GitLab | Gitea | Bitbucket |
-| - | - | - | - | - |
-| Summary | Issue comment | MR note | Issue comment | PR comment |
-| Inline comments | One review with comments | One discussion each | One review with comments | One inline comment each |
-| Status | Check run (App) or commit status (token) | Commit status | Commit status | Build status |
-| Reactions | Issue reaction | Award emoji | Issue reaction | None |
-| Approve | Review `APPROVE` | MR approve | Review `APPROVED` | PR approve |
+| Step | GitHub call |
+| - | - |
+| Summary | Issue comment, edited on later reviews |
+| Inline comments | One review with all comments. If GitHub rejects a line, Guard posts the rest one by one and lists the rejected ones in the summary. |
+| Status | Check run (App) or commit status (token) |
+| Reactions | Issue reaction on the pull request |
+| Approve | Review with event `APPROVE` |
 
 ## Stage 10: After
 

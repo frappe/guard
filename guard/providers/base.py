@@ -80,6 +80,7 @@ class ProviderComment:
 	in_reply_to: str | None = None
 	thread_id: str | None = None
 	is_bot: bool = False
+	number: int | None = None  # the pull request, for providers that need it
 
 
 @dataclass
@@ -120,9 +121,9 @@ class ProviderAdapter:
 
 	# ------------------------------------------------------------ http
 
-	def request(self, method: str, path: str, **kwargs: Any) -> Any:
+	def request(self, method: str, path: str, auth: bool = True, **kwargs: Any) -> Any:
 		url = path if path.startswith("http") else f"{self.api_url}{path}"
-		headers = {**self.auth_headers(), **kwargs.pop("headers", {})}
+		headers = {**(self.auth_headers() if auth else {}), **kwargs.pop("headers", {})}
 		try:
 			response = httpx.request(method, url, headers=headers, timeout=60, verify=self.verify, **kwargs)
 		except httpx.HTTPError as error:
@@ -175,7 +176,8 @@ class ProviderAdapter:
 		raise NotImplementedError
 
 	def pull_ref(self, number: int) -> str:
-		raise NotImplementedError
+		"""The ref of a pull request head. Empty when the provider has none: fetch the head branch."""
+		return ""
 
 	def commit_url(self, repo: str, sha: str) -> str:
 		raise NotImplementedError
