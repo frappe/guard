@@ -83,6 +83,8 @@ class FindingFilter:
 		self.files = {f.path: f for f in files}
 		self.settings = settings
 		self.existing = existing or []
+		# Names of earlier findings that this review raised again: they still apply.
+		self.reraised: set[str] = set()
 
 	def run(self, findings: list[Finding]) -> list[Finding]:
 		for finding in findings:
@@ -148,16 +150,15 @@ class FindingFilter:
 					break
 
 	def dedupe_existing(self, findings: list[Finding]) -> None:
-		prints = {row.get("fingerprint") for row in self.existing}
 		for finding in findings:
 			if not finding.kept:
 				continue
-			if finding.fingerprint in prints:
-				finding.drop("Dismissed", "already reported on this pull request")
-				continue
 			for row in self.existing:
-				if row.get("path") == finding.path and _similar(row.get("title") or "", finding.title, 0.6):
+				if row.get("fingerprint") == finding.fingerprint or (
+					row.get("path") == finding.path and _similar(row.get("title") or "", finding.title, 0.6)
+				):
 					finding.drop("Dismissed", "already reported on this pull request")
+					self.reraised.add(str(row.get("name")))
 					break
 
 	def cap(self, findings: list[Finding]) -> None:

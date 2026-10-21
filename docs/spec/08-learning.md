@@ -25,6 +25,19 @@ The fast model gives each reply a sentiment: Agree, Disagree, Context, Question 
 3. If true: set the finding to Addressed, store the commit, resolve the thread on the provider, and add Review Feedback of kind Addressed.
 4. A reply with sentiment Agree also marks the finding Addressed.
 
+### After each review
+
+Guard checks each open finding of earlier reviews on the pull request.
+
+1. If the new review reported the same issue again, the finding stays open.
+2. If the file or the lines are gone at the new head, the finding becomes Outdated.
+3. Otherwise, the fast model reads the finding and the current code, and answers `applies`, `fixed` or `invalid`.
+   - `fixed`: the finding becomes Addressed.
+   - `invalid`: the finding becomes Outdated.
+4. Guard resolves the provider thread of each finding that it closes.
+
+On GitHub, resolving a thread needs the App permission **Contents: Read & write**.
+
 ### On merge or close
 
 1. Compare the first commit with the last head for each finding that is still open.

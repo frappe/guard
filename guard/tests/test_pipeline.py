@@ -152,6 +152,31 @@ class TestPipeline(IntegrationTestCase):
 		self.assertEqual(review["posted_count"], 0)
 		self.assertEqual(review["review_number"], 2)
 		self.assertEqual(len(self.adapter.named("update_comment")), 1)
+		# Raised again, so it still applies: the thread stays open.
+		self.assertFalse(self.adapter.named("resolve"))
+
+	def test_rereview_resolves_fixed_findings(self):
+		finding = {
+			"path": "app/models.py",
+			"start_line": 5,
+			"severity": "P1",
+			"comment_type": "logic",
+			"title": "Callers are not updated",
+			"body": "x",
+			"confidence": 0.9,
+		}
+		self.review(
+			[[("report_finding", finding), ("submit_review", {"summary": "s", "confidence_score": 3})]]
+		)
+		with (
+			patch("guard.review.stale._state", return_value="fixed"),
+			use_responder(scripted([[("submit_review", {"summary": "s", "confidence_score": 5})]])),
+		):
+			trigger.consider(self.pr, "open", manual=True, requested_by="ada")
+		self.assertEqual(
+			frappe.get_all("Review Finding", filters={"pull_request": self.pr}, pluck="status"), ["Addressed"]
+		)
+		self.assertEqual(len(self.adapter.named("resolve")), 1)
 
 	def test_gate_skips_drafts_and_disabled_repositories(self):
 		frappe.db.set_value("Pull Request", self.pr, "is_draft", 1)

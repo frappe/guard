@@ -19,7 +19,7 @@ from guard.integrations import tickets
 from guard.learning import suppression
 from guard.llm.types import GatewayBusy
 from guard.providers import adapter_for_repository
-from guard.review import checks, context, prompts, sandbox, verify
+from guard.review import checks, context, prompts, sandbox, stale, verify
 from guard.review.agent import Agent
 from guard.review.findings import FindingFilter, score_cap
 from guard.review.publish import Publisher
@@ -121,7 +121,8 @@ class ReviewPipeline:
 		verify.verify(run)
 		self.stage("filter")
 		existing = self.existing_findings()
-		FindingFilter(run.files, run.settings, existing).run(run.findings)
+		finding_filter = FindingFilter(run.files, run.settings, existing)
+		finding_filter.run(run.findings)
 		suppression.suppress(run.findings, run.repository)
 		if not run.verdict.submitted:
 			run.verdict = graph_verdict(run)
@@ -136,7 +137,7 @@ class ReviewPipeline:
 		publisher.publish(names, number)
 		publisher.finish()
 		self.stage("after")
-		self.mark_outdated(run)
+		stale.close_stale(run, finding_filter.reraised)
 		suppression.remember(names, run.findings, run.repository)
 		self.after(run, number)
 
@@ -338,30 +339,11 @@ class ReviewPipeline:
 		if db.value("Code Review", str(self.review.name), "cancel_requested"):
 			raise Cancelled
 
-	def mark_outdated(self, run: ReviewRun) -> None:
-		"""Open findings of earlier reviews whose file or lines this head no longer has."""
-		if not self.review.pull_request:
-			return
-		for row in db.dict_rows(
-			"""SELECT name, path, start_line, end_line FROM `tabReview Finding`
-			WHERE pull_request = %s AND status = 'Open' AND code_review != %s""",
-			(self.review.pull_request, self.review.name),
-		):
-			diff = next((f for f in run.all_files if f.path == row["path"]), None)
-			source = run.head(row["path"])
-			gone = source is None or (diff is not None and diff.status == "deleted")
-			if gone or (source is not None and len(source.splitlines()) < (row["start_line"] or 0)):
-				db.set_values(
-					"Review Finding",
-					row["name"],
-					{"status": "Outdated", "status_reason": "the lines are gone at the new head"},
-				)
-
 	def existing_findings(self) -> list[dict[str, Any]]:
 		if not self.review.pull_request:
 			return []
 		return db.dict_rows(
-			"""SELECT fingerprint, path, title FROM `tabReview Finding`
+			"""SELECT name, fingerprint, path, title FROM `tabReview Finding`
 			WHERE pull_request = %s AND status = 'Open' AND posted = 1 AND code_review != %s""",
 			(self.review.pull_request, self.review.name),
 		)
