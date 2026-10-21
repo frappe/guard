@@ -9,6 +9,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 
 from guard.git.diff import FileDiff
+from guard.graph import calls
 from guard.graph.queries import CodeGraph, Entity, Link
 from guard.indexing import frappe_plugin
 from guard.indexing.parser import ParsedEntity, ParsedFile, parse_file
@@ -70,7 +71,7 @@ class BlastRadius:
 			return ""
 		text = f"Affects {self.callers} caller{'s' if self.callers != 1 else ''} in {self.files} file{'s' if self.files != 1 else ''}."
 		if self.not_updated:
-			text += f" {self.not_updated} caller{'s are' if self.not_updated != 1 else ' is'} not updated."
+			text += f" {self.not_updated} caller{'s' if self.not_updated != 1 else ''} may break."
 		return text
 
 
@@ -215,7 +216,9 @@ class PullRequestGraph:
 			entity.callees = [link.name for link in self.graph.callees(entity.base)][:40]
 			entity.siblings = self.graph.siblings(entity.base, limit=4)
 			entity.tests = sorted({link.path for link in _test_links(self.graph, entity.base)})
-		entity.not_updated = [link for link in entity.callers if not self._updated(link)]
+		entity.not_updated = [
+			link for link in entity.callers if not self._updated(link) and self._breaks(entity, link)
+		]
 		if entity.contract_changed:
 			entity.at_risk = [
 				CallSite(
@@ -226,6 +229,16 @@ class PullRequestGraph:
 				)
 				for link in entity.not_updated[:12]
 			]
+
+	def _breaks(self, entity: ChangedEntity, link: Link) -> bool:
+		"""True when the call may not fit the head signature. Unknown counts as a break."""
+		if entity.status == "deleted":
+			return True
+		if not entity.contract_changed:
+			return False
+		params = calls.parse_params(entity.head_signature)
+		call = calls.parse_call(self._base_source(link.path), link.line, entity.name) if params else None
+		return not (params and call and calls.fits(params, call))
 
 	def _updated(self, link: Link) -> bool:
 		"""True when the pull request changes the line of the call."""
@@ -238,10 +251,13 @@ class PullRequestGraph:
 			line.kind == "-" and line.old_no == link.line for hunk in diff.hunks for line in hunk.lines
 		)
 
-	def _base_lines(self, path: str, start: int, end: int, number: bool = False) -> str:
+	def _base_source(self, path: str) -> list[str]:
 		if path not in self._base_sources:
 			self._base_sources[path] = (self.base(path) or "").splitlines()
-		lines = self._base_sources[path]
+		return self._base_sources[path]
+
+	def _base_lines(self, path: str, start: int, end: int, number: bool = False) -> str:
+		lines = self._base_source(path)
 		start = max(start, 1)
 		chosen = lines[start - 1 : max(end, start)]
 		if number:
@@ -304,7 +320,7 @@ def impact_diagram(changed: list[ChangedEntity], limit: int = 12) -> str:
 				else f"{link.path.rsplit('/', 1)[-1]}:{link.line}"
 			)
 			edge = (
-				"-.->|not updated|"
+				"-.->|may break|"
 				if (link.path + str(link.line)) in pending and entity.contract_changed
 				else "-->"
 			)

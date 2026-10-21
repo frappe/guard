@@ -178,7 +178,7 @@ def _symbol_context(
 			pack.questions.append(
 				Question(
 					question_id,
-					f"`{caller}` calls `{entity.name}` but was not updated for its new signature — is the call still correct?",
+					f"`{caller}` calls `{entity.name}` and the call may not fit its new signature — is the call still correct?",
 					"missing",
 				)
 			)

@@ -114,7 +114,7 @@ exclude_authors = ["dependabot[bot]"]
 | `hide_footer` | boolean | false | No footer |
 | `comments_outside_diff` | boolean | true | List findings outside the diff in the summary |
 | `include_rule_files` | boolean | true | Read `CLAUDE.md`, `AGENTS.md` and similar files |
-| `sections.<name>` | table | Collapsed | `included`, `collapsible`, `default_open`. Names: `summary`, `issues_table`, `confidence`, `diagram` |
+| `sections.<name>` | table | Collapsed | `included`, `collapsible`, `default_open`. Names: `summary`, `issues_table`, `confidence`, `impact`, `diagram` |
 
 ### Context
 

@@ -145,8 +145,11 @@ The base index describes the base branch. A pull request changes some files, so 
 2. Map each diff hunk to the head entities whose line range overlaps it. These are the **changed entities**.
 3. Find the base entity with the same `qualified_name`. If none, the entity is new.
 4. Compare signatures. A difference marks a **contract change**.
-5. For each changed entity, read its callers from the base index. Mark each caller as "updated in this pull request" or "not updated".
-6. For each contract change, collect the call sites of callers that are not updated: the call line with three lines around it.
+5. For each changed entity, read its callers from the base index. A caller "may break" when all of these are true:
+   - The pull request does not change the line of the call.
+   - The entity was deleted, or its signature changed.
+   - The call does not fit the new signature. For Python, Guard compares the arguments of the call with the parameters: required parameters, defaults, keyword-only parameters, `*args` and `**kwargs`. When Guard cannot parse the call or the signature, the caller may break.
+6. For each contract change, collect the call sites of callers that may break: the call line with three lines around it.
 7. Resolve the new calls in head code against the base symbol table and the overlay.
 
 The review context ([05-review-engine.md](05-review-engine.md)) gets, for each changed entity: the base and head bodies, callers, callees, siblings, similar code and the call sites at risk.

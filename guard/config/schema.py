@@ -11,7 +11,7 @@ TIER_RANK = {"auto": 0, "base": 1, "plus": 2, "apex": 3}
 COMMENT_TYPES = ("logic", "syntax", "style")
 SEVERITIES = ("low", "medium", "high")
 RISKS = ("low", "medium", "high", "critical")
-SECTIONS = ("summary", "issues_table", "confidence", "diagram")
+SECTIONS = ("summary", "issues_table", "confidence", "impact", "diagram")
 SECTION_KEYS = ("included", "collapsible", "default_open")
 BOOLEANS = (
 	"review_drafts",

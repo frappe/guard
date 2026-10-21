@@ -189,3 +189,37 @@ class TestWebhookHeaders(UnitTestCase):
 		self.assertTrue(github.verify(headers, body, "s3cret"))
 		self.assertFalse(github.verify(headers, body, "wrong"))
 		self.assertEqual((github.event_name(headers), github.delivery_id(headers)), ("pull_request", "d1"))
+
+
+class TestCallFit(UnitTestCase):
+	def fit(self, signature, call, name="place_order"):
+		from guard.graph import calls
+
+		params = calls.parse_params(signature)
+		parsed = calls.parse_call([call], 1, name)
+		return calls.fits(params, parsed) if params and parsed else None
+
+	def test_default_keeps_old_calls(self):
+		self.assertTrue(self.fit("def place_order(customer, items, code=None):", "place_order(c, items)"))
+
+	def test_new_required_argument_breaks(self):
+		self.assertFalse(self.fit("def place_order(customer, items, code):", "x = place_order(c, items)"))
+
+	def test_keywords_and_methods(self):
+		self.assertTrue(self.fit("def assign(self, agent, notify):", "t.assign(a, notify=1)", "assign"))
+		self.assertFalse(self.fit("def assign(self, agent):", "t.assign(a, notify=1)", "assign"))
+		self.assertFalse(self.fit("def assign(self, agent, *, notify):", "t.assign(a)", "assign"))
+
+	def test_too_many_arguments_break(self):
+		self.assertFalse(self.fit("def place_order(customer):", "place_order(c, items)"))
+
+	def test_unknown_cases(self):
+		self.assertIsNone(self.fit("def place_order(customer, items):", "place_order(*args)"))
+		self.assertIsNone(self.fit("function placeOrder(a, b)", "placeOrder(a)", "placeOrder"))
+
+	def test_multiline_call(self):
+		from guard.graph import calls
+
+		lines = ["place_order(", "    c,", "    [x for x in (1, 2)],", ")"]
+		call = calls.parse_call(lines, 1, "place_order")
+		self.assertEqual(call.positional if call else None, 2)

@@ -2,6 +2,7 @@
 
 import re
 
+from guard.graph.overlay import impact_diagram
 from guard.review import links, tips
 from guard.review.findings import MARKS, Finding
 from guard.review.run import ReviewRun
@@ -24,6 +25,9 @@ def summary(run: ReviewRun, posted: list[Finding], review_number: int, finding_u
 	table = _findings_table(posted, finding_urls)
 	if table:
 		parts.append(_section(sections.get("issues_table"), "Findings", table))
+	impact = impact_diagram(run.changed) if any(e.callers for e in run.changed) else ""
+	if impact:
+		parts.append(_section(sections.get("impact"), "Impact", f"```mermaid\n{impact}\n```"))
 	files = _important_files(run)
 	if files:
 		parts.append(_section(sections.get("summary"), "Important Files Changed", files))

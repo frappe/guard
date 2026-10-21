@@ -115,7 +115,7 @@ def _changed(run: ReviewRun) -> str:
 			block.append(f"  before: {entity.base.signature}")
 			block.append(f"  after:  {entity.head_signature}")
 		if entity.callers:
-			block.append(f"  callers: {len(entity.callers)}, not updated: {len(entity.not_updated)}")
+			block.append(f"  callers: {len(entity.callers)}, may break: {len(entity.not_updated)}")
 		for site in entity.at_risk[:6]:
 			block.append(f"  at risk {site.link.path}:{site.link.line}\n{site.snippet}")
 		if entity.siblings:

@@ -205,6 +205,7 @@ The summary comment starts with the marker `<!-- guard:summary -->`. On a re-rev
 ```
 
 - One headline line is always visible: confidence score, risk, finding counts and blast radius.
+- An Impact section shows the graph of changed symbols and their callers whenever a change has callers. Edges marked "may break" are callers that the pull request does not change and whose call may not fit the new signature.
 - Sections are collapsed by default, including the diagram. A collapsible section is wrapped in `<details>`. `open` is set when the section is open by default.
 - A re-review posts only P0 and P1 findings. P2 findings come from the first review only.
 - The summary explains the change in at most 4 bullets. It does not repeat the findings. A finding body is at most 3 sentences.

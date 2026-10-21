@@ -11,7 +11,7 @@ from guard.config import gate
 from guard.config.resolver import ConfigResolver
 from guard.git.diff import parse_diff
 from guard.git.repository import store_for
-from guard.graph.overlay import PullRequestGraph, impact_diagram
+from guard.graph.overlay import PullRequestGraph
 from guard.graph.queries import CodeGraph
 from guard.indexing import frappe_plugin
 from guard.indexing.jobs import ensure_fresh
@@ -126,10 +126,6 @@ class ReviewPipeline:
 		suppression.suppress(run.findings, run.repository)
 		if not run.verdict.submitted:
 			run.verdict = graph_verdict(run)
-		if not run.verdict.diagram or run.verdict.diagram_type == "none":
-			graph_diagram = impact_diagram(run.changed)
-			if graph_diagram and any(e.callers for e in run.changed):
-				run.verdict.diagram, run.verdict.diagram_type = graph_diagram, "flow"
 		score = score_floor(run.findings, run.verdict.confidence_score)
 		run.verdict.confidence_score = min(score, score_cap(run.findings))
 		self.stage("publish")
@@ -392,7 +388,7 @@ def graph_verdict(run: ReviewRun) -> Verdict:
 		lines.append(run.blast.sentence())
 	for entity in contracts[:10]:
 		lines.append(
-			f"- `{entity.qualified_name}` changed its contract; {len(entity.not_updated)} caller(s) are not updated."
+			f"- `{entity.qualified_name}` changed its contract; {len(entity.not_updated)} caller(s) may break."
 		)
 	risk = "high" if any(e.not_updated for e in contracts) else "medium" if contracts else "low"
 	score = 3 if risk == "high" else 5

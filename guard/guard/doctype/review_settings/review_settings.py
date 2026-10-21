@@ -54,6 +54,9 @@ class ReviewSettings(Document):
 		include_rule_files: DF.Check
 		inherit_from_organization: DF.Check
 		instructions: DF.LongText | None
+		impact_collapsible: DF.Check
+		impact_included: DF.Check
+		impact_open: DF.Check
 		issues_table_collapsible: DF.Check
 		issues_table_included: DF.Check
 		issues_table_open: DF.Check

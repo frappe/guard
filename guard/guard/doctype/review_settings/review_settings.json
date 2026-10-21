@@ -43,6 +43,12 @@
   "confidence_collapsible",
   "confidence_col2",
   "confidence_open",
+  "impact_section",
+  "impact_included",
+  "impact_col1",
+  "impact_collapsible",
+  "impact_col2",
+  "impact_open",
   "diagram_section",
   "diagram_included",
   "diagram_col1",
@@ -315,113 +321,150 @@
    "label": "Open by Default"
   },
   {
-   "fieldname": "diagram_section",
+   "fieldname": "impact_section",
    "fieldtype": "Section Break",
    "idx": 38,
+   "label": "Impact"
+  },
+  {
+   "default": "1",
+   "fieldname": "impact_included",
+   "fieldtype": "Check",
+   "idx": 39,
+   "label": "Included"
+  },
+  {
+   "fieldname": "impact_col1",
+   "fieldtype": "Column Break",
+   "idx": 40
+  },
+  {
+   "default": "1",
+   "fieldname": "impact_collapsible",
+   "fieldtype": "Check",
+   "idx": 41,
+   "label": "Collapsible"
+  },
+  {
+   "fieldname": "impact_col2",
+   "fieldtype": "Column Break",
+   "idx": 42
+  },
+  {
+   "default": "0",
+   "fieldname": "impact_open",
+   "fieldtype": "Check",
+   "idx": 43,
+   "label": "Open by Default"
+  },
+  {
+   "fieldname": "diagram_section",
+   "fieldtype": "Section Break",
+   "idx": 44,
    "label": "Diagram"
   },
   {
    "default": "1",
    "fieldname": "diagram_included",
    "fieldtype": "Check",
-   "idx": 39,
+   "idx": 45,
    "label": "Included"
   },
   {
    "fieldname": "diagram_col1",
    "fieldtype": "Column Break",
-   "idx": 40
+   "idx": 46
   },
   {
    "default": "1",
    "fieldname": "diagram_collapsible",
    "fieldtype": "Check",
-   "idx": 41,
+   "idx": 47,
    "label": "Collapsible"
   },
   {
    "fieldname": "diagram_col2",
    "fieldtype": "Column Break",
-   "idx": 42
+   "idx": 48
   },
   {
    "default": "0",
    "fieldname": "diagram_open",
    "fieldtype": "Check",
-   "idx": 43,
+   "idx": 49,
    "label": "Open by Default"
   },
   {
    "fieldname": "behavior_section",
    "fieldtype": "Section Break",
-   "idx": 44,
+   "idx": 50,
    "label": "Behavior"
   },
   {
    "default": "1",
    "fieldname": "status_check",
    "fieldtype": "Check",
-   "idx": 45,
+   "idx": 51,
    "label": "Status Check"
   },
   {
    "default": "0",
    "fieldname": "status_comments",
    "fieldtype": "Check",
-   "idx": 46,
+   "idx": 52,
    "label": "Status Comments"
   },
   {
    "default": "0",
    "fieldname": "update_description",
    "fieldtype": "Check",
-   "idx": 47,
+   "idx": 53,
    "label": "Update Description"
   },
   {
    "fieldname": "behavior_col",
    "fieldtype": "Column Break",
-   "idx": 48
+   "idx": 54
   },
   {
    "default": "0",
    "fieldname": "update_summary_only",
    "fieldtype": "Check",
-   "idx": 49,
+   "idx": 55,
    "label": "Update Summary Only"
   },
   {
    "default": "1",
    "fieldname": "fix_with_ai",
    "fieldtype": "Check",
-   "idx": 50,
+   "idx": 56,
    "label": "Fix with AI"
   },
   {
    "default": "0",
    "fieldname": "hide_footer",
    "fieldtype": "Check",
-   "idx": 51,
+   "idx": 57,
    "label": "Hide Footer"
   },
   {
    "fieldname": "approve_tab",
    "fieldtype": "Tab Break",
-   "idx": 52,
+   "idx": 58,
    "label": "Auto-approve"
   },
   {
    "default": "1",
    "fieldname": "auto_approve",
    "fieldtype": "Check",
-   "idx": 53,
+   "idx": 59,
    "label": "Auto Approve"
   },
   {
    "default": "critical",
    "fieldname": "risk_ceiling",
    "fieldtype": "Select",
-   "idx": 54,
+   "idx": 60,
    "label": "Risk Ceiling",
    "options": "low\nmedium\nhigh\ncritical"
   },
@@ -429,14 +472,14 @@
    "description": "Natural-language guidance for the risk assessment",
    "fieldname": "risk_definitions",
    "fieldtype": "Long Text",
-   "idx": 55,
+   "idx": 61,
    "label": "Risk Definitions"
   },
   {
    "description": "Same shape as autoApprove.filters in config files",
    "fieldname": "auto_approve_filters",
    "fieldtype": "JSON",
-   "idx": 56,
+   "idx": 62,
    "label": "Auto Approve Filters"
   }
  ],
