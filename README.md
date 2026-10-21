@@ -1,3 +1,5 @@
+<p align="center"><img src="guard/public/guard.svg" alt="Guard logo" width="80" height="80"></p>
+
 # Guard
 
 Guard reviews GitHub pull requests with an AI agent that reads the whole codebase, not only the diff. It builds a graph of every repository it reviews: definitions, calls, imports, inheritance, and, for Frappe apps, doctypes, links, hooks and `frappe.call` strings. Each review uses the graph to find the callers that a change breaks and the code that a change should match.
