@@ -125,7 +125,7 @@ class TestPipeline(IntegrationTestCase):
 		self.assertIn("Confidence **3/5**", summary)
 		self.assertIn("Affects 1 caller", summary)
 		self.assertIn("Reviews (1)", summary)
-		self.assertEqual(self.adapter.named("status"), ["pending", "success"])
+		self.assertEqual(self.adapter.named("status"), ["pending", "failure"])
 		self.assertIn("+1", self.adapter.named("react"))
 
 	def test_rereview_edits_summary_and_dedupes(self):
@@ -177,6 +177,7 @@ class TestPipeline(IntegrationTestCase):
 			frappe.get_all("Review Finding", filters={"pull_request": self.pr}, pluck="status"), ["Addressed"]
 		)
 		self.assertEqual(len(self.adapter.named("resolve")), 1)
+		self.assertEqual(self.adapter.named("status")[-1], "success")
 
 	def test_gate_skips_drafts_and_disabled_repositories(self):
 		frappe.db.set_value("Pull Request", self.pr, "is_draft", 1)
@@ -198,6 +199,7 @@ class TestPipeline(IntegrationTestCase):
 		)
 		self.assertEqual(frappe.db.get_value("Code Review", name, "status"), "Completed")
 		self.assertTrue(self.adapter.named("approve"))
+		self.assertEqual(self.adapter.named("status")[-1], "success")
 		self.assertTrue(db.value("Pull Request", self.pr, "guard_approved"))
 
 	def test_mention_answers_question(self):

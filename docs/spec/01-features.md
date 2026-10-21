@@ -75,7 +75,7 @@ On a new review Guard edits the same summary comment. It does not post a second 
 ### R8. Status check
 
 - Guard posts a pending status when it starts and a final status when it is done.
-- The status is `success` unless the review found a P0 finding. Then it is `failure`.
+- The status is `success` only when the review scores 5/5 and no finding is open on the pull request. Otherwise it is `failure`. This matches the auto-approve rule.
 - `status_check = false` turns the status off.
 - With the status off and no findings, Guard posts a short "N files reviewed, no comments" note if `status_comments` is true.
 

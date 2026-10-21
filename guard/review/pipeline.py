@@ -135,9 +135,10 @@ class ReviewPipeline:
 		names = publisher.save_findings()
 		number = self.review_number()
 		publisher.publish(names, number)
+		# Close stale findings first: the status check counts the open ones.
+		stale.close_stale(run, finding_filter.reraised)
 		publisher.finish()
 		self.stage("after")
-		stale.close_stale(run, finding_filter.reraised)
 		suppression.remember(names, run.findings, run.repository)
 		self.after(run, number)
 

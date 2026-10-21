@@ -152,14 +152,27 @@ class Publisher:
 			self._status("error", "Guard could not finish the review")
 			return
 		posted = [f for f in self.run.findings if f.kept]
-		p0 = sum(1 for f in posted if f.severity == "P0")
 		if self.run.settings.get("status_check", True):
-			text = f"{self.run.verdict.confidence_score}/5 · {len(posted)} finding(s)"
-			self._status("failure" if p0 else "success", text)
+			score = self.run.verdict.confidence_score
+			open_count = self._open_findings()
+			text = f"{score}/5 · {open_count} open finding(s)"
+			self._status("success" if score == 5 and not open_count else "failure", text)
 		elif not posted and self.run.settings.get("status_comments"):
 			self.adapter.post_comment(
 				self.repo, self.number, f"{len(self.run.files)} files reviewed, no comments."
 			)
+
+	def _open_findings(self) -> int:
+		"""Open findings on the pull request, from this review and earlier ones."""
+		if not self.run.review.pull_request:
+			return sum(1 for f in self.run.findings if f.kept)
+		return int(
+			db.scalar(
+				"SELECT COUNT(*) FROM `tabReview Finding` WHERE pull_request = %s AND status = 'Open' AND posted = 1",
+				(self.run.review.pull_request,),
+			)
+			or 0
+		)
 
 	def _status(self, state: str, text: str) -> None:
 		try:
