@@ -63,6 +63,10 @@ def tools(run: ReviewRun) -> list[ToolSpec]:
 					},
 					"rule_id": {"type": "string"},
 					"confidence": {"type": "number"},
+					"attach_last_run": {
+						"type": "boolean",
+						"description": "Attach the output of the last sandbox command as evidence",
+					},
 				},
 				"required": ["path", "start_line", "severity", "comment_type", "title", "body"],
 			},
@@ -117,6 +121,23 @@ def tools(run: ReviewRun) -> list[ToolSpec]:
 				"get_outline",
 				"List the functions, classes and imports defined in a file.",
 				{"type": "object", "properties": {"path": {"type": "string"}}, "required": ["path"]},
+			),
+		]
+	if run.sandbox is not None:
+		specs += [
+			ToolSpec(
+				"run_in_sandbox",
+				"Run a shell command in a container with the pull request checked out (for example the tests you wrote). No network.",
+				{"type": "object", "properties": {"command": {"type": "string"}}, "required": ["command"]},
+			),
+			ToolSpec(
+				"write_sandbox_file",
+				"Write a file in the sandbox work tree, for example a targeted test.",
+				{
+					"type": "object",
+					"properties": {"path": {"type": "string"}, "content": {"type": "string"}},
+					"required": ["path", "content"],
+				},
 			),
 		]
 	return specs
@@ -181,6 +202,8 @@ class Agent:
 			self.reported.add(fingerprint)
 			if len(run.findings) >= MAX_REPORTED:
 				return "finding limit reached"
+			if args.get("attach_last_run") and run.last_sandbox_output:
+				finding.sandbox_log = run.last_sandbox_output
 			run.findings.append(finding)
 			return f"reported #{len(run.findings)}"
 		if name == "submit_review":
@@ -188,6 +211,14 @@ class Agent:
 			return "review submitted"
 		if name == "read_file":
 			return _read(run, str(args.get("path") or ""), args)
+		if run.sandbox is not None and name == "write_sandbox_file":
+			return run.sandbox.write(str(args.get("path") or ""), str(args.get("content") or ""))
+		if run.sandbox is not None and name == "run_in_sandbox":
+			result = run.sandbox.exec(str(args.get("command") or ""))
+			run.last_sandbox_output = (
+				f"$ {args.get('command')}\nexit {result['exit_code']}\n{result['output']}"
+			)
+			return run.last_sandbox_output
 		if run.graph:
 			if name == "search_code":
 				return _search(run.graph, str(args.get("query") or ""))

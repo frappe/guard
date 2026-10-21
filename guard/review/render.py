@@ -78,6 +78,17 @@ def inline(finding: Finding, name: str, fix_with_ai: bool = True) -> str:
 	]
 	if finding.question:
 		lines += ["", f"**Question:** {sanitize(finding.question)}"]
+	if finding.sandbox_log:
+		lines += [
+			"",
+			"<details><summary>Sandbox run</summary>",
+			"",
+			"```text",
+			finding.sandbox_log[-4000:],
+			"```",
+			"",
+			"</details>",
+		]
 	if finding.suggestion and not finding.outside_diff:
 		lines += ["", "```suggestion", finding.suggestion, "```"]
 	if fix_with_ai:

@@ -149,3 +149,20 @@ class TestAnchor(UnitTestCase):
 		head = Finding("app/a.py", 3, 3, "P1", "logic", "t", "x")
 		FindingFilter(diff, {"strictness": 2}).anchor(head)
 		self.assertEqual((head.side, head.start_line), ("RIGHT", 3))
+
+
+class TestChecks(UnitTestCase):
+	def test_secret_and_frappe_checks(self):
+		from guard.review import checks
+
+		text = (
+			'diff --git a/app/x.py b/app/x.py\n--- a/app/x.py\n+++ b/app/x.py\n@@ -1 +1,4 @@\n x = 1\n+TOKEN = "ghp_'
+			+ "a" * 36
+			+ '"\n+rows = frappe.db.sql(f"select * from tabUser where name = {name}")\n+password = "changeme-example"\n'
+		)
+		files = parse_diff(text)
+		secrets = checks.secret_findings(files)
+		self.assertEqual([(f.severity, f.start_line) for f in secrets], [("P0", 2)])
+		frappe_pack = checks.frappe_findings(files)
+		self.assertEqual([f.title for f in frappe_pack], ["SQL built from strings"])
+		self.assertNotIn("ghp_", checks.mask_secrets(files[0].annotated()))

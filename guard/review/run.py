@@ -83,6 +83,8 @@ class ReviewRun:
 	verdict: Verdict = field(default_factory=Verdict)
 	context_used: list[dict[str, str]] = field(default_factory=list)
 	notes: list[str] = field(default_factory=list)  # problems to show in the summary
+	sandbox: Any = None  # guard.review.sandbox.Sandbox when runtime validation is on
+	last_sandbox_output: str = ""
 
 	def file(self, path: str) -> FileDiff | None:
 		return next((f for f in self.files if f.path == path), None)

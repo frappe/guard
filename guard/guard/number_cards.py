@@ -17,5 +17,12 @@ def addressed_rate() -> dict[str, Any]:
 @frappe.whitelist()
 def my_open_findings() -> dict[str, Any]:
 	login = db.value("Guard User", {"user": frappe.session.user}, "github_login")
-	count = db.scalar("SELECT COUNT(*) FROM `tabReview Finding` WHERE author = %s AND status = 'Open' AND posted = 1", (login,)) if login else 0
+	count = (
+		db.scalar(
+			"SELECT COUNT(*) FROM `tabReview Finding` WHERE author = %s AND status = 'Open' AND posted = 1",
+			(login,),
+		)
+		if login
+		else 0
+	)
 	return {"value": int(count or 0), "fieldtype": "Int", "route": ["query-report", "My Guard"]}

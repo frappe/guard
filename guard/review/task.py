@@ -1,5 +1,6 @@
 """The user message of a review: the pull request, the diff, and the graph context."""
 
+from guard.review import checks
 from guard.review.context import BuiltContext
 from guard.review.prompts import TASK, data
 from guard.review.run import ReviewRun
@@ -22,6 +23,8 @@ def compose(run: ReviewRun, built: BuiltContext, extra: str = "") -> str:
 		meta.append("Commits:\n" + "\n".join(f"- {c.subject}" for c in run.commits[-30:]))
 	parts.append("Pull request:\n" + data("pull request", "\n".join(meta) + "\n\n" + (run.description or "")))
 	parts.append(_rules(run))
+	if run.frappe_app:
+		parts.append(checks.FRAPPE_RULES)
 	if run.blast and run.blast.sentence():
 		parts.append(f"Blast radius from the graph: {run.blast.sentence()}")
 		if run.blast.untested:
@@ -38,8 +41,8 @@ def compose(run: ReviewRun, built: BuiltContext, extra: str = "") -> str:
 	for note in built.pack.notes[:12]:
 		parts.append(data("context", note))
 	for file in built.pack.files:
-		parts.append(data(f"{file.path} ({file.reason})", file.content))
-	diff = "\n\n".join(f.annotated() for f in run.files)
+		parts.append(data(f"{file.path} ({file.reason})", checks.mask_secrets(file.content)))
+	diff = checks.mask_secrets("\n\n".join(f.annotated() for f in run.files))
 	parts.append("Annotated diff:\n" + data("diff", diff[:DIFF_LIMIT]))
 	if extra:
 		parts.append(extra)

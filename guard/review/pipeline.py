@@ -19,7 +19,7 @@ from guard.integrations import tickets
 from guard.learning import suppression
 from guard.llm.types import GatewayBusy
 from guard.providers import adapter_for_repository
-from guard.review import context, prompts, verify
+from guard.review import checks, context, prompts, sandbox, verify
 from guard.review.agent import Agent
 from guard.review.findings import FindingFilter, score_cap
 from guard.review.publish import Publisher
@@ -108,7 +108,15 @@ class ReviewPipeline:
 			run.repository,
 		)
 		self.stage("review")
-		self.agent(run, built)
+		run.findings += checks.secret_findings(run.files)
+		if run.frappe_app:
+			run.findings += checks.frappe_findings(run.files)
+		run.sandbox = sandbox.Sandbox(run) if sandbox.wanted(run) else None
+		try:
+			self.agent(run, built)
+		finally:
+			if run.sandbox is not None:
+				run.sandbox.cleanup()
 		self.stage("verify")
 		verify.verify(run)
 		self.stage("filter")
