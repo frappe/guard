@@ -16,7 +16,8 @@ MAX_PAYLOAD = 2 * 1024 * 1024
 def github_webhook(**kwargs: Any) -> dict[str, Any]:
 	"""Check the signature, store the delivery, queue the handler."""
 	body = frappe.request.get_data() or b""
-	headers = {key: value for key, value in frappe.request.headers.items()}
+	# HTTP header names are case-insensitive. Store them lowercased.
+	headers = {key.lower(): value for key, value in frappe.request.headers.items()}
 	provider = _provider(frappe.request.args.get("provider"))
 	secret = frappe.get_doc("Code Provider", provider).get_password("webhook_secret", raise_exception=False)
 	if not secret or not github.verify(headers, body, str(secret)):

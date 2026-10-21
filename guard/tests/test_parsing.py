@@ -166,3 +166,26 @@ class TestChecks(UnitTestCase):
 		frappe_pack = checks.frappe_findings(files)
 		self.assertEqual([f.title for f in frappe_pack], ["SQL built from strings"])
 		self.assertNotIn("ghp_", checks.mask_secrets(files[0].annotated()))
+
+
+class TestWebhookHeaders(UnitTestCase):
+	def test_signature_and_event_with_any_header_case(self):
+		import hashlib
+		import hmac
+
+		from guard.webhooks import github
+
+		body = b'{"action": "opened"}'
+		signature = "sha256=" + hmac.new(b"s3cret", body, hashlib.sha256).hexdigest()
+		# What the endpoint builds from Werkzeug headers, whatever case GitHub sends.
+		headers = {
+			k.lower(): v
+			for k, v in {
+				"X-Github-Event": "pull_request",
+				"X-Hub-Signature-256": signature,
+				"X-GitHub-Delivery": "d1",
+			}.items()
+		}
+		self.assertTrue(github.verify(headers, body, "s3cret"))
+		self.assertFalse(github.verify(headers, body, "wrong"))
+		self.assertEqual((github.event_name(headers), github.delivery_id(headers)), ("pull_request", "d1"))

@@ -12,17 +12,18 @@ OPEN_ACTIONS = {"opened": "opened", "reopened": "reopened", "ready_for_review": 
 
 
 def verify(headers: dict[str, str], body: bytes, secret: str) -> bool:
-	signature = headers.get("X-Hub-Signature-256") or ""
+	"""`headers` has lowercase names."""
+	signature = headers.get("x-hub-signature-256") or ""
 	expected = hmac.new(secret.encode(), body, hashlib.sha256).hexdigest()
 	return hmac.compare_digest(signature.removeprefix("sha256="), expected)
 
 
 def delivery_id(headers: dict[str, str]) -> str:
-	return headers.get("X-GitHub-Delivery") or ""
+	return headers.get("x-github-delivery") or ""
 
 
 def event_name(headers: dict[str, str]) -> str:
-	return headers.get("X-GitHub-Event") or ""
+	return headers.get("x-github-event") or ""
 
 
 def parse(event: str, payload: dict[str, Any]) -> list[WebhookEvent]:
