@@ -12,6 +12,7 @@ dependencies = [
     "tree-sitter>=0.26",
     "tree-sitter-language-pack>=1.22",
     "pathspec>=1.0",
+    "numpy>=2.0",
 ]
 
 [build-system]
