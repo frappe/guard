@@ -43,15 +43,23 @@ class TestPermissions(IntegrationTestCase):
 			{"doctype": "Custom Context", "context_type": "Rule", "body": "x", "team": self.team}
 		)
 		org_rule = frappe.get_doc({"doctype": "Custom Context", "context_type": "Rule", "body": "x"})
-		self.assertIsNone(permissions.custom_context(team_rule, "write", "lead@example.com"))
+		self.assertTrue(permissions.custom_context(team_rule, "write", "lead@example.com"))
 		self.assertFalse(permissions.custom_context(team_rule, "write", "dev@example.com"))
 		self.assertFalse(permissions.custom_context(org_rule, "write", "lead@example.com"))
-		self.assertIsNone(permissions.custom_context(org_rule, "read", "dev@example.com"))
-		self.assertIsNone(permissions.custom_context(org_rule, "write", "Administrator"))
+		self.assertTrue(permissions.custom_context(org_rule, "read", "dev@example.com"))
+		self.assertTrue(permissions.custom_context(org_rule, "write", "Administrator"))
+
+	def test_members_can_read_through_frappe(self):
+		# The hooks run inside frappe.has_permission, which treats a falsy answer as a denial.
+		for doctype, name in (("Review Settings", "Organization"),):
+			self.assertTrue(frappe.has_permission(doctype, "read", name, user="dev@example.com"))
+		self.assertFalse(
+			frappe.has_permission("Review Settings", "write", "Organization", user="dev@example.com")
+		)
 
 	def test_review_settings(self):
 		org = frappe.get_doc("Review Settings", "Organization")
 		self.assertFalse(permissions.review_settings(org, "write", "lead@example.com"))
 		team = frappe.get_doc({"doctype": "Review Settings", "scope": "Team", "team": self.team})
-		self.assertIsNone(permissions.review_settings(team, "write", "lead@example.com"))
+		self.assertTrue(permissions.review_settings(team, "write", "lead@example.com"))
 		self.assertFalse(permissions.review_settings(team, "write", "dev@example.com"))

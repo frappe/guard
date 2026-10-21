@@ -6,6 +6,8 @@ import frappe
 
 from guard.utils import db
 
+# Frappe treats any falsy result of a has_permission hook as a denial. Hooks only deny,
+# so they return True when they have no objection, never None.
 ADMIN_ROLES = {"Guard Admin", "System Manager", "Administrator"}
 WRITE_TYPES = {"write", "create", "delete", "submit", "cancel", "amend"}
 
@@ -31,10 +33,10 @@ def is_team_admin(team: str | None, user: str | None = None) -> bool:
 	)
 
 
-def custom_context(doc: Any, ptype: str | None = None, user: str | None = None) -> bool | None:
+def custom_context(doc: Any, ptype: str | None = None, user: str | None = None) -> bool:
 	"""Organization rules: admins only. Team rules: admins and that team's admins. Reads are open."""
 	if ptype not in WRITE_TYPES or is_admin(user):
-		return None
+		return True
 	team = doc.get("team") if not isinstance(doc, str) else db.value("Custom Context", doc, "team")
 	if not team or not is_team_admin(team, user):
 		return False
@@ -45,22 +47,22 @@ def custom_context(doc: Any, ptype: str | None = None, user: str | None = None) 
 		and doc.get("source") == "Suggested"
 	):
 		return is_team_admin(team, user)
-	return None
+	return True
 
 
-def review_settings(doc: Any, ptype: str | None = None, user: str | None = None) -> bool | None:
+def review_settings(doc: Any, ptype: str | None = None, user: str | None = None) -> bool:
 	"""The organization record: admins only. A team record: admins and that team's admins."""
 	if ptype not in WRITE_TYPES or is_admin(user):
-		return None
+		return True
 	scope = doc.get("scope") if not isinstance(doc, str) else db.value("Review Settings", doc, "scope")
 	team = doc.get("team") if not isinstance(doc, str) else db.value("Review Settings", doc, "team")
-	return None if scope == "Team" and is_team_admin(team, user) else False
+	return scope == "Team" and is_team_admin(team, user)
 
 
-def code_repository(doc: Any, ptype: str | None = None, user: str | None = None) -> bool | None:
+def code_repository(doc: Any, ptype: str | None = None, user: str | None = None) -> bool:
 	"""Members enable repositories of their own teams."""
 	if ptype not in WRITE_TYPES or is_admin(user):
-		return None
+		return True
 	team = doc.get("team") if not isinstance(doc, str) else db.value("Code Repository", doc, "team")
 	member = (
 		db.value(
@@ -71,4 +73,4 @@ def code_repository(doc: Any, ptype: str | None = None, user: str | None = None)
 		if team
 		else None
 	)
-	return None if member else False
+	return bool(member)
