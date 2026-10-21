@@ -23,7 +23,7 @@ from guard.review import context, prompts, verify
 from guard.review.agent import Agent
 from guard.review.findings import FindingFilter, score_cap
 from guard.review.publish import Publisher
-from guard.review.run import ReviewRun
+from guard.review.run import ReviewRun, Verdict
 from guard.review.task import compose
 from guard.utils import db
 from guard.utils.redact import redact
@@ -114,6 +114,8 @@ class ReviewPipeline:
 		existing = self.existing_findings()
 		FindingFilter(run.files, run.settings, existing).run(run.findings)
 		suppression.suppress(run.findings, run.repository)
+		if not run.verdict.submitted:
+			run.verdict = graph_verdict(run)
 		run.verdict.confidence_score = min(run.verdict.confidence_score, score_cap(run.findings))
 		self.stage("publish")
 		names = publisher.save_findings()
@@ -361,6 +363,29 @@ class ReviewPipeline:
 		adapter.add_reaction(full_name, int(pr.number), "pr", "", "confused")
 		if self.review.head_sha:
 			adapter.set_status(full_name, self.review.head_sha, "error", "Guard could not finish the review")
+
+
+def graph_verdict(run: ReviewRun) -> Verdict:
+	"""A verdict from the graph alone, when the model gave none (no gateway, or no answer)."""
+	contracts = [e for e in run.changed if e.contract_changed]
+	lines = [
+		f"Guard reviewed {len(run.files)} file(s) with the codebase graph. The AI review did not run, so no line comments came from a model."
+	]
+	if run.blast and run.blast.sentence():
+		lines.append(run.blast.sentence())
+	for entity in contracts[:10]:
+		lines.append(
+			f"- `{entity.qualified_name}` changed its contract; {len(entity.not_updated)} caller(s) are not updated."
+		)
+	risk = "high" if any(e.not_updated for e in contracts) else "medium" if contracts else "low"
+	score = 3 if risk == "high" else 5
+	return Verdict(
+		summary="\n".join(lines),
+		confidence_score=score,
+		confidence_reason="Graph checks only.",
+		risk_level=risk,
+		submitted=True,
+	)
 
 
 def run_review(review: str, attempt: int = 0) -> None:

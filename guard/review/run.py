@@ -27,6 +27,7 @@ class Verdict:
 	diagram_type: str = "none"
 	diagram: str = ""
 	important_files: list[dict[str, str]] = field(default_factory=list)
+	submitted: bool = False
 
 	@classmethod
 	def from_arguments(cls, args: dict[str, Any]) -> "Verdict":

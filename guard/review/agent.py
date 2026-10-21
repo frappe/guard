@@ -139,7 +139,8 @@ class Agent:
 		specs = tools(self.run)
 		self.messages.append(Message("user", task))
 		turns = 0
-		while turns < self.max_turns:
+		submitted = False
+		while turns < self.max_turns and not submitted:
 			turns += 1
 			result = client.chat(self.messages, tools=specs)
 			self.messages.append(result.as_message())
@@ -147,15 +148,20 @@ class Agent:
 				break
 			for call in result.tool_calls:
 				self.messages.append(self._dispatch(call.name, call.arguments, call.id))
-			if any(call.name == "submit_review" for call in result.tool_calls):
-				break
-			if turns == self.max_turns:
-				self.messages.append(Message("user", FORCE_SUBMIT))
-				client.chat(
-					self.messages,
-					tools=[s for s in specs if s.name == "submit_review"],
-					tool_choice="submit_review",
-				)
+			submitted = any(call.name == "submit_review" for call in result.tool_calls)
+		if not submitted and client.online:
+			# The model stopped or ran out of turns: ask once more, for the verdict only.
+			self.messages.append(Message("user", FORCE_SUBMIT))
+			final = client.chat(
+				self.messages,
+				tools=[s for s in specs if s.name == "submit_review"],
+				tool_choice="submit_review",
+			)
+			for call in final.tool_calls:
+				if call.name == "submit_review":
+					self._dispatch(call.name, call.arguments, call.id)
+					submitted = True
+		self.run.verdict.submitted = submitted or self.run.verdict.submitted
 		return AgentResult(self.run.findings, self.run.verdict, turns)
 
 	def _dispatch(self, name: str, args: dict[str, Any], call_id: str) -> Message:

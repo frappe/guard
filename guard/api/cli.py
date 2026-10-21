@@ -20,7 +20,9 @@ MAX_PAYLOAD = 20 * 1024 * 1024
 @frappe.whitelist(allow_guest=True, methods=["GET"])
 def download() -> Response:
 	text = CLI_FILE.read_text().replace('DEFAULT_SITE = ""', f'DEFAULT_SITE = "{frappe.utils.get_url()}"', 1)
-	return Response(text, mimetype="text/x-python", headers={"Content-Disposition": "attachment; filename=guard"})
+	return Response(
+		text, mimetype="text/x-python", headers={"Content-Disposition": "attachment; filename=guard"}
+	)
 
 
 @frappe.whitelist(methods=["POST"])
@@ -28,7 +30,11 @@ def review(payload: dict[str, Any], tier: str = "", instructions: str = "") -> d
 	"""Create a CLI review. The payload has the diff and file contents of the branch."""
 	if len(frappe.as_json(payload)) > MAX_PAYLOAD:
 		frappe.throw(_("The review is too large for one request."))
-	repository = db.value("Code Repository", {"full_name": payload.get("full_name")}, "name") if payload.get("full_name") else None
+	repository = (
+		db.value("Code Repository", {"full_name": payload.get("full_name")}, "name")
+		if payload.get("full_name")
+		else None
+	)
 	if repository:
 		frappe.has_permission("Code Repository", "read", str(repository), throw=True)
 	doc = frappe.get_doc(
@@ -46,7 +52,7 @@ def review(payload: dict[str, Any], tier: str = "", instructions: str = "") -> d
 			"triggered_by_user": frappe.session.user,
 		}
 	).insert()
-	enqueue_review(str(doc.name), tier=doc.get("requested_tier"))
+	enqueue_review(str(doc.name), tier=str(doc.get("requested_tier") or ""))
 	return {"id": doc.name, "status": "Queued"}
 
 
@@ -57,7 +63,19 @@ def show(review_id: str) -> dict[str, Any]:
 	findings = frappe.get_all(
 		"Review Finding",
 		filters={"code_review": review_id, "status": ["in", ["Open", "Addressed"]]},
-		fields=["name", "path", "start_line", "end_line", "severity", "comment_type", "title", "body", "suggestion", "fix_prompt", "outside_diff"],
+		fields=[
+			"name",
+			"path",
+			"start_line",
+			"end_line",
+			"severity",
+			"comment_type",
+			"title",
+			"body",
+			"suggestion",
+			"fix_prompt",
+			"outside_diff",
+		],
 		order_by="severity asc, path asc, start_line asc",
 	)
 	return {
@@ -79,7 +97,16 @@ def recent(limit: int = 10, full_name: str = "") -> list[dict[str, Any]]:
 	filters: dict[str, Any] = {"triggered_by_user": frappe.session.user}
 	if full_name:
 		filters["repository"] = db.value("Code Repository", {"full_name": full_name}, "name")
-	return [dict(r) for r in frappe.get_list("Code Review", filters=filters, fields=["name", "status", "branch", "head_sha", "creation", "posted_count", "confidence_score"], limit=min(int(limit), 50), order_by="creation desc")]
+	return [
+		dict(r)
+		for r in frappe.get_list(
+			"Code Review",
+			filters=filters,
+			fields=["name", "status", "branch", "head_sha", "creation", "posted_count", "confidence_score"],
+			limit=min(int(limit), 50),
+			order_by="creation desc",
+		)
+	]
 
 
 @frappe.whitelist(methods=["GET"])
@@ -88,7 +115,9 @@ def status(head_sha: str, full_name: str = "") -> dict[str, Any]:
 	filters: dict[str, Any] = {"head_sha": head_sha}
 	if full_name:
 		filters["repository"] = db.value("Code Repository", {"full_name": full_name}, "name")
-	rows = frappe.get_list("Code Review", filters=filters, fields=["name", "status"], order_by="creation desc", limit=1)
+	rows = frappe.get_list(
+		"Code Review", filters=filters, fields=["name", "status"], order_by="creation desc", limit=1
+	)
 	if not rows:
 		return {"exit_code": 1, "status": None}
 	return {"exit_code": STATUS_CODES.get(rows[0].status, 1), "status": rows[0].status, "id": rows[0].name}
@@ -102,7 +131,9 @@ def config(full_name: str, path: str = "", sha: str = "") -> dict[str, Any]:
 		frappe.throw(_("Unknown repository {0}").format(full_name))
 	frappe.has_permission("Code Repository", "read", str(repository), throw=True)
 	store = store_for(str(repository))
-	ref = sha or store.rev_parse(f"refs/heads/{db.value('Code Repository', str(repository), 'default_branch')}")
+	ref = sha or store.rev_parse(
+		f"refs/heads/{db.value('Code Repository', str(repository), 'default_branch')}"
+	)
 	return ConfigResolver.from_store(str(repository), store, ref).explain(path)
 
 
@@ -112,12 +143,44 @@ def fix_prompt(target: str) -> dict[str, Any]:
 	if frappe.db.exists("Review Finding", target):
 		doc = frappe.get_doc("Review Finding", target)
 		doc.check_permission("read")
-		repository = doc.get("repository")
-		prompts = [doc.get("fix_prompt") or ""]
+		repository = str(doc.get("repository") or "")
+		prompts = [str(doc.get("fix_prompt") or "")]
 	else:
 		frappe.has_permission("Pull Request", "read", target, throw=True)
-		repository = db.value("Pull Request", target, "repository")
-		prompts = [r[0] for r in db.rows("SELECT fix_prompt FROM `tabReview Finding` WHERE pull_request = %s AND status = 'Open' AND posted = 1 ORDER BY path, start_line", (target,))]
+		repository = str(db.value("Pull Request", target, "repository") or "")
+		prompts = [
+			str(r[0] or "")
+			for r in db.rows(
+				"SELECT fix_prompt FROM `tabReview Finding` WHERE pull_request = %s AND status = 'Open' AND posted = 1 ORDER BY path, start_line",
+				(target,),
+			)
+		]
 	full_name = db.value("Code Repository", repository, "full_name") if repository else ""
 	text = "\n\n---\n\n".join(p for p in prompts if p)
-	return {"repository": full_name, "prompt": f"Fix these code review findings in {full_name}.\n\n{text}" if len(prompts) > 1 else text}
+	return {
+		"repository": full_name,
+		"prompt": f"Fix these code review findings in {full_name}.\n\n{text}" if len(prompts) > 1 else text,
+	}
+
+
+@frappe.whitelist(methods=["GET"])
+def whoami() -> dict[str, Any]:
+	user = frappe.session.user
+	return {
+		"user": user,
+		"name": frappe.utils.get_fullname(user),
+		"roles": [r for r in frappe.get_roles(user) if r.startswith("Guard")],
+		"site": frappe.utils.get_url(),
+	}
+
+
+@frappe.whitelist(methods=["POST"])
+def issue_key() -> dict[str, str]:
+	"""A new API key for the signed-in user, for `guard login`. The secret is shown once."""
+	if frappe.session.user == "Guest":
+		frappe.throw(_("Sign in first."), frappe.PermissionError)
+	from frappe.core.doctype.user.user import generate_keys
+
+	keys = generate_keys(str(frappe.session.user))
+	api_key = frappe.db.get_value("User", frappe.session.user, "api_key")
+	return {"key": str(api_key), "secret": str(keys["api_secret"])}
