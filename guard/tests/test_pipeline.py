@@ -122,8 +122,8 @@ class TestPipeline(IntegrationTestCase):
 		self.assertIn("**P1**", posted[0].body)
 		summary = self.adapter.named("post_comment")[0]
 		self.assertIn("<!-- guard:summary -->", summary)
-		self.assertIn("Confidence Score: 3/5", summary)
-		self.assertIn("Blast radius", summary)
+		self.assertIn("Confidence **3/5**", summary)
+		self.assertIn("Affects 1 caller", summary)
 		self.assertIn("Reviews (1)", summary)
 		self.assertEqual(self.adapter.named("status"), ["pending", "success"])
 		self.assertIn("+1", self.adapter.named("react"))

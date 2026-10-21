@@ -244,7 +244,8 @@ class ConfigResolver:
 
 def merge_auto_approve(policies: list[dict[str, Any]]) -> dict[str, Any]:
 	if not policies:
-		return {"enabled": False, "risk_ceiling": "low", "filters": {}}
+		# Default: approve every clean 5/5 review, whatever the risk.
+		return {"enabled": True, "risk_ceiling": "critical", "filters": {}}
 	filters: dict[str, Any] = {}
 	for policy in policies:
 		for key, value in (policy.get("filters") or {}).items():

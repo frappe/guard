@@ -70,7 +70,7 @@ DEFAULTS: dict[str, Any] = {
 	"strictness": 2,
 	"comment_types": list(COMMENT_TYPES),
 	"effort": None,
-	"auto_review": ["open"],
+	"auto_review": ["open", "push"],
 	"review_drafts": False,
 	"status_check": True,
 	"status_comments": False,
@@ -81,7 +81,7 @@ DEFAULTS: dict[str, Any] = {
 	"comments_outside_diff": True,
 	"include_rule_files": True,
 	**{name: [] for name in LISTS},
-	"sections": {name: {"included": True, "collapsible": False, "default_open": True} for name in SECTIONS},
+	"sections": {name: {"included": True, "collapsible": True, "default_open": False} for name in SECTIONS},
 }
 
 

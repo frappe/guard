@@ -16,21 +16,11 @@ DIAGRAM_MAX_LINES = 80
 
 def summary(run: ReviewRun, posted: list[Finding], review_number: int, finding_urls: dict[int, str]) -> str:
 	sections = run.settings.get("sections") or {}
-	parts = [SUMMARY_MARKER, "<h3>Guard Overview</h3>"]
+	parts = [SUMMARY_MARKER, _headline(run, posted)]
 	parts.append(
 		_section(sections.get("summary"), "Summary", sanitize(run.verdict.summary) or "_No summary._")
 	)
-	blast = run.blast.sentence() if run.blast else ""
-	if blast:
-		parts.append(f"**Blast radius:** {blast}")
-	score = _score_text(run)
-	parts.append(
-		_section(
-			sections.get("confidence"),
-			f"Confidence Score: {run.verdict.confidence_score}/5{_tier(run)}",
-			score,
-		)
-	)
+	parts.append(_section(sections.get("confidence"), "Confidence and Risk", _score_text(run)))
 	table = _findings_table(posted, finding_urls)
 	if table:
 		parts.append(_section(sections.get("issues_table"), "Findings", table))
@@ -75,7 +65,7 @@ def summary(run: ReviewRun, posted: list[Finding], review_number: int, finding_u
 def inline(finding: Finding, name: str, fix_with_ai: bool = True) -> str:
 	lines = [
 		f"<!-- guard:finding:{name} -->",
-		f"{MARKS.get(finding.severity, '')} **{finding.severity}** · {finding.comment_type} · **{sanitize(finding.title)}**",
+		f"{MARKS.get(finding.severity, '')} **{finding.severity}** **{sanitize(finding.title)}**",
 		"",
 		sanitize(finding.body),
 	]
@@ -160,8 +150,26 @@ def _section(config: dict | None, title: str, body: str) -> str:
 		return ""
 	if config.get("collapsible"):
 		state = " open" if config.get("default_open", True) else ""
-		return f"<details{state}><summary><h3>{title}</h3></summary>\n\n{body}\n\n</details>"
+		return f"<details{state}><summary><b>{title}</b></summary>\n\n{body}\n\n</details>"
 	return f"<h3>{title}</h3>\n\n{body}"
+
+
+def _headline(run: ReviewRun, posted: list[Finding]) -> str:
+	"""The only line that is always visible: score, risk, findings and blast radius."""
+	parts = [f"**Guard** · Confidence **{run.verdict.confidence_score}/5**{_tier(run)}"]
+	if run.verdict.risk_level:
+		parts.append(f"risk **{run.verdict.risk_level}**")
+	parts.append(_finding_counts(posted))
+	blast = run.blast.sentence() if run.blast else ""
+	headline = " · ".join(parts)
+	return f"{headline}\n\n{blast}" if blast else headline
+
+
+def _finding_counts(posted: list[Finding]) -> str:
+	if not posted:
+		return "no findings"
+	counts = [f"{n} {sev}" for sev in ("P0", "P1", "P2") if (n := sum(f.severity == sev for f in posted))]
+	return f"{len(posted)} finding{'s' if len(posted) > 1 else ''} ({', '.join(counts)})"
 
 
 def _score_text(run: ReviewRun) -> str:

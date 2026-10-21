@@ -67,8 +67,8 @@ def tools(run: ReviewRun) -> list[ToolSpec]:
 						"type": "string",
 						"description": "correctness, security, performance, style, test-gap",
 					},
-					"title": {"type": "string", "description": "One line, specific"},
-					"body": {"type": "string", "description": "Markdown explanation with evidence"},
+					"title": {"type": "string", "description": "At most 12 words, specific"},
+					"body": {"type": "string", "description": "At most 3 sentences with evidence"},
 					"suggestion": {
 						"type": "string",
 						"description": "Replacement code for the flagged lines, when local",
@@ -95,12 +95,12 @@ def tools(run: ReviewRun) -> list[ToolSpec]:
 				"properties": {
 					"summary": {
 						"type": "string",
-						"description": "Markdown: what the change does, walkthrough, concerns",
+						"description": "At most 4 short bullets on what the change does. No findings.",
 					},
 					"confidence_score": {"type": "integer", "minimum": 0, "maximum": 5},
-					"confidence_reason": {"type": "string"},
+					"confidence_reason": {"type": "string", "description": "One sentence"},
 					"risk_level": {"type": "string", "enum": ["low", "medium", "high", "critical"]},
-					"risk_reason": {"type": "string"},
+					"risk_reason": {"type": "string", "description": "One sentence"},
 					"diagram_type": {"type": "string", "enum": ["sequence", "er", "class", "flow", "none"]},
 					"diagram": {"type": "string", "description": "Mermaid source"},
 					"important_files": {

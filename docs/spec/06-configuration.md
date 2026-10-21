@@ -89,7 +89,7 @@ exclude_authors = ["dependabot[bot]"]
 | `strictness` | 1, 2, 3 | 2 | 1 verbose, 3 critical only |
 | `comment_types` | array | all | `logic`, `syntax`, `style` |
 | `effort` | string | unset | `base`, `plus`, `apex`, `auto` |
-| `auto_review` | array | `["open"]` | `open`, `push`, `rebase`. Each implies the ones before it. `[]` is never. |
+| `auto_review` | array | `["open", "push"]` | `open`, `push`, `rebase`. Each implies the ones before it. `[]` is never. |
 | `review_drafts` | boolean | false | Review draft pull requests |
 
 ### Filters
@@ -114,7 +114,7 @@ exclude_authors = ["dependabot[bot]"]
 | `hide_footer` | boolean | false | No footer |
 | `comments_outside_diff` | boolean | true | List findings outside the diff in the summary |
 | `include_rule_files` | boolean | true | Read `CLAUDE.md`, `AGENTS.md` and similar files |
-| `sections.<name>` | table | | `included`, `collapsible`, `default_open`. Names: `summary`, `issues_table`, `confidence`, `diagram` |
+| `sections.<name>` | table | Collapsed | `included`, `collapsible`, `default_open`. Names: `summary`, `issues_table`, `confidence`, `diagram` |
 
 ### Context
 
@@ -133,8 +133,8 @@ Paths and scopes in a config are relative to the directory that holds `.guard/` 
 
 | Key | Default | Meaning |
 | - | - | - |
-| `enabled` | false | |
-| `risk_ceiling` | `low` | `low`, `medium`, `high`, `critical` |
+| `enabled` | true | Approve each clean 5/5 review. A new push dismisses the approval and starts a new review. |
+| `risk_ceiling` | `critical` | `low`, `medium`, `high`, `critical` |
 | `filters.include_paths`, `filters.exclude_paths` | | Globs or plain directory paths. Both sides of a rename count. |
 | `filters.include_authors`, `filters.exclude_authors` | | |
 | `filters.include_branches`, `filters.exclude_branches` | | |

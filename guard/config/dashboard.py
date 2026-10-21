@@ -47,7 +47,7 @@ def settings_layer(doc: Any) -> Layer:
 		"strictness": int(doc.get("strictness") or 2),
 		"comment_types": types,
 		"effort": doc.get("review_tier") or "auto",
-		"auto_review": AUTO_REVIEW.get(doc.get("auto_review") or "", ["open"]),
+		"auto_review": AUTO_REVIEW.get(doc.get("auto_review") or "", ["open", "push"]),
 		"review_drafts": bool(doc.get("review_drafts")),
 		"status_check": bool(doc.get("status_check")),
 		"status_comments": bool(doc.get("status_comments")),

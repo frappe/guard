@@ -110,7 +110,7 @@ class TestResolver(UnitTestCase):
 		self.assertEqual([t for _, t in config.instructions], ["Root instructions.", "API instructions."])
 		self.assertEqual(
 			config.settings["sections"]["summary"],
-			{"included": True, "collapsible": True, "default_open": True},
+			{"included": True, "collapsible": True, "default_open": False},
 		)
 
 	def test_errors(self):

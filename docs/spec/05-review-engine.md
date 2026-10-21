@@ -204,7 +204,9 @@ The summary comment starts with the marker `<!-- guard:summary -->`. On a re-rev
 <sub>Reviews (2) · Last reviewed commit: [message](link) · [Re-trigger](link) · [Fix all](link)</sub>
 ```
 
-- A collapsible section is wrapped in `<details>`. `open` is set when the section is open by default.
+- One headline line is always visible: confidence score, risk, finding counts and blast radius.
+- Sections are collapsed by default, including the diagram. A collapsible section is wrapped in `<details>`. `open` is set when the section is open by default.
+- The summary explains the change in at most 4 bullets. It does not repeat the findings. A finding body is at most 3 sentences.
 - `hide_footer` removes the footer.
 - `update_description` writes the same content into the description between `<!-- guard:start -->` and `<!-- guard:end -->`.
 - Plus and apex reviews show the tier next to the score.

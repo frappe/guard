@@ -115,7 +115,7 @@
    "options": "auto\nbase\nplus\napex"
   },
   {
-   "default": "On pull request opened",
+   "default": "On new pushes",
    "fieldname": "auto_review",
    "fieldtype": "Select",
    "idx": 7,
@@ -222,7 +222,7 @@
    "idx": 22
   },
   {
-   "default": "0",
+   "default": "1",
    "fieldname": "summary_collapsible",
    "fieldtype": "Check",
    "idx": 23,
@@ -234,7 +234,7 @@
    "idx": 24
   },
   {
-   "default": "1",
+   "default": "0",
    "fieldname": "summary_open",
    "fieldtype": "Check",
    "idx": 25,
@@ -259,7 +259,7 @@
    "idx": 28
   },
   {
-   "default": "0",
+   "default": "1",
    "fieldname": "issues_table_collapsible",
    "fieldtype": "Check",
    "idx": 29,
@@ -271,7 +271,7 @@
    "idx": 30
   },
   {
-   "default": "1",
+   "default": "0",
    "fieldname": "issues_table_open",
    "fieldtype": "Check",
    "idx": 31,
@@ -296,7 +296,7 @@
    "idx": 34
   },
   {
-   "default": "0",
+   "default": "1",
    "fieldname": "confidence_collapsible",
    "fieldtype": "Check",
    "idx": 35,
@@ -308,7 +308,7 @@
    "idx": 36
   },
   {
-   "default": "1",
+   "default": "0",
    "fieldname": "confidence_open",
    "fieldtype": "Check",
    "idx": 37,
@@ -333,7 +333,7 @@
    "idx": 40
   },
   {
-   "default": "0",
+   "default": "1",
    "fieldname": "diagram_collapsible",
    "fieldtype": "Check",
    "idx": 41,
@@ -345,7 +345,7 @@
    "idx": 42
   },
   {
-   "default": "1",
+   "default": "0",
    "fieldname": "diagram_open",
    "fieldtype": "Check",
    "idx": 43,
@@ -411,14 +411,14 @@
    "label": "Auto-approve"
   },
   {
-   "default": "0",
+   "default": "1",
    "fieldname": "auto_approve",
    "fieldtype": "Check",
    "idx": 53,
    "label": "Auto Approve"
   },
   {
-   "default": "low",
+   "default": "critical",
    "fieldname": "risk_ceiling",
    "fieldtype": "Select",
    "idx": 54,
