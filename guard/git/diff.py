@@ -71,6 +71,20 @@ class FileDiff:
 					return True
 		return False
 
+	def touches_old(self, start: int, end: int, margin: int = 0) -> bool:
+		"""True when this diff removes or replaces lines of the old side inside the range."""
+		low, high = start - margin, end + margin
+		for hunk in self.hunks:
+			if hunk.old_start > high or hunk.old_start + max(hunk.old_count, 1) - 1 < low:
+				continue
+			for line in hunk.lines:
+				if line.kind == "-" and line.old_no and low <= line.old_no <= high:
+					return True
+			# a pure insertion inside the range also changes it
+			if any(line.kind == "+" for line in hunk.lines) and low <= hunk.old_start <= high:
+				return True
+		return False
+
 	def annotated(self) -> str:
 		"""The diff with head line numbers, for the model."""
 		out = [f"### {self.path} ({self.status})"]

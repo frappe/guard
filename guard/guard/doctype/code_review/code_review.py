@@ -13,6 +13,7 @@ class CodeReview(Document):
 	if TYPE_CHECKING:
 		from frappe.types import DF
 
+		attempt: DF.Int
 		base_sha: DF.Data | None
 		body: DF.LongText | None
 		branch: DF.Data | None
@@ -43,6 +44,7 @@ class CodeReview(Document):
 		repository: DF.Link | None
 		requested_by: DF.Data | None
 		requested_tier: DF.Literal["", "base", "plus", "apex", "auto"]
+		retry_at: DF.Datetime | None
 		review_number: DF.Int
 		risk_level: DF.Literal["", "low", "medium", "high", "critical"]
 		risk_reason: DF.SmallText | None

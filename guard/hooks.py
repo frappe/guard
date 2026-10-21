@@ -24,3 +24,11 @@ add_to_apps_screen = [
 before_install = "guard.install.before_install"
 after_install = "guard.install.after_install"
 after_migrate = "guard.install.after_migrate"
+
+scheduler_events = {
+	"cron": {
+		"* * * * *": ["guard.review.jobs.resume_waiting"],
+		"*/15 * * * *": ["guard.learning.addressed.poll_reactions"],
+	},
+	"daily": ["guard.webhooks.endpoint.cleanup_deliveries"],
+}

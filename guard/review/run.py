@@ -91,5 +91,11 @@ class ReviewRun:
 		return [f.path for f in self.files]
 
 	@property
+	def cfg(self) -> PullRequestConfig:
+		if self.config is None:
+			raise ValueError("the review has no resolved config")
+		return self.config
+
+	@property
 	def settings(self) -> dict[str, Any]:
 		return self.config.settings if self.config else {}

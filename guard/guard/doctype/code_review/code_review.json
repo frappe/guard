@@ -51,6 +51,8 @@
   "duration",
   "job_id",
   "cancel_requested",
+  "attempt",
+  "retry_at",
   "data_section",
   "important_files",
   "context_used",
@@ -352,52 +354,66 @@
    "label": "Cancel Requested"
   },
   {
+   "fieldname": "attempt",
+   "fieldtype": "Int",
+   "idx": 46,
+   "label": "Attempt",
+   "read_only": 1
+  },
+  {
+   "fieldname": "retry_at",
+   "fieldtype": "Datetime",
+   "idx": 47,
+   "label": "Retry At",
+   "read_only": 1
+  },
+  {
    "collapsible": 1,
    "fieldname": "data_section",
    "fieldtype": "Section Break",
-   "idx": 46,
+   "idx": 48,
    "label": "Data"
   },
   {
    "fieldname": "important_files",
    "fieldtype": "JSON",
-   "idx": 47,
+   "idx": 49,
    "label": "Important Files"
   },
   {
    "fieldname": "context_used",
    "fieldtype": "JSON",
-   "idx": 48,
+   "idx": 50,
    "label": "Context Used"
   },
   {
    "fieldname": "changed_files",
    "fieldtype": "JSON",
-   "idx": 49,
+   "idx": 51,
    "label": "Changed Files"
   },
   {
    "fieldname": "config_snapshot",
    "fieldtype": "JSON",
-   "idx": 50,
+   "idx": 52,
    "label": "Config Snapshot"
   },
   {
    "fieldname": "cli_payload",
    "fieldtype": "JSON",
-   "idx": 51,
+   "idx": 53,
    "label": "Cli Payload"
   },
   {
    "fieldname": "body",
    "fieldtype": "Long Text",
-   "idx": 52,
+   "idx": 54,
    "label": "Body"
   },
   {
    "fieldname": "error",
    "fieldtype": "Long Text",
-   "idx": 53,
+   "idx": 55,
    "label": "Error"
   }
  ],
