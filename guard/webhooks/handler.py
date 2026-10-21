@@ -62,6 +62,15 @@ def _push(repository: str, event: WebhookEvent) -> bool:
 	from guard.indexing.jobs import enqueue_index
 
 	enqueue_index(repository)
+	if db.value("Code Repository", repository, "kb_status") == "Ready":
+		frappe.enqueue(
+			"guard.knowledge.builder.on_push",
+			queue="long",
+			enqueue_after_commit=True,
+			repository=repository,
+			before=event.before,
+			after=event.after,
+		)
 	return True
 
 

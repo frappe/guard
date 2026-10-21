@@ -29,6 +29,8 @@ scheduler_events = {
 	"cron": {
 		"* * * * *": ["guard.review.jobs.resume_waiting"],
 		"*/15 * * * *": ["guard.learning.addressed.poll_reactions"],
+		"0 */6 * * *": ["guard.knowledge.builder.sync_stale"],
 	},
-	"daily": ["guard.webhooks.endpoint.cleanup_deliveries"],
+	"daily": ["guard.webhooks.endpoint.cleanup_deliveries", "guard.learning.suggestions.update_rule_metrics"],
+	"weekly": ["guard.learning.suggestions.weekly_suggestions"],
 }

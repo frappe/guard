@@ -7,11 +7,14 @@ from guard.config.resolver import PullRequestConfig
 from guard.graph.overlay import BlastRadius, CallSite, ChangedEntity
 from guard.graph.queries import ChunkHit, CodeGraph, Link
 from guard.integrations.tickets import Ticket
+from guard.knowledge import store as kb_store
 from guard.learning.memories import for_paths as memories_for_paths
+from guard.review import crossrepo
 from guard.review.prompt import ContextFile, ContextPack, Question, context_file
 from guard.review.rule_files import collect as collect_rule_files
 from guard.review.run import Lister, Reader
 from guard.review.spans import ContextSpan, symbol_span
+from guard.utils import db
 
 MAX_CONTEXT_FILES = 40
 MAX_FILE_LINES = 800
@@ -62,6 +65,7 @@ def build(
 	tickets: list[Ticket] | None = None,
 	full_name: str | None = None,
 	team: str | None = None,
+	repository: str | None = None,
 ) -> BuiltContext:
 	pack = ContextPack()
 	spans: dict[str, list[ContextSpan]] = {}
@@ -77,6 +81,24 @@ def build(
 	for memory in memories_for_paths(full_name, team, paths):
 		sources.append(SourceNote("memory", f"{memory.get('title') or 'Memory'}: {memory.get('content')}"))
 
+	if repository:
+		for document in kb_store.documents_for_paths(repository, paths):
+			sources.append(
+				SourceNote(
+					"knowledge",
+					f"Knowledge base {document['path']}:\n{(document.get('content') or '')[:4000]}",
+				)
+			)
+		provider = db.value("Code Repository", repository, "code_provider")
+		others = crossrepo.related(repository, str(provider or ""), config.repos)
+		crossrepo.ensure_indexed(others)
+		names = [e.name for e in changed if e.contract_changed or e.status == "deleted"][:10]
+		for line in crossrepo.definitions_elsewhere(others, names):
+			sources.append(SourceNote("crossrepo", f"Other repository: {line}"))
+	for file_ref in _config_files(config):
+		f = context_file(read, file_ref[0], f"team context file: {file_ref[1]}", limit=budget)
+		if f:
+			pack.files.append(f)
 	for path, reasons in impacted_files(changed).items():
 		if path in paths:
 			continue
@@ -95,6 +117,14 @@ def build(
 	pack.files = pack.files[:MAX_CONTEXT_FILES]
 	pack.notes = [n.text for n in sources]
 	return BuiltContext(pack, spans, sources)
+
+
+def _config_files(config: PullRequestConfig) -> list[tuple[str, str]]:
+	seen: dict[str, str] = {}
+	for file_config in config.files.values():
+		for ref in file_config.files:
+			seen.setdefault(ref.path, ref.description or ref.source)
+	return list(seen.items())[:10]
 
 
 def impacted_files(changed: list[ChangedEntity]) -> dict[str, list[str]]:
