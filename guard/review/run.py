@@ -1,0 +1,95 @@
+"""The state that the stages of one review share."""
+
+from collections.abc import Callable
+from dataclasses import dataclass, field
+from typing import Any
+
+from guard.config.resolver import PullRequestConfig
+from guard.git.diff import FileDiff
+from guard.git.store import Commit
+from guard.graph.overlay import BlastRadius, ChangedEntity
+from guard.graph.queries import CodeGraph
+from guard.llm.types import Usage
+from guard.providers.base import ProviderAdapter
+from guard.review.findings import Finding
+
+Reader = Callable[[str], str | None]
+Lister = Callable[[str], list[tuple[str, str]]]
+
+
+@dataclass
+class Verdict:
+	summary: str = ""
+	confidence_score: int = 0
+	confidence_reason: str = ""
+	risk_level: str = "medium"
+	risk_reason: str = ""
+	diagram_type: str = "none"
+	diagram: str = ""
+	important_files: list[dict[str, str]] = field(default_factory=list)
+
+	@classmethod
+	def from_arguments(cls, args: dict[str, Any]) -> "Verdict":
+		score = args.get("confidence_score")
+		return cls(
+			summary=str(args.get("summary") or "").strip(),
+			confidence_score=min(max(int(score) if isinstance(score, int | float) else 3, 0), 5),
+			confidence_reason=str(args.get("confidence_reason") or "").strip(),
+			risk_level=_choice(args.get("risk_level"), ("low", "medium", "high", "critical"), "medium"),
+			risk_reason=str(args.get("risk_reason") or "").strip(),
+			diagram_type=_choice(args.get("diagram_type"), ("sequence", "er", "class", "flow"), "none"),
+			diagram=str(args.get("diagram") or "").strip(),
+			important_files=[
+				f for f in args.get("important_files") or [] if isinstance(f, dict) and f.get("path")
+			][:15],
+		)
+
+
+def _choice(value: Any, allowed: tuple[str, ...], default: str) -> str:
+	return value if isinstance(value, str) and value in allowed else default
+
+
+@dataclass
+class ReviewRun:
+	review: Any
+	repository: str | None
+	full_name: str
+	head: Reader
+	base: Reader
+	list_dir: Lister
+	head_sha: str
+	base_sha: str
+	title: str = ""
+	description: str = ""
+	author: str = ""
+	labels: list[str] = field(default_factory=list)
+	base_branch: str = ""
+	head_branch: str = ""
+	pr: Any = None
+	adapter: ProviderAdapter | None = None
+	all_files: list[FileDiff] = field(default_factory=list)
+	files: list[FileDiff] = field(default_factory=list)
+	config: PullRequestConfig | None = None
+	commits: list[Commit] = field(default_factory=list)
+	graph: CodeGraph | None = None
+	changed: list[ChangedEntity] = field(default_factory=list)
+	blast: BlastRadius | None = None
+	tier: str = "base"
+	instructions: str = ""
+	frappe_app: bool = False
+	usage: Usage = field(default_factory=Usage)
+	findings: list[Finding] = field(default_factory=list)
+	verdict: Verdict = field(default_factory=Verdict)
+	context_used: list[dict[str, str]] = field(default_factory=list)
+	notes: list[str] = field(default_factory=list)  # problems to show in the summary
+
+	def file(self, path: str) -> FileDiff | None:
+		return next((f for f in self.files if f.path == path), None)
+
+	@property
+	def paths(self) -> list[str]:
+		return [f.path for f in self.files]
+
+	@property
+	def settings(self) -> dict[str, Any]:
+		return self.config.settings if self.config else {}

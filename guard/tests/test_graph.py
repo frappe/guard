@@ -157,7 +157,13 @@ class TestGraph(IntegrationTestCase):
 		store = store_for(self.repository)
 		store.fetch_sha(head, str(self.repo.path))
 		files = parse_diff(store.diff(base, head))
-		overlay = PullRequestGraph(self.graph, store, base, head, files, frappe_app=True)
+		overlay = PullRequestGraph(
+			self.graph,
+			lambda path: store.show(head, path),
+			lambda path: store.show(base, path),
+			files,
+			frappe_app=True,
+		)
 		changed = {c.qualified_name: c for c in overlay.build()}
 		entity = changed["app.models.update_user_email"]
 		self.assertTrue(entity.contract_changed)

@@ -5,10 +5,10 @@ head in memory, finds the changed entities, and reads their callers from the bas
 """
 
 import re
+from collections.abc import Callable
 from dataclasses import dataclass, field
 
 from guard.git.diff import FileDiff
-from guard.git.store import GitStore
 from guard.graph.queries import CodeGraph, Entity, Link
 from guard.indexing import frappe_plugin
 from guard.indexing.parser import ParsedEntity, ParsedFile, parse_file
@@ -74,20 +74,23 @@ class BlastRadius:
 		return text
 
 
+Reader = Callable[[str], str | None]
+
+
 class PullRequestGraph:
+	"""`head` and `base` read a file at the head and at the merge base."""
+
 	def __init__(
 		self,
 		graph: CodeGraph | None,
-		store: GitStore,
-		base_sha: str,
-		head_sha: str,
+		head: Reader,
+		base: Reader,
 		files: list[FileDiff],
 		frappe_app: bool = False,
 	):
 		self.graph = graph
-		self.store = store
-		self.base_sha = base_sha
-		self.head_sha = head_sha
+		self.head = head
+		self.base = base
 		self.files = [f for f in files if not f.is_binary]
 		self.by_path = {f.path: f for f in self.files}
 		self.by_old_path = {f.old_path: f for f in self.files}
@@ -100,7 +103,7 @@ class PullRequestGraph:
 			if diff.status == "deleted":
 				changed += self._deleted_file(diff)
 				continue
-			source = self.store.show(self.head_sha, diff.path)
+			source = self.head(diff.path)
 			if source is None:
 				continue
 			parsed = parse_file(diff.path, source)
@@ -237,7 +240,7 @@ class PullRequestGraph:
 
 	def _base_lines(self, path: str, start: int, end: int, number: bool = False) -> str:
 		if path not in self._base_sources:
-			self._base_sources[path] = (self.store.show(self.base_sha, path) or "").splitlines()
+			self._base_sources[path] = (self.base(path) or "").splitlines()
 		lines = self._base_sources[path]
 		start = max(start, 1)
 		chosen = lines[start - 1 : max(end, start)]

@@ -27,7 +27,7 @@ An adapter raises `UnsupportedAction` for an action that the provider does not h
 
 1. The admin creates a GitHub App with these permissions: contents read, pull requests write, issues write, checks write, commit statuses write, members read, metadata read.
 2. Events: pull request, pull request review, pull request review comment, issue comment, push, check run, installation, installation repositories.
-3. The webhook URL is `<site>/api/method/guard.webhooks.endpoint.github`.
+3. The webhook URL is `<site>/api/method/guard.webhooks.endpoint.github_webhook?provider=<Code Provider>`.
 4. The admin stores the app id, the slug, the private key and the webhook secret on the Code Provider.
 5. Guard signs a JWT with the private key and gets one installation token for each team. It caches each token for 50 minutes.
 6. An installation event creates the Guard Team and its repositories. New repositories get `reviews_enabled` from `auto_enable_new_repositories`.
@@ -36,7 +36,7 @@ An adapter raises `UnsupportedAction` for an action that the provider does not h
 
 | URL | Signature check |
 | - | - |
-| `/api/method/guard.webhooks.endpoint.github` | `X-Hub-Signature-256` HMAC SHA-256 |
+| `/api/method/guard.webhooks.endpoint.github_webhook?provider=<Code Provider>` | `X-Hub-Signature-256` HMAC SHA-256 |
 
 The endpoint finds the Code Provider from the `provider` query parameter, checks the signature, stores a Webhook Delivery (unique delivery id), queues the handler, and returns `200`. A repeated delivery id is ignored.
 

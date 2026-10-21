@@ -78,3 +78,7 @@ def commit() -> None:
 def rollback() -> None:
 	if not frappe.flags.in_test:
 		frappe.db.rollback()
+
+
+def set_values(doctype: str, name: str, values: dict[str, Any]) -> None:
+	frappe.db.set_value(doctype, name, cast(Any, values))
