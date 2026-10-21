@@ -76,7 +76,7 @@ def resolve_repository(
 	return ensure_repository(provider, info, team)
 
 
-def discover_installations(provider: str) -> None:
+def discover_installations(provider: str, team: str, refresh: bool = False) -> None:
 	"""App mode: create a team for each installation, so a sync works even when
 	the installation webhook did not arrive."""
 	if db.value("Code Provider", provider, "auth_mode") != "App":

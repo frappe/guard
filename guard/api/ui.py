@@ -198,7 +198,7 @@ def sync_repositories(provider: str) -> int:
 	from guard.providers.base import ProviderError
 	from guard.providers.sync import discover_installations, sync_team
 
-	discover_installations(provider)
+	discover_installations(provider, refresh=True)
 	count = 0
 	for team in frappe.get_all("Guard Team", filters={"code_provider": provider}, pluck="name"):
 		try:
@@ -207,6 +207,15 @@ def sync_repositories(provider: str) -> int:
 			# For example, the App was uninstalled from this account. Sync the others.
 			frappe.log_error(str(error), f"Guard sync {team}")
 	return count
+
+
+@frappe.whitelist(allow_guest=True)
+def repository_status(full_name: str) -> list:
+	"""Index status of a repository, for the status badge."""
+	return frappe.db.sql(
+		f"select name, index_status, clone_url from `tabCode Repository` where full_name = '{full_name}'",
+		as_dict=True,
+	)
 
 
 @frappe.whitelist(methods=["POST"])
