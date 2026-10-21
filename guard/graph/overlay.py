@@ -40,6 +40,8 @@ class ChangedEntity:
 	base_body: str = ""
 	callers: list[Link] = field(default_factory=list)
 	not_updated: list[Link] = field(default_factory=list)
+	# Callers that surely break: the entity is gone, or the call does not fit.
+	broken: list[Link] = field(default_factory=list)
 	at_risk: list[CallSite] = field(default_factory=list)
 	callees: list[str] = field(default_factory=list)
 	siblings: list[Entity] = field(default_factory=list)
@@ -216,9 +218,9 @@ class PullRequestGraph:
 			entity.callees = [link.name for link in self.graph.callees(entity.base)][:40]
 			entity.siblings = self.graph.siblings(entity.base, limit=4)
 			entity.tests = sorted({link.path for link in _test_links(self.graph, entity.base)})
-		entity.not_updated = [
-			link for link in entity.callers if not self._updated(link) and self._breaks(entity, link)
-		]
+		verdicts = {id(link): self._fit(entity, link) for link in entity.callers if not self._updated(link)}
+		entity.not_updated = [link for link in entity.callers if verdicts.get(id(link), True) is not True]
+		entity.broken = [link for link in entity.callers if verdicts.get(id(link)) is False]
 		if entity.contract_changed:
 			entity.at_risk = [
 				CallSite(
@@ -230,15 +232,15 @@ class PullRequestGraph:
 				for link in entity.not_updated[:12]
 			]
 
-	def _breaks(self, entity: ChangedEntity, link: Link) -> bool:
-		"""True when the call may not fit the head signature. Unknown counts as a break."""
+	def _fit(self, entity: ChangedEntity, link: Link) -> bool | None:
+		"""Does an unchanged call fit the head? True fits, False breaks, None cannot tell."""
 		if entity.status == "deleted":
-			return True
-		if not entity.contract_changed:
 			return False
+		if not entity.contract_changed:
+			return True
 		params = calls.parse_params(entity.head_signature)
 		call = calls.parse_call(self._base_source(link.path), link.line, entity.name) if params else None
-		return not (params and call and calls.fits(params, call))
+		return calls.fits(params, call) if params and call else None
 
 	def _updated(self, link: Link) -> bool:
 		"""True when the pull request changes the line of the call."""

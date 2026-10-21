@@ -105,6 +105,11 @@ class LLMClient:
 		return OpenAIDialect(config.url, config.api_key, config.timeout)
 
 
+def _position(text: str, char: str) -> int:
+	index = text.find(char)
+	return index if index != -1 else len(text)
+
+
 def parse_json(text: str) -> Any:
 	"""Find and parse the first JSON object or array in model output."""
 	if not text:
@@ -113,7 +118,9 @@ def parse_json(text: str) -> Any:
 	candidates = [fenced.group(1)] if fenced else []
 	candidates.append(text)
 	for candidate in candidates:
-		for opener, closer in (("{", "}"), ("[", "]")):
+		# The bracket that opens first is the outer value: `[{...}]` is a list, not its item.
+		pairs = sorted((("{", "}"), ("[", "]")), key=lambda pair: _position(candidate, pair[0]))
+		for opener, closer in pairs:
 			start, end = candidate.find(opener), candidate.rfind(closer)
 			if start == -1 or end <= start:
 				continue

@@ -116,3 +116,12 @@ class TestDialects(UnitTestCase):
 		)
 		self.assertEqual(result.tool_calls[0].arguments, {"pattern": "x"})
 		self.assertEqual(result.usage.output_tokens, 4)
+
+
+class TestParseJsonOuter(UnitTestCase):
+	def test_outer_value_wins(self):
+		from guard.llm.client import parse_json
+
+		self.assertEqual(parse_json('[{"index": 0}]'), [{"index": 0}])
+		self.assertEqual(parse_json('Answer: {"items": [1, 2]}'), {"items": [1, 2]})
+		self.assertEqual(parse_json('```json\n[{"a": 1},]\n```'), [{"a": 1}])

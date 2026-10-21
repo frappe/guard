@@ -142,6 +142,8 @@ The system prompt tells the agent to:
 
 For plus and apex, Guard sends each finding with its code and context to the tier model. The model answers `valid`, a corrected severity and a confidence. Guard drops findings that are not valid. Base reviews verify only P0 findings.
 
+The verifier cannot lower a P0 finding when the graph proves a break at it: the finding is on a changed entity, or on a call site, where a caller surely breaks. A caller surely breaks when the entity was deleted, or when the call does not fit the new signature.
+
 ## Stage 7: Filter
 
 In this order:

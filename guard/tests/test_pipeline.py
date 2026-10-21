@@ -1,10 +1,10 @@
 from contextlib import ExitStack
-from unittest.mock import patch
+from unittest.mock import PropertyMock, patch
 
 import frappe
 from frappe.tests import IntegrationTestCase
 
-from guard.llm.client import use_responder
+from guard.llm.client import LLMClient, use_responder
 from guard.providers.base import ProviderComment, PullRequestInfo
 from guard.review import pull_requests, trigger
 from guard.tests.fakes import FakeAdapter, scripted
@@ -199,6 +199,36 @@ class TestPipeline(IntegrationTestCase):
 		self.assertEqual(self.row(second)["posted_count"], 0)
 		# Only a dropped P2 was left, so 4 becomes 5.
 		self.assertEqual(self.row(second)["confidence_score"], 5)
+
+	def test_verifier_keeps_p0_for_a_proven_break(self):
+		finding = {
+			"path": "app/models.py",
+			"start_line": 5,
+			"severity": "P0",
+			"comment_type": "logic",
+			"title": "change_email now raises TypeError",
+			"body": "x",
+			"confidence": 0.9,
+		}
+		lower = '[{"index": 0, "valid": true, "severity": "P1", "confidence": 0.8}]'
+		# The test site has no gateway: put the clients online so the verifier runs.
+		with (
+			patch.object(LLMClient, "online", new_callable=PropertyMock, return_value=True),
+			use_responder(
+				scripted(
+					[
+						[
+							("report_finding", finding),
+							("submit_review", {"summary": "s", "confidence_score": 2}),
+						]
+					],
+					{"verify": lower},
+				)
+			),
+		):
+			trigger.consider(self.pr, "open")
+		severities = frappe.get_all("Review Finding", filters={"pull_request": self.pr}, pluck="severity")
+		self.assertEqual(severities, ["P0"])
 
 	def test_gate_skips_drafts_and_disabled_repositories(self):
 		frappe.db.set_value("Pull Request", self.pr, "is_draft", 1)

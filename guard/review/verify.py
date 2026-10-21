@@ -30,10 +30,30 @@ def verify(run: ReviewRun) -> None:
 		if answer.get("valid") is False:
 			finding.drop("Dismissed", f"verifier: {str(answer.get('reason') or 'not valid')[:200]}")
 			continue
-		if answer.get("severity") in SEVERITIES:
+		if answer.get("severity") in SEVERITIES and not (
+			finding.severity == "P0" and proven_break(run, finding)
+		):
 			finding.severity = answer["severity"]
 		if isinstance(answer.get("confidence"), int | float):
 			finding.confidence = min(max(float(answer["confidence"]), 0.0), 1.0)
+
+
+def proven_break(run: ReviewRun, finding: Finding) -> bool:
+	"""The graph shows that the code at the finding breaks a caller, so it stays P0."""
+	for entity in run.changed:
+		if not entity.broken:
+			continue
+		if (
+			finding.path == entity.path
+			and entity.head_start <= finding.end_line
+			and finding.start_line <= max(entity.head_end, entity.head_start)
+		):
+			return True
+		if any(
+			link.path == finding.path and abs(link.line - finding.start_line) <= 2 for link in entity.broken
+		):
+			return True
+	return False
 
 
 def _item(run: ReviewRun, index: int, finding: Finding) -> str:
