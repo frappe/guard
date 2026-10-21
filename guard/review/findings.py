@@ -215,6 +215,18 @@ def _float(value: Any, default: float) -> float:
 		return default
 
 
+def score_floor(findings: list[Finding], score: int) -> int:
+	"""Only P2 points that are not posted: the change is ready, so 4 becomes 5."""
+	if (
+		score == 4
+		and findings
+		and not any(f.kept for f in findings)
+		and all(f.severity == "P2" for f in findings)
+	):
+		return 5
+	return score
+
+
 def score_cap(findings: list[Finding]) -> int:
 	"""The highest confidence score the posted findings allow."""
 	posted = [f for f in findings if f.kept]

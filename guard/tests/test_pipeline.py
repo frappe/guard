@@ -195,6 +195,8 @@ class TestPipeline(IntegrationTestCase):
 		):
 			second = trigger.consider(self.pr, "open", manual=True, requested_by="ada")
 		self.assertEqual(self.row(second)["posted_count"], 0)
+		# Only a dropped P2 was left, so 4 becomes 5.
+		self.assertEqual(self.row(second)["confidence_score"], 5)
 
 	def test_gate_skips_drafts_and_disabled_repositories(self):
 		frappe.db.set_value("Pull Request", self.pr, "is_draft", 1)

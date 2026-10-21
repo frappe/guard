@@ -21,7 +21,7 @@ from guard.llm.types import GatewayBusy
 from guard.providers import adapter_for_repository
 from guard.review import checks, context, prompts, sandbox, stale, verify
 from guard.review.agent import Agent
-from guard.review.findings import FindingFilter, score_cap
+from guard.review.findings import FindingFilter, score_cap, score_floor
 from guard.review.publish import Publisher
 from guard.review.run import ReviewRun, Verdict
 from guard.review.task import compose
@@ -130,7 +130,8 @@ class ReviewPipeline:
 			graph_diagram = impact_diagram(run.changed)
 			if graph_diagram and any(e.callers for e in run.changed):
 				run.verdict.diagram, run.verdict.diagram_type = graph_diagram, "flow"
-		run.verdict.confidence_score = min(run.verdict.confidence_score, score_cap(run.findings))
+		score = score_floor(run.findings, run.verdict.confidence_score)
+		run.verdict.confidence_score = min(score, score_cap(run.findings))
 		self.stage("publish")
 		names = publisher.save_findings()
 		number = self.review_number()
