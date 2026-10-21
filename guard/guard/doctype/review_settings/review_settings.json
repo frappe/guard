@@ -477,13 +477,14 @@
    "export": 1,
    "read": 1,
    "report": 1,
-   "role": "Guard Member"
+   "role": "Guard Viewer"
   },
   {
    "export": 1,
    "read": 1,
    "report": 1,
-   "role": "Guard Viewer"
+   "role": "Guard Member",
+   "write": 1
   }
  ],
  "sort_field": "creation",

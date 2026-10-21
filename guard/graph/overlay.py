@@ -273,3 +273,43 @@ def _renamed(qualified: str, diff: FileDiff, parsed: ParsedFile) -> str:
 
 def _normalize(signature: str) -> str:
 	return re.sub(r"\s+", " ", signature or "").strip()
+
+
+def impact_diagram(changed: list[ChangedEntity], limit: int = 12) -> str:
+	"""A Mermaid graph of changed entities and their callers, from the graph alone."""
+	lines = ["flowchart LR"]
+	ids: dict[str, str] = {}
+
+	def node(label: str, style: str = "") -> str:
+		if label not in ids:
+			ids[label] = f"n{len(ids)}"
+			text = label.replace('"', "'")[:60]
+			lines.append(f'  {ids[label]}["{text}"]{style}')
+		return ids[label]
+
+	for entity in changed[:limit]:
+		if entity.kind not in ("function", "method", "class", "doctype"):
+			continue
+		target = node(
+			entity.qualified_name.rsplit(".", 2)[-1]
+			if "." in entity.qualified_name
+			else entity.qualified_name,
+			":::changed",
+		)
+		pending = {link.path + str(link.line) for link in entity.not_updated}
+		for link in entity.callers[:8]:
+			caller = (
+				link.entity.qualified_name.rsplit(".", 1)[-1]
+				if link.entity
+				else f"{link.path.rsplit('/', 1)[-1]}:{link.line}"
+			)
+			edge = (
+				"-.->|not updated|"
+				if (link.path + str(link.line)) in pending and entity.contract_changed
+				else "-->"
+			)
+			lines.append(f"  {node(caller)} {edge} {target}")
+	if len(lines) == 1:
+		return ""
+	lines.append("  classDef changed fill:#fff3cd,stroke:#d39e00")
+	return "\n".join(lines)

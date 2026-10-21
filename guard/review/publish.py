@@ -27,7 +27,10 @@ class Publisher:
 	def save_findings(self) -> dict[int, str]:
 		"""One Review Finding for every finding, kept or not. Returns id(finding) -> record name."""
 		names: dict[int, str] = {}
+		rules = self._rule_contexts()
 		for finding in self.run.findings:
+			if finding.rule_id and not finding.context_name:
+				finding.context_name = rules.get(finding.rule_id)
 			doc = frappe.get_doc(
 				{
 					"doctype": "Review Finding",
@@ -62,6 +65,16 @@ class Publisher:
 		return names
 
 	# ------------------------------------------------------------ github
+
+	def _rule_contexts(self) -> dict[str, str]:
+		"""rule_id -> Custom Context name, for dashboard rules in this review."""
+		mapping: dict[str, str] = {}
+		if self.run.config:
+			for file_config in self.run.config.files.values():
+				for rule in file_config.rules:
+					if rule.id and rule.context_name:
+						mapping[rule.id] = rule.context_name
+		return mapping
 
 	def publish(self, names: dict[int, str], review_number: int) -> None:
 		if not self.adapter or self.run.pr is None:

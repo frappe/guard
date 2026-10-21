@@ -187,3 +187,25 @@ class TestPipeline(IntegrationTestCase):
 			with patch("guard.llm.client.LLMClient.online", new=True):
 				threads.handle(self.pr, comment)
 		self.assertEqual(self.adapter.named("reply"), ["It adds `notify` to `update_user_email`."])
+
+	def test_polling_opens_and_syncs(self):
+		from guard.webhooks import polling
+
+		frappe.db.set_single_value("Guard Settings", "polling_enabled", 1)
+		frappe.delete_doc("Pull Request", self.pr, force=True)
+		self.adapter.list_open_pull_requests = lambda repo: [self.info]
+		self.adapter.list_comments = lambda repo, number: []
+		with (
+			patch("guard.webhooks.polling.adapter_for_repository", return_value=self.adapter),
+			use_responder(scripted([])),
+		):
+			polling.poll_repository(self.repository)
+		pr = db.value("Pull Request", {"repository": self.repository, "number": 7}, "name")
+		self.assertTrue(pr)
+		self.assertEqual(frappe.db.count("Code Review", {"pull_request": pr, "trigger": "open"}), 1)
+		with (
+			patch("guard.webhooks.polling.adapter_for_repository", return_value=self.adapter),
+			use_responder(scripted([])),
+		):
+			polling.poll_repository(self.repository)
+		self.assertEqual(frappe.db.count("Code Review", {"pull_request": pr}), 1)

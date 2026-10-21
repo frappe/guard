@@ -11,7 +11,7 @@ from guard.config import gate
 from guard.config.resolver import ConfigResolver
 from guard.git.diff import parse_diff
 from guard.git.repository import store_for
-from guard.graph.overlay import PullRequestGraph
+from guard.graph.overlay import PullRequestGraph, impact_diagram
 from guard.graph.queries import CodeGraph
 from guard.indexing import frappe_plugin
 from guard.indexing.jobs import ensure_fresh
@@ -125,6 +125,10 @@ class ReviewPipeline:
 		suppression.suppress(run.findings, run.repository)
 		if not run.verdict.submitted:
 			run.verdict = graph_verdict(run)
+		if not run.verdict.diagram or run.verdict.diagram_type == "none":
+			graph_diagram = impact_diagram(run.changed)
+			if graph_diagram and any(e.callers for e in run.changed):
+				run.verdict.diagram, run.verdict.diagram_type = graph_diagram, "flow"
 		run.verdict.confidence_score = min(run.verdict.confidence_score, score_cap(run.findings))
 		self.stage("publish")
 		names = publisher.save_findings()
@@ -132,6 +136,7 @@ class ReviewPipeline:
 		publisher.publish(names, number)
 		publisher.finish()
 		self.stage("after")
+		self.mark_outdated(run)
 		suppression.remember(names, run.findings, run.repository)
 		self.after(run, number)
 
@@ -332,6 +337,25 @@ class ReviewPipeline:
 	def check_cancel(self) -> None:
 		if db.value("Code Review", str(self.review.name), "cancel_requested"):
 			raise Cancelled
+
+	def mark_outdated(self, run: ReviewRun) -> None:
+		"""Open findings of earlier reviews whose file or lines this head no longer has."""
+		if not self.review.pull_request:
+			return
+		for row in db.dict_rows(
+			"""SELECT name, path, start_line, end_line FROM `tabReview Finding`
+			WHERE pull_request = %s AND status = 'Open' AND code_review != %s""",
+			(self.review.pull_request, self.review.name),
+		):
+			diff = next((f for f in run.all_files if f.path == row["path"]), None)
+			source = run.head(row["path"])
+			gone = source is None or (diff is not None and diff.status == "deleted")
+			if gone or (source is not None and len(source.splitlines()) < (row["start_line"] or 0)):
+				db.set_values(
+					"Review Finding",
+					row["name"],
+					{"status": "Outdated", "status_reason": "the lines are gone at the new head"},
+				)
 
 	def existing_findings(self) -> list[dict[str, Any]]:
 		if not self.review.pull_request:

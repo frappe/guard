@@ -2,7 +2,7 @@
 
 import re
 
-from guard.review import links
+from guard.review import links, tips
 from guard.review.findings import MARKS, Finding
 from guard.review.run import ReviewRun
 
@@ -64,6 +64,9 @@ def summary(run: ReviewRun, posted: list[Finding], review_number: int, finding_u
 				"\n".join(f"- {n}" for n in run.notes),
 			)
 		)
+	tip = tips.in_summary(review_number)
+	if tip:
+		parts.append(tip)
 	if not run.settings.get("hide_footer"):
 		parts.append(_footer(run, review_number))
 	return "\n\n".join(p for p in parts if p)

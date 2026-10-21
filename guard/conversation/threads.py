@@ -14,7 +14,7 @@ from guard.learning import feedback
 from guard.llm.client import LLMClient
 from guard.providers import adapter_for_repository
 from guard.providers.base import ProviderComment, ProviderError
-from guard.review import permissions, trigger
+from guard.review import permissions, tips, trigger
 from guard.review.prompts import data
 from guard.review.run import ReviewRun
 from guard.utils import db
@@ -118,6 +118,9 @@ def _reply(pull_request: str, comment: ProviderComment, question: str, finding: 
 	run = run_for(pull_request)
 	thread = _thread_text(pull_request, comment, finding)
 	result = answerer.answer(run, question, thread)
+	tip = tips.after_reply(str(run.repository), comment.author) if finding else ""
+	if tip:
+		result.text = f"{result.text}\n\n{tip}"
 	if run.adapter and result.text:
 		try:
 			run.adapter.reply_to_comment(run.full_name, int(run.pr.number), comment, result.text)

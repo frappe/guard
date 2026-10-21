@@ -71,8 +71,13 @@ class Sandbox:
 		self.cleanup()
 
 	def cleanup(self) -> None:
-		"""Delete the work tree. Errors are ignored: a leftover folder is harmless."""
-		shutil.rmtree(self.root, ignore_errors=True)
+		"""Delete the work tree. A leftover folder is harmless, so errors are logged only."""
+		try:
+			shutil.rmtree(self.root)
+		except FileNotFoundError:
+			pass
+		except OSError as error:
+			frappe.log_error(str(error), "Guard sandbox cleanup")
 
 	def prepare(self) -> None:
 		if self.ready:
