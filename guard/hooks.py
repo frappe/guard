@@ -12,6 +12,8 @@ use_json_request_body = True
 export_python_type_annotations = True
 require_type_annotated_api_methods = True
 
+app_logo_url = "/assets/guard/guard.svg"
+
 add_to_apps_screen = [
 	{
 		"name": "guard",
