@@ -108,6 +108,8 @@ These filters apply to automatic reviews. A review that someone asks for skips t
 
 Names and branches take `*`, `**`, `?` and `{a,b}`. Case does not matter. `dependabot[bot]` matches the literal name.
 
+The skip lists (`exclude_authors`, `exclude_branches`, `disabled_labels` and `ignore_keywords`) add up across all levels. A repository cannot remove a skip that Review Settings sets. The other lists replace the value from a higher level.
+
 ### Output
 
 | Key | Default | Meaning |
@@ -185,10 +187,25 @@ You can also click **Re-trigger** in the footer of the summary.
 
 **Review Settings** holds the defaults for all repositories. There is one record for the organisation. A team can have its own record. Clear **Inherit from Organization** to use it.
 
-It has the same settings as the repository files, and also:
+It has the same settings as the repository files. The **Filters** section has one list for each filter, with one value on each line:
+
+| Field | Config key | Example |
+| - | - | - |
+| Skip Authors | `exclude_authors` | `mergify[bot]` |
+| Skip Labels | `disabled_labels` | `skip-review` |
+| Skip Target Branches | `exclude_branches` | `version-14*` |
+| Skip Keywords | `ignore_keywords` | `(backport #` |
+| Only Authors | `include_authors` | |
+| Only Labels | `labels` | |
+| Only Target Branches | `include_branches` | |
+| Ignore Patterns | `ignore_patterns` | `**/*.min.js` |
+
+For example, to skip the backport pull requests that Mergify opens, add `mergify[bot]` to **Skip Authors**. To skip only backports, add `(backport #` to **Skip Keywords**.
+
+Review Settings also has:
 
 - **Risk definitions**: extra text that tells the reviewer what each risk level means for your team.
-- **Filter rules**: rules that select pull requests by conditions, and can set a tier.
+- **Advanced Filter Rules**: rules with conditions, which can also set a tier. Use them only when the lists above are not enough.
 
 Each filter rule has a list of conditions in JSON:
 

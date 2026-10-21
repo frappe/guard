@@ -50,7 +50,7 @@ FILES = {
 	"guard.toml": "strictness = 3",  # ignored: .guard/ wins in the same directory
 	"packages/db/.guard/config.toml": DB,
 	"packages/db/.guard/files.toml": '[[files]]\npath = "schema.sql"\ndescription = "Schema"\nscope = ["queries/**"]\n',
-	"packages/api/guard.toml": 'instructions = "API instructions."\n[sections.summary]\ncollapsible = true\n',
+	"packages/api/guard.toml": 'instructions = "API instructions."\nexclude_authors = ["renovate[bot]"]\n[sections.summary]\ncollapsible = true\n',
 	"packages/bad/.guard/config.toml": "strictness = 9",
 	"packages/broken/guard.toml": "strictness = ",
 }
@@ -112,6 +112,11 @@ class TestResolver(UnitTestCase):
 			config.settings["sections"]["summary"],
 			{"included": True, "collapsible": True, "default_open": False},
 		)
+
+	def test_skip_lists_add_up(self):
+		authors = self.resolver.resolve("packages/api/handler.py").settings["exclude_authors"]
+		self.assertIn("dependabot[bot]", authors)
+		self.assertIn("renovate[bot]", authors)
 
 	def test_errors(self):
 		errors = "\n".join(self.resolver.errors)

@@ -13,7 +13,7 @@ From lowest to highest priority:
 5. Root config: `.guard/` or `guard.toml` at the repository root.
 6. Nested config, from the root down to the directory of the file.
 
-Settings: the closest value wins. Rules, files, notes, instructions and ignore patterns: all levels add up. A config can turn off a dashboard or parent rule by its id with `disabled_rules`.
+Settings: the closest value wins. The skip lists (`exclude_authors`, `exclude_branches`, `disabled_labels`, `ignore_keywords`) are the exception: they add up across levels. Rules, files, notes, instructions and ignore patterns: all levels add up. A config can turn off a dashboard or parent rule by its id with `disabled_rules`.
 
 If `.guard/` and `guard.toml` are in the same directory, Guard reads `.guard/` and ignores `guard.toml`.
 
@@ -163,7 +163,7 @@ scope = ["db/**"]
 
 Walk from the root to the directory of the file. At each level:
 
-- Scalar settings and arrays replace the parent value. Section tables merge key by key.
+- Scalar settings and arrays replace the parent value, except the skip lists, which add to it. Section tables merge key by key.
 - `rules`, `files`, `notes`, `instructions` and `ignore_patterns` add to the list so far.
 - `disabled_rules` removes rules by id from the list so far.
 

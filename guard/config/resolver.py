@@ -15,6 +15,7 @@ from typing import Any
 from guard.config import dashboard
 from guard.config.globs import match_path
 from guard.config.schema import (
+	ADDITIVE,
 	BOOLEANS,
 	DEFAULTS,
 	EVENTS,
@@ -106,6 +107,8 @@ class ConfigResolver:
 				if key == "sections":
 					for name, values in value.items():
 						settings["sections"][name] = {**settings["sections"].get(name, {}), **values}
+				elif key in ADDITIVE:
+					settings[key] = list(dict.fromkeys([*settings[key], *value]))
 				else:
 					settings[key] = value
 				provenance[key] = layer.source

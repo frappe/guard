@@ -237,6 +237,20 @@ class TestPipeline(IntegrationTestCase):
 		frappe.db.set_value("Code Repository", self.repository, "reviews_enabled", 0)
 		self.assertIsNone(trigger.consider(self.pr, "open"))
 
+	def test_skip_authors_from_review_settings(self):
+		settings = frappe.get_doc("Review Settings", "Organization")
+		settings.exclude_authors = "mergify[bot]\nad*"
+		settings.save(ignore_permissions=True)
+		try:
+			self.assertIsNone(trigger.consider(self.pr, "open"))
+			# Skipped authors apply to requested reviews too.
+			self.assertIsNone(trigger.consider(self.pr, "open", manual=True, requested_by="bob"))
+		finally:
+			settings.exclude_authors = ""
+			settings.save(ignore_permissions=True)
+		with use_responder(scripted([[("submit_review", {"summary": "s", "confidence_score": 5})]])):
+			self.assertTrue(trigger.consider(self.pr, "open"))
+
 	def test_auto_approve_clean_low_risk(self):
 		self.repo.git("checkout", "-q", "main")
 		self.repo.commit(

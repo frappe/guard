@@ -34,6 +34,8 @@ LISTS = (
 	"include_keywords",
 	"ignore_keywords",
 )
+# Exclusions add up across levels, so a lower config cannot drop a skip set above it.
+ADDITIVE = ("exclude_authors", "exclude_branches", "disabled_labels", "ignore_keywords")
 KNOWN_KEYS = {
 	"strictness",
 	"comment_types",

@@ -44,6 +44,7 @@ One record for the organization (name `Organization`) and one for each team that
 | `filter_rules` | Table Review Filter Rule | |
 | `ignore_patterns` | Code | `.gitignore` syntax |
 | `instructions` | Long Text | |
+| `exclude_authors`, `disabled_labels`, `exclude_branches`, `ignore_keywords`, `include_authors`, `labels`, `include_branches` | Small Text | One value on each line. Same meaning as the config keys. |
 | `<section>_included`, `<section>_collapsible`, `<section>_open` | Check | For `summary`, `issues_table`, `confidence`, `impact`, `diagram`. |
 | `comments_outside_diff` | Check | |
 | `status_check`, `status_comments`, `update_description`, `update_summary_only`, `fix_with_ai`, `hide_footer` | Check | |

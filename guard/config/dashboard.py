@@ -39,6 +39,22 @@ def layers(repository: str | None, team: str | None = None) -> list[Layer]:
 	return result
 
 
+# Review Settings fields with one value per line, named like the config keys.
+LIST_FIELDS = (
+	"exclude_authors",
+	"disabled_labels",
+	"exclude_branches",
+	"ignore_keywords",
+	"include_authors",
+	"labels",
+	"include_branches",
+)
+
+
+def _lines(value: Any) -> list[str]:
+	return [line.strip() for line in str(value or "").splitlines() if line.strip()]
+
+
 def settings_layer(doc: Any) -> Layer:
 	source = f"dashboard: {doc.name}"
 	types = [name for name in ("logic", "syntax", "style") if doc.get(f"comment_{name}")]
@@ -57,6 +73,7 @@ def settings_layer(doc: Any) -> Layer:
 		"hide_footer": bool(doc.get("hide_footer")),
 		"comments_outside_diff": bool(doc.get("comments_outside_diff")),
 		"include_rule_files": bool(doc.get("include_rule_files")),
+		**{key: _lines(doc.get(key)) for key in LIST_FIELDS},
 		"sections": {
 			name: {
 				"included": bool(doc.get(f"{name}_included")),

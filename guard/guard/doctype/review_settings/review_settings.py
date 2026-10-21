@@ -47,12 +47,18 @@ class ReviewSettings(Document):
 		diagram_collapsible: DF.Check
 		diagram_included: DF.Check
 		diagram_open: DF.Check
+		disabled_labels: DF.SmallText | None
+		exclude_authors: DF.SmallText | None
+		exclude_branches: DF.SmallText | None
 		filter_rules: DF.Table[ReviewFilterRule]
 		fix_with_ai: DF.Check
 		hide_footer: DF.Check
 		ignore_patterns: DF.Code | None
 		include_rule_files: DF.Check
 		inherit_from_organization: DF.Check
+		ignore_keywords: DF.SmallText | None
+		include_authors: DF.SmallText | None
+		include_branches: DF.SmallText | None
 		instructions: DF.LongText | None
 		impact_collapsible: DF.Check
 		impact_included: DF.Check
@@ -62,6 +68,7 @@ class ReviewSettings(Document):
 		issues_table_open: DF.Check
 		review_drafts: DF.Check
 		review_tier: DF.Literal["auto", "base", "plus", "apex"]
+		labels: DF.SmallText | None
 		risk_ceiling: DF.Literal["low", "medium", "high", "critical"]
 		risk_definitions: DF.LongText | None
 		scope: DF.Literal["Organization", "Team"]
