@@ -100,7 +100,7 @@ On a hosted platform, add the app to the bench and install it on the site from t
 4. Click **Test connection**. The result must be "Connected as" and the App slug.
 5. Delete the `.pem` file from your computer. Guard keeps the key encrypted.
 
-The title must be `GitHub`, because the webhook URL uses `provider=GitHub`. If you use a different title, change the webhook URL to match.
+The webhook URL names the Code Provider: `provider=<title>`. The form shows the full URL in **Webhook URL**. Copy it from there into the GitHub App, so the two always match.
 
 ## 5. Install the App on repositories
 
@@ -126,7 +126,12 @@ To add repositories later, change the installation on GitHub. Guard receives the
    - posts a summary comment with a confidence score;
    - sets a check named Guard.
 
-If a delivery has the status Failed, open it to see the error. If no delivery arrives, open the App on GitHub, go to **Advanced**, and look at **Recent Deliveries**.
+If a delivery has the status Failed, open it to see the error. If no delivery arrives, open the App on GitHub, go to **Advanced**, and look at **Recent Deliveries**:
+
+- A 401 response means that the webhook secret on the App and in the Code Provider are different.
+- A 404 or 502 response means that the webhook URL is wrong.
+
+If the installation webhook did not arrive, click **Sync repositories** on the Code Provider. Guard reads the installations from GitHub.
 
 ## Default behavior
 
