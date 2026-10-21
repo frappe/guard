@@ -102,24 +102,29 @@ Job keys stop duplicate work: one review job for each pull request and head comm
 ```text
 guard/
   guard/doctype/        DocTypes (module "Guard") and form scripts
-  guard/page/           desk pages: guard_pull_request (tour, diff, chat), guard_codebase_chat
-  guard/report/         script reports: analytics, bugs caught, my guard
-  guard/workspace/      Guard workspace
-  guard/number_card/, guard/dashboard_chart/
-  api/                  whitelisted methods: ui.py, v2.py, cli.py, analytics.py, public.py
-  cli/                  standalone CLI
-  config/               resolver.py, schema.py, filters.py, globs.py
-  conversation/         mentions.py, threads.py, chat.py, actions.py, tour.py
-  git/                  store.py, diff.py
-  graph/                queries.py, impact.py
-  indexing/             indexer.py, parser.py, languages/, chunker.py, vectors.py
-  integrations/         jira.py, linear.py, context.py
-  knowledge/            builder.py, sync.py
-  learning/             feedback.py, addressed.py, memories.py, suppression.py, suggestions.py
-  llm/                  client.py, openai_dialect.py, anthropic_dialect.py, offline.py, embeddings.py
+  guard/page/           desk pages: guard_pr (list, overview, tour, diff, chat), guard_chat, guard_cli_login
+  guard/report/         script reports: guard_analytics, bugs_caught, my_guard
+  guard/workspace/, guard/number_card/, guard/dashboard_chart/, guard/number_cards.py
+  analytics.py          metrics for reports, number cards and MCP
+  permissions.py        team-scoped permission hooks
+  settings.py           typed Guard Settings access
+  api/                  ui.py (Desk), v2.py (query API), cli.py (CLI), public.py (signed links)
+  cli/                  guard_cli.py, the standalone CLI
+  config/               schema.py, resolver.py, dashboard.py, gate.py, globs.py
+  conversation/         mentions.py, threads.py, answer.py, chat.py, codebase.py, tour.py
+  git/                  store.py, diff.py, repository.py
+  graph/                queries.py, overlay.py (pull request graph, blast radius, impact diagram)
+  indexing/             indexer.py, parser.py, languages.py, symbols.py, resolver.py, frappe_plugin.py,
+                        chunker.py, selection.py, vectors.py, jobs.py
+  integrations/         tickets.py (Jira, Confluence, Linear), flow.py (Flow tools)
+  knowledge/            builder.py, store.py
+  learning/             feedback.py, memory_writer.py, memories.py, addressed.py, suppression.py,
+                        suggestions.py, approve.py
+  llm/                  client.py, openai_dialect.py, anthropic_dialect.py, offline.py, embeddings.py, http.py
   mcp/                  server.py, tools.py
-  providers/            base.py, github.py
-  review/               pipeline.py, context.py, agent.py, tools.py, prompts.py, findings.py,
-                        scoring.py, render.py, publish.py, approve.py, sandbox.py
-  webhooks/             endpoint.py, events.py, github.py, handler.py
+  providers/            base.py, github.py, sync.py
+  review/               pipeline.py, run.py, context.py, task.py, agent.py, prompts.py, findings.py,
+                        checks.py, verify.py, render.py, publish.py, sandbox.py, trigger.py, jobs.py,
+                        cli_review.py, crossrepo.py, rule_files.py, permissions.py, links.py, tips.py
+  webhooks/             endpoint.py, events.py, github.py, handler.py, polling.py
 ```

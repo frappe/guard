@@ -127,7 +127,7 @@ curl -fsSL "<site>/api/method/guard.api.cli.download" -o ~/.local/bin/guard && c
 
 | Command | Purpose |
 | - | - |
-| `guard login` | Browser sign-in. A local callback receives a new API key. `--api-key` reads `key:secret` from stdin. |
+| `guard login` | Browser sign-in through `/desk/guard-cli-login`. The CLI prints a one-time code, the page shows it, and the key goes only to `127.0.0.1` when the codes match. `--api-key` reads `key:secret` from stdin. |
 | `guard logout`, `guard whoami` | |
 | `guard review` | Review the current branch against its base. |
 | `guard review show [ID]` | Show a review, or list recent reviews. |

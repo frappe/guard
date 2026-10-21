@@ -49,7 +49,7 @@ The indexer reads `git ls-tree -r -l <sha>`. It skips:
 
 ### 4. Parsing
 
-Guard uses tree-sitter through `tree-sitter-language-pack`. Each language has a spec file in `guard/indexing/languages/` with tree-sitter queries that capture:
+Guard uses tree-sitter through `tree-sitter-language-pack`. The pack's structure API gives definitions with their spans, signatures and children. The pack's tags query for each language gives calls and, when the structure API has none, definitions. `guard/indexing/languages.py` holds file detection, import parsing and base-class parsing for each language. The captures are:
 
 | Capture | Meaning |
 | - | - |

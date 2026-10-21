@@ -1,40 +1,70 @@
-### Guard
+# Guard
 
-AI assisted code reviews and automatic pull request reviews
+Guard reviews GitHub pull requests with an AI agent that reads the whole codebase, not only the diff. It builds a graph of every repository it reviews: definitions, calls, imports, inheritance, and, for Frappe apps, doctypes, links, hooks and `frappe.call` strings. Each review uses the graph to find the callers that a change breaks and the code that a change should match.
 
-### Installation
+Guard is a Frappe app. One site serves one company. Everyone uses Frappe Desk.
 
-You can install this app using the [bench](https://github.com/frappe/bench) CLI:
+The specification is in [docs/spec](docs/spec/00-overview.md).
+
+## What it does
+
+- Reviews pull requests on open, push or rebase, or when someone writes `@guard` in a comment.
+- Posts a summary with a 0 to 5 confidence score, a risk level, a findings table, a diagram and a blast radius line, and inline comments with P0, P1 or P2 severity and suggested fixes.
+- Reads team rules from `.guard/config.toml`, `.guard/rules.md`, `.guard/files.toml` and `guard.toml` in any directory, merged over dashboard settings.
+- Answers questions in pull request threads, and in Chat with PR and codebase chat in Desk.
+- Learns from 👍 and 👎 reactions, replies and fixes. It suppresses findings that the team rejects, and suggests rules from human review comments.
+- Builds a knowledge base for each repository and reads Jira, Confluence and Linear tickets.
+- Approves low-risk pull requests after a clean 5/5 review, when the policy allows it.
+- Runs targeted tests in a rootless container, when runtime validation is on.
+- Serves a query API, an MCP server and a `guard` CLI for local branch reviews and fixes with coding agents.
+
+## Install
 
 ```bash
 cd $PATH_TO_YOUR_BENCH
 bench get-app $URL_OF_THIS_REPO --branch develop
-bench install-app guard
+bench --site <site> install-app guard
 ```
 
-### Contributing
+Guard needs MariaDB 11.7 or later for native vector search. Older databases work with a slower fallback. The `git` command must be on the path.
 
-This app uses `pre-commit` for code formatting and linting. Please [install pre-commit](https://pre-commit.com/#installation) and enable it for this repository:
+## Set up
+
+1. Open **Guard Settings**.
+2. Set the AI gateway URL and key. Guard uses [Grove](https://github.com/frappe/grove) or any OpenAI-compatible or Anthropic-compatible endpoint.
+3. Click **Fetch models**, then set the model for each tier, the fast model and the embedding model.
+4. Create a **Code Provider** of type GitHub. For a GitHub App, set the app id, the private key and the webhook secret. For a token, set the token and the webhook secret.
+5. Copy the webhook URL from the Code Provider form into the GitHub App or the repository webhook. Select these events: pull requests, pull request reviews, review comments, issue comments, pushes, check runs and installations.
+6. If GitHub cannot reach the site, turn on **Poll Providers** in Guard Settings instead.
+7. Click **Sync repositories**, then enable reviews on each **Code Repository**. Guard indexes a repository when reviews are enabled.
+
+Without a gateway, Guard still indexes code, runs the graph checks, the secret scan and the Frappe checks, and posts a graph-only summary.
+
+## Use
+
+| Where | What |
+| - | - |
+| GitHub | `@guard`, `@guard review this at apex`, `@guard is this thread-safe?`, replies in Guard threads, 👍 and 👎 |
+| Desk | The **Guard** workspace, **Pull Request Review** (`/desk/guard-pr`), **Codebase Chat**, and the Guard Analytics, Bugs Caught and My Guard reports |
+| Terminal | `curl -fsSL "<site>/api/method/guard.api.cli.download" -o ~/.local/bin/guard && chmod +x ~/.local/bin/guard`, then `guard login` and `guard review` |
+| Coding agents | MCP at `<site>/api/method/guard.mcp.server.handle` with `Authorization: token <key>:<secret>` |
+
+## Develop
+
+```bash
+bench --site <test-site> set-config allow_tests true
+bench --site <test-site> run-tests --app guard
+```
+
+Tests run offline: a scripted model replaces the gateway, and temporary git repositories replace GitHub.
+
+This app uses `pre-commit` with ruff, eslint, prettier and pyupgrade:
 
 ```bash
 cd apps/guard
 pre-commit install
 ```
 
-Pre-commit is configured to use the following tools for checking and formatting your code:
+## License
 
-- ruff
-- eslint
-- prettier
-- pyupgrade
-### CI
-
-This app can use GitHub Actions for CI. The following workflows are configured:
-
-- CI: Installs this app and runs unit tests on every push to `develop` branch.
-- Linters: Runs [Frappe Semgrep Rules](https://github.com/frappe/semgrep-rules) and [pip-audit](https://pypi.org/project/pip-audit/) on every pull request.
-
-
-### License
-
-mit
+MIT

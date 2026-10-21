@@ -101,6 +101,8 @@ The shield chip sets the permission mode for the chat:
 | Allow routine actions | Routine actions |
 | Full access mode | Everything |
 
+Buttons and keys on the review page (approve, merge, close, reopen, draft or ready, update branch, request changes, comment on a line) run the action at once: the click is the approval. They are recorded as Chat Actions.
+
 A new chat starts in **Ask every time**. A request to draft or preview an action never publishes it. When the user raises the mode, waiting actions that the new mode allows run at once.
 
 Actions run with the provider token of the user from Guard User. Without a token, the action fails with a message that tells the user to connect an account. **Create a rule** runs in Guard and needs no token.
