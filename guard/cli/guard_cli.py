@@ -6,6 +6,7 @@ import http.server
 import json
 import os
 import re
+import secrets
 import shutil
 import subprocess
 import sys
@@ -298,14 +299,18 @@ def cmd_login(args) -> None:
 
 	server = http.server.HTTPServer(("127.0.0.1", 0), Handler)
 	port = server.server_address[1]
+	code = "".join(secrets.choice("ABCDEFGHJKLMNPQRSTUVWXYZ23456789") for _ in range(8))
 	thread = threading.Thread(target=server.handle_request, daemon=True)
 	thread.start()
-	url = f"{site()}/app/guard-cli-login?port={port}"
+	url = f"{site()}/desk/guard-cli-login?port={port}&code={code}"
 	print(f"Opening {url}")
+	print(f"Check that the page shows the code {code}.")
 	webbrowser.open(url)
 	thread.join(timeout=300)
 	if not result.get("key"):
 		die("Sign-in timed out.", EXIT["failed"])
+	if result.get("code") != code:
+		die("The sign-in code does not match. Nothing was saved.", EXIT["failed"])
 	save_json(CREDENTIALS, {"site": site(), "token": f"{result['key']}:{result['secret']}"}, private=True)
 	print("Signed in.")
 

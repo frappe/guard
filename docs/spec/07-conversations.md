@@ -50,7 +50,7 @@ A finding can carry a question. When the author answers, Guard checks the answer
 
 ## Desk review page
 
-Desk page `guard-pr` at `/app/guard-pr/<pull request>`. The Pull Request form has an **Open review** button.
+Desk page `guard-pr` at `/desk/guard-pr/<pull request>`. The Pull Request form has an **Open review** button.
 
 ```text
 ┌──────────────┬──────────────────────────────────────┬──────────────┐

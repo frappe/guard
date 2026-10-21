@@ -56,7 +56,7 @@ def review(payload: dict[str, Any], tier: str = "", instructions: str = "") -> d
 	return {"id": doc.name, "status": "Queued"}
 
 
-@frappe.whitelist(methods=["GET"])
+@frappe.whitelist(methods=["GET", "POST"])
 def show(review_id: str) -> dict[str, Any]:
 	doc = frappe.get_doc("Code Review", review_id)
 	doc.check_permission("read")
@@ -92,7 +92,7 @@ def show(review_id: str) -> dict[str, Any]:
 	}
 
 
-@frappe.whitelist(methods=["GET"])
+@frappe.whitelist(methods=["GET", "POST"])
 def recent(limit: int = 10, full_name: str = "") -> list[dict[str, Any]]:
 	filters: dict[str, Any] = {"triggered_by_user": frappe.session.user}
 	if full_name:
@@ -109,7 +109,7 @@ def recent(limit: int = 10, full_name: str = "") -> list[dict[str, Any]]:
 	]
 
 
-@frappe.whitelist(methods=["GET"])
+@frappe.whitelist(methods=["GET", "POST"])
 def status(head_sha: str, full_name: str = "") -> dict[str, Any]:
 	"""Latest review of a commit and the CLI exit code for it."""
 	filters: dict[str, Any] = {"head_sha": head_sha}
@@ -123,7 +123,7 @@ def status(head_sha: str, full_name: str = "") -> dict[str, Any]:
 	return {"exit_code": STATUS_CODES.get(rows[0].status, 1), "status": rows[0].status, "id": rows[0].name}
 
 
-@frappe.whitelist(methods=["GET"])
+@frappe.whitelist(methods=["GET", "POST"])
 def config(full_name: str, path: str = "", sha: str = "") -> dict[str, Any]:
 	"""The effective config for a path, with the source of each value."""
 	repository = db.value("Code Repository", {"full_name": full_name}, "name")
@@ -137,7 +137,7 @@ def config(full_name: str, path: str = "", sha: str = "") -> dict[str, Any]:
 	return ConfigResolver.from_store(str(repository), store, ref).explain(path)
 
 
-@frappe.whitelist(methods=["GET"])
+@frappe.whitelist(methods=["GET", "POST"])
 def fix_prompt(target: str) -> dict[str, Any]:
 	"""The fix prompt of one finding, or of every open finding of a pull request."""
 	if frappe.db.exists("Review Finding", target):
@@ -163,7 +163,7 @@ def fix_prompt(target: str) -> dict[str, Any]:
 	}
 
 
-@frappe.whitelist(methods=["GET"])
+@frappe.whitelist(methods=["GET", "POST"])
 def whoami() -> dict[str, Any]:
 	user = frappe.session.user
 	return {

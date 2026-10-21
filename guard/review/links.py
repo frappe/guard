@@ -25,16 +25,16 @@ def retrigger(pull_request: str) -> str:
 
 
 def finding(name: str) -> str:
-	return public_url(f"/app/review-finding/{quote(name)}")
+	return public_url(f"/desk/review-finding/{quote(name)}")
 
 
 def review_page(pull_request: str) -> str:
-	return public_url(f"/app/guard-pr/{quote(pull_request)}")
+	return public_url(f"/desk/guard-pr/{quote(pull_request)}")
 
 
 def fix_all(pull_request: str) -> str:
-	return public_url(f"/app/guard-pr/{quote(pull_request)}?fix=all")
+	return public_url(f"/desk/guard-pr/{quote(pull_request)}?fix=all")
 
 
 def code_review(name: str) -> str:
-	return public_url(f"/app/code-review/{quote(name)}")
+	return public_url(f"/desk/code-review/{quote(name)}")

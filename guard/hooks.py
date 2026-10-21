@@ -17,7 +17,7 @@ add_to_apps_screen = [
 		"name": "guard",
 		"logo": "/assets/guard/guard.svg",
 		"title": "Guard",
-		"route": "/app/guard",
+		"route": "/desk/guard",
 	}
 ]
 

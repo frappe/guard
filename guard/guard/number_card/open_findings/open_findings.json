@@ -1,0 +1,22 @@
+{
+ "color": "#ECAD4B",
+ "creation": "2026-10-21 10:00:00.000000",
+ "docstatus": 0,
+ "doctype": "Number Card",
+ "document_type": "Review Finding",
+ "dynamic_filters_json": "[]",
+ "filters_json": "[[\"Review Finding\", \"status\", \"=\", \"Open\"], [\"Review Finding\", \"posted\", \"=\", 1]]",
+ "function": "Count",
+ "idx": 0,
+ "is_public": 1,
+ "is_standard": 1,
+ "label": "Open Findings",
+ "modified": "2026-10-21 10:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Guard",
+ "name": "Open Findings",
+ "owner": "Administrator",
+ "show_percentage_stats": 0,
+ "stats_time_interval": "Daily",
+ "type": "Document Type"
+}

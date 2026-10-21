@@ -113,7 +113,8 @@ def addressed_rate(filters: Filters) -> float | None:
 
 
 def series(filters: Filters, metric: str = "reviews", bucket: str = "day") -> list[dict[str, Any]]:
-	fmt = {"day": "%Y-%m-%d", "week": "%x-W%v", "month": "%Y-%m"}[bucket]
+	# Doubled percent signs: the query also takes parameters.
+	fmt = {"day": "%%Y-%%m-%%d", "week": "%%x-W%%v", "month": "%%Y-%%m"}[bucket]
 	if metric == "reviews":
 		where, values = filters.where("r", "creation")
 		query = f"SELECT DATE_FORMAT(r.creation, '{fmt}') AS bucket, COUNT(*) AS value FROM `tabCode Review` r WHERE r.status = 'Completed' AND {where} GROUP BY bucket ORDER BY bucket"

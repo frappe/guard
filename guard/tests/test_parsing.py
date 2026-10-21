@@ -136,3 +136,16 @@ def entry():
 		self.assertGreater(len(big), 3)
 		self.assertTrue(all(c.end_line - c.start_line < 100 for c in big))
 		self.assertTrue(any("m.small" in c.content for c in chunks))
+
+
+class TestAnchor(UnitTestCase):
+	def test_deleted_lines_anchor_left(self):
+		from guard.review.findings import Finding, FindingFilter
+
+		diff = parse_diff(DIFF)
+		finding = Finding("gone.txt", 1, 1, "P1", "logic", "Removed file is still used", "x")
+		FindingFilter(diff, {"strictness": 2}).anchor(finding)
+		self.assertEqual((finding.side, finding.outside_diff), ("LEFT", False))
+		head = Finding("app/a.py", 3, 3, "P1", "logic", "t", "x")
+		FindingFilter(diff, {"strictness": 2}).anchor(head)
+		self.assertEqual((head.side, head.start_line), ("RIGHT", 3))

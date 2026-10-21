@@ -29,8 +29,8 @@ Guard has no separate front end. One site serves one company, and every employee
 
 | Page | Route | Purpose |
 | - | - | - |
-| `guard-pr` | `/app/guard-pr/<pull request>` | Review page: list, overview, tour, full diff, chat ([07-conversations.md](07-conversations.md)) |
-| `guard-chat` | `/app/guard-chat` | Codebase chat |
+| `guard-pr` | `/desk/guard-pr/<pull request>` | Review page: list, overview, tour, full diff, chat ([07-conversations.md](07-conversations.md)) |
+| `guard-chat` | `/desk/guard-chat` | Codebase chat |
 
 ### Reports
 

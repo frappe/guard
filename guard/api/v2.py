@@ -42,7 +42,7 @@ def index_repository(
 	}
 
 
-@frappe.whitelist(methods=["GET"])
+@frappe.whitelist(methods=["GET", "POST"])
 def get_repository(repository_id: str) -> dict[str, Any]:
 	remote, branch, full_name = parse_id(repository_id)
 	name = _repository(full_name)

@@ -108,6 +108,14 @@ class FindingFilter:
 		if near:
 			finding.start_line = finding.end_line = min(near, key=lambda n: abs(n - finding.end_line))
 			return
+		deleted = {line.old_no for h in diff.hunks for line in h.lines if line.kind == "-" and line.old_no}
+		near_old = [n for n in deleted if abs(n - finding.end_line) <= 3]
+		if near_old:
+			# The finding is about removed code: comment on the base side.
+			finding.side = "LEFT"
+			finding.start_line = finding.end_line = min(near_old, key=lambda n: abs(n - finding.end_line))
+			finding.suggestion = ""
+			return
 		finding.outside_diff = True
 
 	def filter_types(self, findings: list[Finding]) -> None:

@@ -1,0 +1,21 @@
+{
+ "color": "#29CD42",
+ "creation": "2026-10-21 10:00:00.000000",
+ "docstatus": 0,
+ "doctype": "Number Card",
+ "dynamic_filters_json": "[]",
+ "filters_json": "[]",
+ "idx": 0,
+ "is_public": 1,
+ "is_standard": 1,
+ "label": "Addressed Rate",
+ "method": "guard.guard.number_cards.addressed_rate",
+ "modified": "2026-10-21 10:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Guard",
+ "name": "Addressed Rate",
+ "owner": "Administrator",
+ "show_percentage_stats": 0,
+ "stats_time_interval": "Daily",
+ "type": "Custom"
+}
