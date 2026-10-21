@@ -21,8 +21,8 @@ NUDGE = (
 )
 
 
-def _mentions_issues(args: dict[str, Any]) -> bool:
-	score = args.get("confidence_score")
+def _mentions_issues(arguments: dict[str, Any]) -> bool:
+	score = arguments.get("confidence_score")
 	return isinstance(score, int | float) and score < 5
 
 

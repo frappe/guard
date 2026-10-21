@@ -12,7 +12,8 @@ from guard.webhooks import github
 MAX_PAYLOAD = 2 * 1024 * 1024
 
 
-@frappe.whitelist(allow_guest=True, methods=["POST"])
+# GitHub calls this without a session. The handler checks the webhook signature first.
+@frappe.whitelist(allow_guest=True, methods=["POST"])  # nosemgrep: guest-whitelisted-method
 def github_webhook(**kwargs: Any) -> dict[str, Any]:
 	"""Check the signature, store the delivery, queue the handler."""
 	body = frappe.request.get_data() or b""

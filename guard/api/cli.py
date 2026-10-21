@@ -17,7 +17,8 @@ STATUS_CODES = {"Completed": 0, "Queued": 3, "Running": 3, "Failed": 4, "Cancell
 MAX_PAYLOAD = 20 * 1024 * 1024
 
 
-@frappe.whitelist(allow_guest=True, methods=["GET"])
+# The CLI script is public, like any download link.
+@frappe.whitelist(allow_guest=True, methods=["GET"])  # nosemgrep: guest-whitelisted-method
 def download() -> Response:
 	text = CLI_FILE.read_text().replace('DEFAULT_SITE = ""', f'DEFAULT_SITE = "{frappe.utils.get_url()}"', 1)
 	return Response(

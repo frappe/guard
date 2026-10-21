@@ -50,10 +50,14 @@ def tool(
 	return wrap
 
 
-def repository(args: dict[str, Any]) -> str:
-	name = args.get("namespace_id") or db.value("Code Repository", {"full_name": args.get("name")}, "name")
+def repository(arguments: dict[str, Any]) -> str:
+	name = arguments.get("namespace_id") or db.value(
+		"Code Repository", {"full_name": arguments.get("name")}, "name"
+	)
 	if not name or not frappe.has_permission("Code Repository", "read", str(name)):
-		raise frappe.PermissionError(f"Repository not found: {args.get('name') or args.get('namespace_id')}")
+		raise frappe.PermissionError(
+			f"Repository not found: {arguments.get('name') or arguments.get('namespace_id')}"
+		)
 	return str(name)
 
 
@@ -623,8 +627,8 @@ def _comments(pull_request: str) -> list[dict[str, Any]]:
 	return rows
 
 
-def _graph(args: dict[str, Any]) -> CodeGraph:
-	index = db.value("Code Repository", repository(args), "default_index")
+def _graph(arguments: dict[str, Any]) -> CodeGraph:
+	index = db.value("Code Repository", repository(arguments), "default_index")
 	if not index:
 		raise ValueError("The repository is not indexed yet")
 	return CodeGraph(str(index))

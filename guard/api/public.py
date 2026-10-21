@@ -9,7 +9,8 @@ from guard.utils import cache
 RATE_SECONDS = 120
 
 
-@frappe.whitelist(allow_guest=True, methods=["GET"])
+# The link in the summary comment is signed with HMAC. Only a valid signature passes.
+@frappe.whitelist(allow_guest=True, methods=["GET"])  # nosemgrep: guest-whitelisted-method
 def retrigger(pull_request: str, sig: str) -> None:
 	if not links.verify(pull_request, sig) or not frappe.db.exists("Pull Request", pull_request):
 		frappe.throw(_("This link is not valid."), frappe.PermissionError)
@@ -18,7 +19,7 @@ def retrigger(pull_request: str, sig: str) -> None:
 		_page(_("A review started less than two minutes ago. Try again soon."))
 		return
 	cache.set(key, 1, RATE_SECONDS)
-	frappe.set_user("Administrator")
+	frappe.set_user("Administrator")  # nosemgrep: frappe-setuser -- after the signature check
 	from guard.review.trigger import consider
 
 	review = consider(pull_request, "retrigger", manual=True)

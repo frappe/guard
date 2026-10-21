@@ -51,10 +51,13 @@ def create_organization_settings():
 def create_indexes():
 	for doctype, name, columns in COMPOSITE_INDEXES:
 		table = f"tab{doctype}"
-		if frappe.db.sql(f"SHOW INDEX FROM `{table}` WHERE Key_name = %s", (name,)):
+		if frappe.db.has_index(table, name):
 			continue
 		cols = ", ".join(_quote_column(column) for column in columns)
-		frappe.db.sql_ddl(f"ALTER TABLE `{table}` ADD INDEX `{name}` ({cols})")
+		# Names come from COMPOSITE_INDEXES, not from input.
+		frappe.db.sql_ddl(
+			f"ALTER TABLE `{table}` ADD INDEX `{name}` ({cols})"
+		)  # nosemgrep: frappe-sql-format-injection
 	if not frappe.db.sql("SHOW INDEX FROM `tabCode Chunk` WHERE Key_name = 'content_fulltext'"):
 		frappe.db.sql_ddl("ALTER TABLE `tabCode Chunk` ADD FULLTEXT INDEX `content_fulltext` (`content`)")
 

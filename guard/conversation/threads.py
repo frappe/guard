@@ -149,7 +149,7 @@ def _thread_text(pull_request: str, comment: ProviderComment, finding: str | Non
 def _finding_of(pull_request: str, comment: ProviderComment) -> str | None:
 	if not comment.thread_id and not comment.in_reply_to:
 		return None
-	for key in filter(None, (comment.in_reply_to, comment.thread_id)):
+	for key in (k for k in (comment.in_reply_to, comment.thread_id) if k):
 		name = db.value("Review Finding", {"pull_request": pull_request, "provider_comment_id": key}, "name")
 		if name:
 			return str(name)

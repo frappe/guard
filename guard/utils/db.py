@@ -46,7 +46,8 @@ def insert_many(
 	for start in range(0, len(data), batch):
 		chunk = data[start : start + batch]
 		values = [value for row in chunk for value in row]
-		frappe.db.sql(
+		# Table and column names come from code. Values are parameters.
+		frappe.db.sql(  # nosemgrep: frappe-sql-format-injection
 			f"{verb} INTO `{table}` ({column_sql}) VALUES {', '.join([row_sql] * len(chunk))}", values
 		)
 
@@ -72,7 +73,7 @@ def values(doctype: str, name: str | dict, fields: Sequence[str]) -> dict[str, A
 def commit() -> None:
 	"""Commit in background jobs. Tests run in one transaction, so skip there."""
 	if not frappe.flags.in_test:
-		frappe.db.commit()
+		frappe.db.commit()  # nosemgrep: frappe-manual-commit -- background jobs commit their progress
 
 
 def rollback() -> None:

@@ -270,10 +270,10 @@ def _wrap(text: str, width: int) -> str:
 # ------------------------------------------------------------------- commands
 
 
-def cmd_login(args) -> None:
-	if args.site:
-		save_json(SETTINGS, {**load_json(SETTINGS, {}), "site": args.site.rstrip("/")})
-	if args.api_key:
+def cmd_login(options) -> None:
+	if options.site:
+		save_json(SETTINGS, {**load_json(SETTINGS, {}), "site": options.site.rstrip("/")})
+	if options.api_key:
 		value = (
 			sys.stdin.readline().strip()
 			if not sys.stdin.isatty()
@@ -315,35 +315,35 @@ def cmd_login(args) -> None:
 	print("Signed in.")
 
 
-def cmd_logout(args) -> None:
+def cmd_logout(options) -> None:
 	CREDENTIALS.unlink(missing_ok=True)
 	print("Signed out.")
 
 
-def cmd_whoami(args) -> None:
+def cmd_whoami(options) -> None:
 	print(json.dumps(api("GET", "guard.api.cli.whoami"), indent=2))
 
 
-def cmd_review(args) -> None:
-	if args.plus and args.apex:
+def cmd_review(options) -> None:
+	if options.plus and options.apex:
 		die("--plus and --apex cannot be combined.", EXIT["invalid"])
-	if args.resume:
+	if options.resume:
 		rows = api("GET", "guard.api.cli.recent", {"limit": 1, "full_name": full_name()}) or []
 		if not rows or rows[0]["status"] not in ("Queued", "Running"):
 			die("No unfinished review.", EXIT["none"])
-		return _wait_and_print(rows[0]["name"], args)
-	data, held = payload(args.branch or default_branch(), args.include or [])
+		return _wait_and_print(rows[0]["name"], options)
+	data, held = payload(options.branch or default_branch(), options.include or [])
 	if held:
 		print("Held back, they look like secrets (use --include to send):", ", ".join(held), file=sys.stderr)
 	if not data["diff"].strip():
 		die("No committed changes against the base branch.", EXIT["none"])
-	tier = "apex" if args.apex else "plus" if args.plus else ""
+	tier = "apex" if options.apex else "plus" if options.plus else ""
 	created = api(
 		"POST",
 		"guard.api.cli.review",
-		body={"payload": data, "tier": tier, "instructions": args.instructions or ""},
+		body={"payload": data, "tier": tier, "instructions": options.instructions or ""},
 	)
-	_wait_and_print(created["id"], args)
+	_wait_and_print(created["id"], options)
 
 
 def _wait_and_print(review_id: str, args) -> None:
@@ -364,11 +364,11 @@ def _wait_and_print(review_id: str, args) -> None:
 		sys.exit(EXIT["failed"])
 
 
-def cmd_show(args) -> None:
-	if args.id:
-		return print_review(api("GET", "guard.api.cli.show", {"review_id": args.id}), args)
+def cmd_show(options) -> None:
+	if options.id:
+		return print_review(api("GET", "guard.api.cli.show", {"review_id": options.id}), options)
 	rows = api("GET", "guard.api.cli.recent", {"limit": 10}) or []
-	if args.json:
+	if options.json:
 		print(json.dumps(rows, indent=2))
 		return
 	for row in rows:
@@ -377,16 +377,16 @@ def cmd_show(args) -> None:
 		)
 
 
-def cmd_status(args) -> None:
-	sha = git("rev-parse", args.commit or "HEAD")
+def cmd_status(options) -> None:
+	sha = git("rev-parse", options.commit or "HEAD")
 	result = api("GET", "guard.api.cli.status", {"head_sha": sha, "full_name": full_name()})
-	print(json.dumps(result) if args.json else (result.get("status") or "no review"))
+	print(json.dumps(result) if options.json else (result.get("status") or "no review"))
 	sys.exit(result["exit_code"])
 
 
-def cmd_config(args) -> None:
-	result = api("GET", "guard.api.cli.config", {"full_name": full_name(), "path": args.path or ""})
-	if args.json:
+def cmd_config(options) -> None:
+	result = api("GET", "guard.api.cli.config", {"full_name": full_name(), "path": options.path or ""})
+	if options.json:
 		print(json.dumps(result, indent=2))
 		return
 	for key, item in result["settings"].items():
@@ -397,19 +397,21 @@ def cmd_config(args) -> None:
 		print(f"error {error}")
 
 
-def cmd_settings(args) -> None:
+def cmd_settings(options) -> None:
 	data = load_json(SETTINGS, {})
-	if args.action in (None, "list"):
-		print(json.dumps(data, indent=2) if args.json else "\n".join(f"{k} = {v}" for k, v in data.items()))
-	elif args.action == "get":
-		print(data.get(args.key, ""))
-	elif args.action == "path":
+	if options.action in (None, "list"):
+		print(
+			json.dumps(data, indent=2) if options.json else "\n".join(f"{k} = {v}" for k, v in data.items())
+		)
+	elif options.action == "get":
+		print(data.get(options.key, ""))
+	elif options.action == "path":
 		print(SETTINGS)
-	elif args.action == "unset":
-		data.pop(args.key, None)
+	elif options.action == "unset":
+		data.pop(options.key, None)
 		save_json(SETTINGS, data)
-	elif args.action == "set":
-		data[args.key] = _setting_value(args.key, args.value)
+	elif options.action == "set":
+		data[options.key] = _setting_value(options.key, options.value)
 		save_json(SETTINGS, data)
 
 
@@ -430,18 +432,18 @@ def _setting_value(key: str, value: str):
 	return value
 
 
-def cmd_fix(args) -> None:
-	if args.action == "install":
+def cmd_fix(options) -> None:
+	if options.action == "install":
 		_install_handler()
-	elif args.action == "status":
+	elif options.action == "status":
 		ok = _handler_installed()
-		print(json.dumps({"installed": ok}) if args.json else ("ready" if ok else "not installed"))
-	elif args.action == "uninstall":
+		print(json.dumps({"installed": ok}) if options.json else ("ready" if ok else "not installed"))
+	elif options.action == "uninstall":
 		_uninstall_handler()
-		if args.remove_mappings:
+		if options.remove_mappings:
 			REPOS.unlink(missing_ok=True)
-	elif args.action == "open":
-		_open_fix(args.url)
+	elif options.action == "open":
+		_open_fix(options.url)
 
 
 def _open_fix(url: str) -> None:
@@ -507,7 +509,7 @@ def _uninstall_handler() -> None:
 	print("Removed the guard-fix:// handler.")
 
 
-def cmd_update(args) -> None:
+def cmd_update(options) -> None:
 	target = Path(sys.argv[0]).resolve()
 	with urllib.request.urlopen(f"{site()}/api/method/guard.api.cli.download", timeout=60) as response:
 		target.write_bytes(response.read())
