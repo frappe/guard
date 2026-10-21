@@ -31,6 +31,8 @@ class CodeEntity(Document):
 			"interface",
 			"doctype",
 			"field",
+			"route",
+			"router",
 		]
 		language: DF.Data | None
 		parent_entity: DF.Data | None

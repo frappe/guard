@@ -19,7 +19,7 @@ from guard.integrations import tickets
 from guard.learning import suppression
 from guard.llm.types import GatewayBusy
 from guard.providers import adapter_for_repository
-from guard.review import checks, context, prompts, sandbox, stale, verify
+from guard.review import checks, context, crossrepo, prompts, sandbox, stale, verify
 from guard.review.agent import Agent
 from guard.review.findings import FindingFilter, score_cap, score_floor
 from guard.review.publish import Publisher
@@ -83,6 +83,8 @@ class ReviewPipeline:
 		self.stage("context")
 		overlay = PullRequestGraph(run.graph, run.head, run.base, run.files, run.frappe_app)
 		run.changed = overlay.build()
+		others = self.linked_repositories(run)
+		crossrepo.attach(run.changed, others, index)
 		run.blast = overlay.blast_radius(run.changed)
 		self.pick_tier(run)
 		if not self.credits_allow(run):
@@ -109,6 +111,8 @@ class ReviewPipeline:
 		)
 		self.stage("review")
 		run.findings += checks.secret_findings(run.files)
+		run.findings += crossrepo.missing_targets(run.files, run.head, others, index)
+		run.findings += crossrepo.break_findings(run.changed)
 		if run.frappe_app:
 			run.findings += checks.frappe_findings(run.files)
 		run.sandbox = sandbox.Sandbox(run) if sandbox.wanted(run) else None
@@ -138,6 +142,12 @@ class ReviewPipeline:
 		self.stage("after")
 		suppression.remember(names, run.findings, run.repository)
 		self.after(run, number)
+
+	def linked_repositories(self, run: ReviewRun) -> list[crossrepo.OtherRepository]:
+		if not run.repository:
+			return []
+		provider = db.value("Code Repository", run.repository, "code_provider")
+		return crossrepo.linked(run.repository, str(provider or ""), run.cfg.repos)
 
 	def prepare(self) -> ReviewRun | None:
 		self.review.db_set({"status": "Running", "started_at": now_datetime(), "stage": "prepare"})

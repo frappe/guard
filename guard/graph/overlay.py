@@ -14,7 +14,7 @@ from guard.graph.queries import CodeGraph, Entity, Link
 from guard.indexing import frappe_plugin
 from guard.indexing.parser import ParsedEntity, ParsedFile, parse_file
 
-CHANGE_KINDS = ("function", "method", "class", "interface", "type", "doctype")
+CHANGE_KINDS = ("function", "method", "class", "interface", "type", "doctype", "route")
 TEST_PATH = re.compile(r"(^|/)(tests?|__tests__|spec)/|(^|/)test_[^/]+$|_test\.\w+$|\.(test|spec)\.\w+$")
 SNIPPET_RADIUS = 3
 
@@ -23,6 +23,23 @@ SNIPPET_RADIUS = 3
 class CallSite:
 	link: Link
 	snippet: str
+
+
+@dataclass
+class ExternalCaller:
+	"""A use of a changed entity in another repository of the team."""
+
+	full_name: str
+	repository: str
+	path: str
+	line: int
+	text: str
+	via: str  # import, method, http
+	breaks: bool | None  # True: surely breaks. None: may break.
+
+	@property
+	def label(self) -> str:
+		return f"{self.full_name}:{self.path}:{self.line}"
 
 
 @dataclass
@@ -46,6 +63,7 @@ class ChangedEntity:
 	callees: list[str] = field(default_factory=list)
 	siblings: list[Entity] = field(default_factory=list)
 	tests: list[str] = field(default_factory=list)
+	external: list[ExternalCaller] = field(default_factory=list)
 
 	@property
 	def contract_changed(self) -> bool:
@@ -67,14 +85,20 @@ class BlastRadius:
 	not_updated: int
 	tests: list[str]
 	untested: list[str]
+	external: int = 0
+	external_repositories: list[str] = field(default_factory=list)
 
 	def sentence(self) -> str:
-		if not self.callers:
-			return ""
-		text = f"Affects {self.callers} caller{'s' if self.callers != 1 else ''} in {self.files} file{'s' if self.files != 1 else ''}."
-		if self.not_updated:
-			text += f" {self.not_updated} caller{'s' if self.not_updated != 1 else ''} may break."
-		return text
+		parts = []
+		if self.callers:
+			text = f"Affects {self.callers} caller{'s' if self.callers != 1 else ''} in {self.files} file{'s' if self.files != 1 else ''}."
+			if self.not_updated:
+				text += f" {self.not_updated} caller{'s' if self.not_updated != 1 else ''} may break."
+			parts.append(text)
+		if self.external:
+			names = ", ".join(f"`{name}`" for name in self.external_repositories)
+			parts.append(f"{self.external} use{'s' if self.external != 1 else ''} in {names} may break.")
+		return " ".join(parts)
 
 
 Reader = Callable[[str], str | None]
@@ -129,12 +153,15 @@ class PullRequestGraph:
 			and not e.name.startswith("_")
 			and not TEST_PATH.search(e.path)
 		]
+		external = [caller for entity in changed for caller in entity.external]
 		return BlastRadius(
 			callers=len(callers),
 			files=len({link.path for link in callers}),
 			not_updated=sum(len(e.not_updated) for e in changed),
 			tests=tests,
 			untested=untested,
+			external=len(external),
+			external_repositories=sorted({caller.full_name for caller in external}),
 		)
 
 	# ------------------------------------------------------------ changes
@@ -306,7 +333,7 @@ def impact_diagram(changed: list[ChangedEntity], limit: int = 12) -> str:
 		return ids[label]
 
 	for entity in changed[:limit]:
-		if entity.kind not in ("function", "method", "class", "doctype"):
+		if entity.kind not in ("function", "method", "class", "doctype", "route"):
 			continue
 		target = node(
 			entity.qualified_name.rsplit(".", 2)[-1]
@@ -327,7 +354,12 @@ def impact_diagram(changed: list[ChangedEntity], limit: int = 12) -> str:
 				else "-->"
 			)
 			lines.append(f"  {node(caller)} {edge} {target}")
+		for external in entity.external[:6]:
+			label = f"{external.full_name}: {external.path.rsplit('/', 1)[-1]}:{external.line}"
+			edge = "-.->|breaks|" if external.breaks else "-.->|may break|"
+			lines.append(f"  {node(label, ':::external')} {edge} {target}")
 	if len(lines) == 1:
 		return ""
 	lines.append("  classDef changed fill:#fff3cd,stroke:#d39e00")
+	lines.append("  classDef external fill:#e7f1ff,stroke:#0b5ed7")
 	return "\n".join(lines)

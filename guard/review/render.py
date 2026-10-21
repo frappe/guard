@@ -25,7 +25,7 @@ def summary(run: ReviewRun, posted: list[Finding], review_number: int, finding_u
 	table = _findings_table(posted, finding_urls)
 	if table:
 		parts.append(_section(sections.get("issues_table"), "Findings", table))
-	impact = impact_diagram(run.changed) if any(e.callers for e in run.changed) else ""
+	impact = impact_diagram(run.changed) if any(e.callers or e.external for e in run.changed) else ""
 	if impact:
 		parts.append(_section(sections.get("impact"), "Impact", f"```mermaid\n{impact}\n```"))
 	files = _important_files(run)

@@ -223,3 +223,53 @@ class TestCallFit(UnitTestCase):
 		lines = ["place_order(", "    c,", "    [x for x in (1, 2)],", ")"]
 		call = calls.parse_call(lines, 1, "place_order")
 		self.assertEqual(call.positional if call else None, 2)
+
+
+class TestRoutes(UnitTestCase):
+	def test_router_chain_and_definitions(self):
+		from guard.indexing import routes
+
+		router_file = [
+			'API = "atlas"',
+			"root = Router(",
+			"    prefix=API,",
+			")",
+			"vms = root.subrouter(",
+			'    "virtual-machines",',
+			")",
+		]
+		table = {r.name: (r.parent, r.segment) for r in routes.routers(router_file)}
+		[route] = routes.definitions(['@vms.post("<vm_id>/actions/stop")'])
+		self.assertEqual((route.verb, route.router), ("POST", "vms"))
+		self.assertEqual(routes.full_path(route, table), "atlas/virtual-machines/*/actions/stop")
+
+	def test_client_calls(self):
+		from guard.indexing import routes
+
+		lines = [
+			"path = f\"hosts/{quote(host_id, safe='')}/access/grant\"",
+			'self._request("POST", path)',
+			"self._request(",
+			'    "PATCH", f"virtual-machines/{name}/disk"',
+			")",
+			'value = payload.get("metadata")',
+			'requests.get("/api/v1/images/download")',
+		]
+		calls = [(c.verb, c.normalized, c.line) for c in routes.client_calls(lines, set())]
+		self.assertEqual(
+			calls,
+			[
+				("POST", "hosts/*/access/grant", 2),
+				("PATCH", "virtual-machines/*/disk", 3),
+				("GET", "images/download", 7),
+			],
+		)
+
+	def test_strength(self):
+		from guard.indexing import routes
+
+		route = "atlas/virtual-machines/*/actions/stop"
+		self.assertEqual(routes.strength(route, "virtual-machines/*/actions/stop"), 3)
+		self.assertEqual(routes.strength(route, "virtual-machines/*/actions/hibernate"), 0)
+		self.assertEqual(routes.strength("atlas/vms/*/public-ipv4", "vms/*/public-ipv*"), 2)
+		self.assertEqual(routes.strength("atlas/images", "virtual-machines"), 0)

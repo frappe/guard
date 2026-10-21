@@ -80,6 +80,31 @@ When Jira and Linear are both on, Guard tries each one for a key and keeps the o
 
 A config can list related repositories. Each must be on the same provider and readable with the same credentials. Guard indexes them read-only (reviews stay off) and gives the agent the `repository` argument of `search_code`.
 
+### Validation across repositories
+
+Repositories are linked by code. No setup is needed. During a review, Guard checks the change against every other indexed repository of the same team, and also against `context.repos` and the members of active clusters.
+
+The index records how repositories use each other:
+
+- Python imports, with one edge for each imported name: `from a.b import c` is `a.b.c`.
+- Frappe method paths in strings, and in URLs: `/api/method/a.b.c`.
+- HTTP routes and their routers. A route keeps the name of its router. Guard resolves the full path when it reads the graph, because a router can be defined in another file.
+- HTTP client calls: the path argument after an HTTP verb, also when the path is in a variable that is set a few lines before.
+
+Paths are normalized: parameters become `*`. A client path matches a route when their ends agree, because clients and routers add different prefixes.
+
+**Provider side.** When a pull request deletes or changes a function, method or route:
+
+1. Guard finds the uses in the other repositories.
+2. The uses appear in the blast radius ("2 uses in `org/pilot` may break") and in the Impact graph.
+3. The reviewer gets each use with its line of code.
+4. A use of a deleted entity, or a strong route match, surely breaks. Guard posts a P0 finding for it, and the verifier cannot lower a P0 at that entity.
+
+**Consumer side.** When a pull request adds a call to another repository:
+
+- A method path in the package of another repository must exist there. If not, Guard posts a P1 finding.
+- A route call that belongs to a route family of another repository must match one of its routes. If not, Guard posts a P1 finding with the close routes.
+
 ### Repository clusters
 
 - A Repository Cluster has 2 or more members.

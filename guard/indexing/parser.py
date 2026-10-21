@@ -8,10 +8,10 @@ from typing import Any
 import tree_sitter as ts
 import tree_sitter_language_pack as pack
 
-from guard.indexing import languages
+from guard.indexing import languages, routes
 from guard.indexing.languages import ImportRef
 
-PARSER_VERSION = 1
+PARSER_VERSION = 2
 KINDS = {
 	"class": "class",
 	"struct": "class",
@@ -122,7 +122,12 @@ def parse_file(path: str, source: str) -> ParsedFile:
 	parsed.imports = languages.imports(language, source)
 	for ref in parsed.imports:
 		parsed.edges.append(RawEdge(path, "imports", ref.module, ref.module, ref.line))
+		# One edge per imported name, so `from a.b import c` is found as `a.b.c` by other repositories.
+		for original in dict.fromkeys(ref.names.values()):
+			target = f"{ref.module}.{original}"
+			parsed.edges.append(RawEdge(path, "imports", target, target, ref.line))
 	_string_references(parsed, source)
+	_http(parsed, source)
 	return parsed
 
 
@@ -265,6 +270,48 @@ def _string_references(parsed: ParsedFile, source: str) -> None:
 		for match in DOTTED_STRING.finditer(line):
 			owner = parsed.innermost(number)
 			parsed.edges.append(RawEdge(owner.key, "references", match.group(1), match.group(1), number))
+
+
+def _http(parsed: ParsedFile, source: str) -> None:
+	"""Routes, routers, HTTP client calls and Frappe method URLs. See guard/indexing/routes.py."""
+	lines = source.splitlines()
+	defined = routes.definitions(lines)
+	for route in defined:
+		qualified = f"route:{route.verb} {route.router}:{routes.normalize(route.path)}"
+		parsed.entities.append(
+			ParsedEntity(
+				key=f"{qualified}@{route.line}",
+				kind="route",
+				name=f"{route.verb} {route.path or '/'}",
+				qualified_name=qualified,
+				parent_key=parsed.file_entity.key,
+				start_line=route.line,
+				end_line=route.line,
+				# The router name and raw path. The full path is resolved when the graph is read.
+				signature=f"{route.router}|{route.path}",
+				is_entry_point=True,
+			)
+		)
+	for router in routes.routers(lines):
+		parsed.entities.append(
+			ParsedEntity(
+				key=f"router:{router.name}@{router.line}",
+				kind="router",
+				name=router.name,
+				qualified_name=f"router:{parsed.module}.{router.name}",
+				parent_key=parsed.file_entity.key,
+				start_line=router.line,
+				end_line=router.line,
+				signature=f"{router.parent}|{router.segment}",
+			)
+		)
+	for call in routes.client_calls(lines, {r.line for r in defined}):
+		owner = parsed.innermost(call.line)
+		target = f"http:{call.verb} {call.normalized}"
+		parsed.edges.append(RawEdge(owner.key, "references", target, call.text, call.line))
+	for dotted, number in routes.method_urls(lines):
+		owner = parsed.innermost(number)
+		parsed.edges.append(RawEdge(owner.key, "references", dotted, dotted, number))
 
 
 def _vue_script(source: str) -> tuple[str, int, str]:

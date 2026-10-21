@@ -1,6 +1,7 @@
 # Copyright (c) 2026, Sabu Siyad and contributors
 # For license information, please see license.txt
 
+import frappe
 from frappe.model.document import Document
 
 
@@ -25,3 +26,8 @@ class CodeEdge(Document):
 	# end: auto-generated types
 
 	pass
+
+
+def on_doctype_update():
+	# Cross-repository lookups read edges by target name.
+	frappe.db.add_index("Code Edge", ["index", "target_name"])

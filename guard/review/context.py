@@ -90,10 +90,8 @@ def build(
 				)
 			)
 		provider = db.value("Code Repository", repository, "code_provider")
-		others = crossrepo.related(repository, str(provider or ""), config.repos)
-		crossrepo.ensure_indexed(others)
-		names = [e.name for e in changed if e.contract_changed or e.status == "deleted"][:10]
-		for line in crossrepo.definitions_elsewhere(others, names):
+		crossrepo.ensure_indexed(crossrepo.related(repository, str(provider or ""), config.repos))
+		for line in crossrepo.context_lines(changed, crossrepo.LineReader()):
 			sources.append(SourceNote("crossrepo", f"Other repository: {line}"))
 	for file_ref in _config_files(config):
 		f = context_file(read, file_ref[0], f"team context file: {file_ref[1]}", limit=budget)

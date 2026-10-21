@@ -41,12 +41,17 @@ def verify(run: ReviewRun) -> None:
 def proven_break(run: ReviewRun, finding: Finding) -> bool:
 	"""The graph shows that the code at the finding breaks a caller, so it stays P0."""
 	for entity in run.changed:
-		if not entity.broken:
+		external = [caller for caller in entity.external if caller.breaks]
+		if not entity.broken and not external:
 			continue
+		start, end = entity.head_start, entity.head_end
+		if entity.status == "deleted" and entity.base:
+			# A deleted entity has no head lines: compare with its lines on the base side.
+			start, end = entity.base.start_line, entity.base.end_line
 		if (
 			finding.path == entity.path
-			and entity.head_start <= finding.end_line
-			and finding.start_line <= max(entity.head_end, entity.head_start)
+			and start <= finding.end_line
+			and finding.start_line <= max(end, start)
 		):
 			return True
 		if any(

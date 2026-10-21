@@ -118,6 +118,9 @@ def _changed(run: ReviewRun) -> str:
 			block.append(f"  callers: {len(entity.callers)}, may break: {len(entity.not_updated)}")
 		for site in entity.at_risk[:6]:
 			block.append(f"  at risk {site.link.path}:{site.link.line}\n{site.snippet}")
+		if entity.external:
+			repositories = sorted({caller.full_name for caller in entity.external})
+			block.append(f"  used in other repositories: {len(entity.external)} ({', '.join(repositories)})")
 		if entity.siblings:
 			block.append("  similar: " + ", ".join(s.label for s in entity.siblings[:3]))
 		if entity.tests:

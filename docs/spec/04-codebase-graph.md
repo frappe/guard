@@ -106,6 +106,10 @@ A plugin adds entities and edges that a parser cannot see. A plugin runs when it
 | - | - | - |
 | Frappe | `hooks.py` next to `modules.txt` | `doctype` and `field` entities from DocType JSON. `Link` and `Table` fields as `references` edges between doctypes. Dotted paths in `hooks.py` as `references` edges. `frappe.call`, `frappe.xcall` and `frm.call` method strings in JavaScript as `calls` edges to the Python method. `@frappe.whitelist()` marks an entity as an entry point, with `allow_guest` in the signature. A controller file links to its doctype. |
 
+### 8b. HTTP routes
+
+For every language, Guard reads route definitions, routers with a path prefix and HTTP client calls from the source lines. Routes become `route` entities, routers become `router` entities and client calls become `references` edges to `http:<verb> <path>`. Refer to [Validation across repositories](10-integrations.md#validation-across-repositories).
+
 ### 9. Chunks
 
 - One chunk for each function and method up to 150 lines. Longer bodies split into 100-line windows with 15 lines of overlap.

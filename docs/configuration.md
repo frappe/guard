@@ -142,6 +142,8 @@ default_open = true
 | `[[notes]]` | `content` (required), `scope`. Short facts, for example "This module is legacy." |
 | `context.repos` | Related repositories, as `owner/repo`. Guard can search their code during a review. |
 
+Guard also checks each change against the other repositories of the same team, with no setup. If a pull request removes a function, a method or a route that another repository uses, the summary says so and Guard posts a finding. If a pull request calls a method or a route of another repository that does not exist there, Guard posts a finding too.
+
 ## Approval
 
 By default, Guard approves a pull request when the review is 5/5 and no finding is open. A new push dismisses the approval and starts a new review.
