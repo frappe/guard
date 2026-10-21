@@ -332,9 +332,13 @@ class ReviewPipeline:
 				now=bool(frappe.flags.in_test),
 			)
 		db.commit()
-		frappe.publish_realtime(
-			"guard_review_updated", {"review": self.review.name, "pull_request": self.review.pull_request}
-		)
+		data = {"review": self.review.name, "pull_request": self.review.pull_request}
+		# Document rooms: only people who have the review or the pull request open get the event.
+		frappe.publish_realtime("guard_review_updated", data, doctype="Code Review", docname=self.review.name)
+		if self.review.pull_request:
+			frappe.publish_realtime(
+				"guard_review_updated", data, doctype="Pull Request", docname=self.review.pull_request
+			)
 
 	# --------------------------------------------------------------- helpers
 

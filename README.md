@@ -5,8 +5,8 @@
 
 **AI Code Reviews That Read The Whole Codebase**
 
-[![CI](https://github.com/frappe/guard/actions/workflows/ci.yml/badge.svg)](https://github.com/frappe/guard/actions/workflows/ci.yml)
-[![Linters](https://github.com/frappe/guard/actions/workflows/linter.yml/badge.svg)](https://github.com/frappe/guard/actions/workflows/linter.yml)
+[![CI](https://github.com/frappe/guard/actions/workflows/ci.yml/badge.svg?branch=develop)](https://github.com/frappe/guard/actions/workflows/ci.yml)
+[![Linters](https://github.com/frappe/guard/actions/workflows/linter.yml/badge.svg?branch=develop)](https://github.com/frappe/guard/actions/workflows/linter.yml)
 
 </div>
 

@@ -372,6 +372,11 @@ def _missing_route(
 		in_family = [r for r in other.routes if family in r[1].split("/")]
 		if not in_family or _reaches(other.routes, call):
 			continue
+		close = ", ".join(f"`{v} {p}`" for v, p, _, _ in in_family[:4])
+		body = (
+			f"`{other.full_name}` serves `{family}` routes, but none of them matches "
+			f"`{call.verb} {call.normalized}`. Close ones: {close}. The call will get a 404 or 405."
+		)
 		return [
 			Finding(
 				path,
@@ -380,10 +385,7 @@ def _missing_route(
 				"P1",
 				"logic",
 				f"No route in {other.full_name} matches {call.verb} {call.normalized}",
-				f"`{other.full_name}` serves `{family}` routes, but none of them matches "
-				f"`{call.verb} {call.normalized}`. Close ones: "
-				+ ", ".join(f"`{v} {p}`" for v, p, _, _ in in_family[:4])
-				+ ". The call will get a 404 or 405.",
+				body,
 				category="correctness",
 				confidence=0.7,
 				rule_id="cross-repo",

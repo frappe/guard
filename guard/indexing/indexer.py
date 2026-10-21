@@ -401,7 +401,12 @@ class Indexer:
 				}
 			)
 		db.commit()
-		frappe.publish_realtime("guard_index_updated", {"repository": self.repository, "index": self.index})
+		frappe.publish_realtime(
+			"guard_index_updated",
+			{"repository": self.repository, "index": self.index},
+			doctype="Code Repository",
+			docname=self.repository,
+		)
 
 	def _set(self, **values) -> None:
 		self.doc.db_set(values, update_modified=False)
