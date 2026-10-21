@@ -76,6 +76,18 @@ def resolve_repository(
 	return ensure_repository(provider, info, team)
 
 
+def discover_installations(provider: str) -> None:
+	"""App mode: create a team for each installation, so a sync works even when
+	the installation webhook did not arrive."""
+	if db.value("Code Provider", provider, "auth_mode") != "App":
+		return
+	adapter = adapter_for_provider(provider)
+	for item in adapter.paginate_as_app("/app/installations"):
+		account = (item.get("account") or {}).get("login") or ""
+		if account:
+			ensure_team(provider, account, str(item["id"]))
+
+
 def sync_team(team: str) -> int:
 	"""Read every repository of a team from GitHub."""
 	row = db.values("Guard Team", team, ("code_provider", "namespace")) or {}

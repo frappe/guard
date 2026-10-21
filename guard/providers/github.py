@@ -75,6 +75,15 @@ class GitHubAdapter(ProviderAdapter):
 		payload = {"iat": now - 60, "exp": now + 540, "iss": str(self.doc.get("app_id"))}
 		return jwt.encode(payload, key, algorithm="RS256")
 
+	def paginate_as_app(self, path: str) -> list[dict[str, Any]]:
+		items, page = [], 1
+		while True:
+			batch = self.request_as_app("GET", path, params={"per_page": 100, "page": page}) or []
+			items += batch
+			if len(batch) < 100:
+				return items
+			page += 1
+
 	def request_as_app(self, method: str, path: str, **kwargs: Any) -> Any:
 		headers = {"Authorization": f"Bearer {self.app_jwt()}", "Accept": "application/vnd.github+json"}
 		return self.request(method, path, auth=False, headers=headers, **kwargs)

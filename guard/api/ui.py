@@ -195,12 +195,18 @@ def explain_config(repository: str, path: str = "") -> dict[str, Any]:
 @frappe.whitelist(methods=["POST"])
 def sync_repositories(provider: str) -> int:
 	frappe.only_for(["Guard Admin", "System Manager"])
-	from guard.providers.sync import sync_team
+	from guard.providers.base import ProviderError
+	from guard.providers.sync import discover_installations, sync_team
 
-	return sum(
-		sync_team(team)
-		for team in frappe.get_all("Guard Team", filters={"code_provider": provider}, pluck="name")
-	)
+	discover_installations(provider)
+	count = 0
+	for team in frappe.get_all("Guard Team", filters={"code_provider": provider}, pluck="name"):
+		try:
+			count += sync_team(team)
+		except ProviderError as error:
+			# For example, the App was uninstalled from this account. Sync the others.
+			frappe.log_error(str(error), f"Guard sync {team}")
+	return count
 
 
 @frappe.whitelist(methods=["POST"])

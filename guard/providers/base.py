@@ -232,6 +232,9 @@ class ProviderAdapter:
 	def approve(self, repo: str, number: int, sha: str, body: str = "") -> str | None:
 		raise UnsupportedAction("approve")
 
+	def paginate_as_app(self, path: str) -> list[dict[str, Any]]:
+		raise UnsupportedAction("paginate_as_app")
+
 	def dismiss_approval(self, repo: str, number: int, approval_id: str) -> None:
 		raise UnsupportedAction("dismiss_approval")
 
