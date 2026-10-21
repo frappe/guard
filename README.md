@@ -4,6 +4,8 @@ Guard reviews GitHub pull requests with an AI agent that reads the whole codebas
 
 Guard is a Frappe app. One site serves one company. Everyone uses Frappe Desk.
 
+To put Guard on a production site, follow [Deploy Guard](docs/deployment.md).
+
 The specification is in [docs/spec](docs/spec/00-overview.md).
 
 ## What it does
@@ -14,7 +16,7 @@ The specification is in [docs/spec](docs/spec/00-overview.md).
 - Answers questions in pull request threads, and in Chat with PR and codebase chat in Desk.
 - Learns from 👍 and 👎 reactions, replies and fixes. It suppresses findings that the team rejects, and suggests rules from human review comments.
 - Builds a knowledge base for each repository and reads Jira, Confluence and Linear tickets.
-- Approves low-risk pull requests after a clean 5/5 review, when the policy allows it.
+- Approves a pull request after a clean 5/5 review, and resolves its own threads when the code fixes them.
 - Runs targeted tests in a rootless container, when runtime validation is on.
 - Serves a query API, an MCP server and a `guard` CLI for local branch reviews and fixes with coding agents.
 
@@ -29,6 +31,8 @@ bench --site <site> install-app guard
 Guard needs MariaDB 11.7 or later for native vector search. Older databases work with a slower fallback. The `git` command must be on the path.
 
 ## Set up
+
+For a production site with a GitHub App, follow [Deploy Guard](docs/deployment.md). The short version:
 
 1. Open **Guard Settings**.
 2. Set the AI gateway URL and key. Guard uses [Grove](https://github.com/frappe/grove) or any OpenAI-compatible or Anthropic-compatible endpoint.
