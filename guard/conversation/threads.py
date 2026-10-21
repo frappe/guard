@@ -5,8 +5,8 @@ from typing import TYPE_CHECKING, cast
 import frappe
 
 from guard.config.resolver import ConfigResolver
+from guard.conversation import acks, mentions
 from guard.conversation import answer as answerer
-from guard.conversation import mentions
 from guard.git.diff import parse_diff
 from guard.git.repository import store_for
 from guard.graph.queries import CodeGraph
@@ -85,10 +85,14 @@ def handle(pull_request: str, comment: ProviderComment) -> None:
 def _mention(pull_request: str, repository: str, comment: ProviderComment, text: str) -> None:
 	mention = mentions.parse(text)
 	if mention.intent == "review":
-		if trigger.consider(
+		# 👀 first: the review can finish inside consider() when it runs inline.
+		ack = acks.accept(pull_request, comment)
+		acks.wait_for_review(ack, comment.author)
+		if not trigger.consider(
 			pull_request, "open", True, comment.author, mention.tier, mention.text, force_draft=mention.draft
 		):
-			return
+			acks.withdraw(ack)
+			acks.forget(pull_request, comment.author)
 		return
 	if mention.intent == "ignore":
 		return
@@ -100,7 +104,7 @@ def _mention(pull_request: str, repository: str, comment: ProviderComment, text:
 			return
 	if not permissions.allowed("chat", comment.author, repository):
 		return
-	_reply(pull_request, comment, mention.text)
+	_answer(pull_request, comment, mention.text)
 
 
 def _thread_reply(pull_request: str, repository: str, comment: ProviderComment, finding: str) -> None:
@@ -111,21 +115,35 @@ def _thread_reply(pull_request: str, repository: str, comment: ProviderComment, 
 		question = db.value("Review Finding", finding, "question")
 		if question:
 			feedback.check_clarification(finding, comment.body)
-		_reply(pull_request, comment, comment.body, finding)
+		_answer(pull_request, comment, comment.body, finding)
 
 
-def _reply(pull_request: str, comment: ProviderComment, question: str, finding: str | None = None) -> None:
+def _answer(pull_request: str, comment: ProviderComment, question: str, finding: str | None = None) -> None:
+	"""Reply with 👀 while Guard works on it, and 👍 when the reply is posted."""
+	ack = acks.accept(pull_request, comment)
+	try:
+		posted = _reply(pull_request, comment, question, finding)
+	except Exception:
+		acks.done(ack, failed=True)
+		raise
+	acks.done(ack, failed=not posted)
+
+
+def _reply(pull_request: str, comment: ProviderComment, question: str, finding: str | None = None) -> bool:
 	run = run_for(pull_request)
 	thread = _thread_text(pull_request, comment, finding)
 	result = answerer.answer(run, question, thread)
 	tip = tips.after_reply(str(run.repository), comment.author) if finding else ""
 	if tip:
 		result.text = f"{result.text}\n\n{tip}"
-	if run.adapter and result.text:
-		try:
-			run.adapter.reply_to_comment(run.full_name, int(run.pr.number), comment, result.text)
-		except ProviderError as error:
-			frappe.log_error(str(error), "Guard reply")
+	if not (run.adapter and result.text):
+		return False
+	try:
+		run.adapter.reply_to_comment(run.full_name, int(run.pr.number), comment, result.text)
+	except ProviderError as error:
+		frappe.log_error(str(error), "Guard reply")
+		return False
+	return True
 
 
 def _thread_text(pull_request: str, comment: ProviderComment, finding: str | None) -> str:

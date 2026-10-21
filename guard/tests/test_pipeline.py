@@ -33,6 +33,7 @@ PATCHED = (
 	"guard.review.trigger",
 	"guard.learning.approve",
 	"guard.conversation.threads",
+	"guard.conversation.acks",
 	"guard.learning.addressed",
 )
 
@@ -279,6 +280,33 @@ class TestPipeline(IntegrationTestCase):
 			with patch("guard.llm.client.LLMClient.online", new=True):
 				threads.handle(self.pr, comment)
 		self.assertEqual(self.adapter.named("reply"), ["It adds `notify` to `update_user_email`."])
+
+	def on_comment(self, comment_id):
+		"""Reactions on one comment, in order: added contents and "removed"."""
+		return [r[2] for r in self.adapter.named("reaction") if r[1] == comment_id]
+
+	def test_mention_reactions_for_a_question(self):
+		from guard.conversation import threads
+
+		comment = ProviderComment("c2", "issue", "ada", "@guard is this safe?", number=7)
+		with use_responder(scripted(["Yes."])), patch("guard.llm.client.LLMClient.online", new=True):
+			threads.handle(self.pr, comment)
+		self.assertEqual(self.on_comment("c2"), ["eyes", "removed", "+1"])
+
+	def test_mention_reactions_for_a_review(self):
+		from guard.conversation import threads
+
+		comment = ProviderComment("c3", "issue", "ada", "@guard review", number=7)
+		with use_responder(scripted([[("submit_review", {"summary": "s", "confidence_score": 4})]])):
+			threads.handle(self.pr, comment)
+		self.assertEqual(self.on_comment("c3"), ["eyes", "removed", "+1"])
+
+	def test_mention_reactions_when_the_review_is_skipped(self):
+		from guard.conversation import threads
+
+		frappe.db.set_value("Code Repository", self.repository, "reviews_enabled", 0)
+		threads.handle(self.pr, ProviderComment("c4", "issue", "ada", "@guard review", number=7))
+		self.assertEqual(self.on_comment("c4"), ["eyes", "removed"])
 
 	def test_polling_opens_and_syncs(self):
 		from guard.webhooks import polling

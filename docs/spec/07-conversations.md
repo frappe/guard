@@ -21,6 +21,16 @@ Guard removes the handle and reads the rest of the text.
 | feedback | "this is intentional because..." | Store feedback, learn, react 👍, reply only if a question is in it. |
 | ignore | text addressed to a person | Do nothing. |
 
+### Reactions on the mention
+
+Guard reacts on the comment that mentions it, so the author knows where the command stands:
+
+1. 👀 when Guard accepts the command: a review is queued, or Guard starts to answer.
+2. 👍 when the command is done: the review is complete, or the reply is posted. 👀 is removed.
+3. 😕 when the review fails, is skipped or is cancelled, or the reply cannot be posted. 👀 is removed.
+
+If Guard does not accept a review command, for example because reviews are off for the repository, it removes 👀. A review runs later in a job, so the mention waits in the cache for 24 hours under the pull request and the person who asked.
+
 ### Answers
 
 `guard.conversation.agent.ConversationAgent` answers questions. It has the read tools of the review agent ([05-review-engine.md](05-review-engine.md)) and the pull request diff. For an inline comment it also gets the file, the line, and the finding of the thread. It replies in the same thread. It can write tests, explain code and suggest code.

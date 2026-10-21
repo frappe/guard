@@ -49,22 +49,39 @@ class ReviewPipeline:
 	def run(cls, review: str, attempt: int = 0) -> None:
 		pipeline = cls(review)
 		try:
-			pipeline.execute()
+			pipeline.attempt(attempt)
+		finally:
+			pipeline.acknowledge()
+
+	def acknowledge(self) -> None:
+		"""Finish the mention that asked for this review: 👍 when it completed, 😕 when it did not."""
+		status = db.value("Code Review", str(self.review.name), "status")
+		if status in ("Queued", "Running") or not self.review.pull_request or not self.review.requested_by:
+			return
+		from guard.conversation import acks
+
+		acks.review_finished(
+			str(self.review.pull_request), str(self.review.requested_by), failed=status != "Completed"
+		)
+
+	def attempt(self, attempt: int) -> None:
+		try:
+			self.execute()
 		except Cancelled:
-			pipeline.review.db_set({"status": "Cancelled", "completed_at": now_datetime()})
+			self.review.db_set({"status": "Cancelled", "completed_at": now_datetime()})
 		except GatewayBusy as busy:
 			delay = max(busy.retry_after, RETRY_DELAYS[min(attempt, len(RETRY_DELAYS) - 1)])
 			if attempt >= len(RETRY_DELAYS):
-				pipeline.fail(f"AI gateway busy: {busy}")
+				self.fail(f"AI gateway busy: {busy}")
 				return
-			pipeline.review.db_set({"status": "Queued", "stage": f"waiting {delay}s for the AI gateway"})
+			self.review.db_set({"status": "Queued", "stage": f"waiting {delay}s for the AI gateway"})
 			db.commit()
 			from guard.review.jobs import enqueue_review
 
-			enqueue_review(review, delay=delay, attempt=attempt + 1)
+			enqueue_review(str(self.review.name), delay=delay, attempt=attempt + 1)
 		except Exception as error:
 			db.rollback()
-			pipeline.fail(redact(f"{type(error).__name__}: {error}"))
+			self.fail(redact(f"{type(error).__name__}: {error}"))
 			if frappe.flags.in_test:
 				raise
 

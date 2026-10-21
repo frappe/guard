@@ -102,10 +102,13 @@ class FakeAdapter(ProviderAdapter):
 
 	def add_reaction(self, repo: str, number: int, target: str, target_id: str, content: str) -> str | None:
 		self.calls.append(("react", content))
-		return self._id()
+		reaction = self._id()
+		self.calls.append(("reaction", (target, target_id, content, reaction)))
+		return reaction
 
 	def remove_reaction(self, repo: str, number: int, target: str, target_id: str, reaction_id: str) -> None:
 		self.calls.append(("unreact", reaction_id))
+		self.calls.append(("reaction", (target, target_id, "removed", reaction_id)))
 
 	def list_reactions(self, repo: str, comment: ProviderComment) -> list[Reaction]:
 		return self.reactions.get(comment.id, [])
