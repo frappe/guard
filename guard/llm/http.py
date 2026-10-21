@@ -7,18 +7,24 @@ import httpx
 
 from guard.llm.types import GatewayBusy, LLMError
 
-RETRIES = 3
+RETRIES = 4
+RATE_RETRIES = 3
+RATE_WAIT_CAP = 30
 
 
 def post_json(url: str, body: dict[str, Any], headers: dict[str, str], timeout: int) -> dict[str, Any]:
 	"""POST JSON. Retry network errors and 5xx. Raise GatewayBusy on 402 and 429."""
 	last_error: Exception | None = None
-	for attempt in range(RETRIES):
+	for attempt in range(RETRIES + RATE_RETRIES):
 		try:
 			response = httpx.post(url, json=body, headers=headers, timeout=timeout)
 		except httpx.HTTPError as error:
 			last_error = error
 			time.sleep(2**attempt)
+			continue
+		if response.status_code == 429 and attempt < RATE_RETRIES and not _in_test():
+			# A short wait keeps the turns already done. Long waits go back to the job queue.
+			time.sleep(min(_retry_after(response), RATE_WAIT_CAP) * (attempt + 1))
 			continue
 		if response.status_code in (402, 429):
 			raise GatewayBusy(_message(response), _retry_after(response))
@@ -50,3 +56,9 @@ def _message(response: httpx.Response) -> str:
 def _retry_after(response: httpx.Response) -> int:
 	value = response.headers.get("Retry-After", "")
 	return int(value) if value.isdigit() else (300 if response.status_code == 402 else 60)
+
+
+def _in_test() -> bool:
+	import frappe
+
+	return bool(getattr(frappe.flags, "in_test", False))

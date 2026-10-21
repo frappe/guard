@@ -43,6 +43,7 @@ class Verdict:
 			important_files=[
 				f for f in args.get("important_files") or [] if isinstance(f, dict) and f.get("path")
 			][:15],
+			submitted=True,
 		)
 
 

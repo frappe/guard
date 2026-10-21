@@ -99,12 +99,20 @@ def build(
 		f = context_file(read, file_ref[0], f"team context file: {file_ref[1]}", limit=budget)
 		if f:
 			pack.files.append(f)
+	call_lines = _call_lines(changed)
 	for path, reasons in impacted_files(changed).items():
 		if path in paths:
 			continue
-		f = context_file(read, path, f"impacted: {', '.join(reasons[:3])}", limit=budget)
+		f = context_file(read, path, f"impacted: {', '.join(reasons[:3])}", limit=MAX_FILE_LINES)
 		if f:
 			pack.files.append(f)
+			spans[path] = [
+				*spans.get(path, []),
+				*(
+					ContextSpan(max(n - CALLER_PAD, 1), n + CALLER_PAD, "call")
+					for n in call_lines.get(path, [])
+				),
+			]
 
 	if graph:
 		_symbol_context(read, changed, graph, pack, spans, budget, paths)
@@ -125,6 +133,15 @@ def _config_files(config: PullRequestConfig) -> list[tuple[str, str]]:
 		for ref in file_config.files:
 			seen.setdefault(ref.path, ref.description or ref.source)
 	return list(seen.items())[:10]
+
+
+def _call_lines(changed: list[ChangedEntity]) -> dict[str, list[int]]:
+	lines: dict[str, list[int]] = {}
+	for entity in changed:
+		for link in [*entity.callers, *(site.link for site in entity.at_risk)]:
+			if link.path and link.line:
+				lines.setdefault(link.path, []).append(link.line)
+	return lines
 
 
 def impacted_files(changed: list[ChangedEntity]) -> dict[str, list[str]]:
@@ -242,8 +259,8 @@ def _link_to(entity: Any) -> Link:
 	return Link(entity, entity.name, "", entity.path, entity.start_line, True)
 
 
-def trim_lines(text: str, spans: list[ContextSpan] | None) -> str:
-	"""Keep only the lines inside spans when a plan exists."""
+def excerpt(text: str, spans: list[ContextSpan] | None) -> str:
+	"""The lines inside spans, numbered, with a marker where lines are left out."""
 	if not spans:
 		return text
 	lines = text.splitlines()
@@ -252,4 +269,10 @@ def trim_lines(text: str, spans: list[ContextSpan] | None) -> str:
 		keep.update(range(max(span.start, 1), min(span.end, len(lines)) + 1))
 	if not keep:
 		return text
-	return "\n".join(line for number, line in enumerate(lines, 1) if number in keep)
+	out, previous = [], 0
+	for number in sorted(keep):
+		if number != previous + 1:
+			out.append("   ...")
+		out.append(f"{number:5}  {lines[number - 1]}")
+		previous = number
+	return "\n".join(out)

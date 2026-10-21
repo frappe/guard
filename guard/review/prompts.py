@@ -15,7 +15,8 @@ How to work:
 5. Follow the team rules. When a finding comes from a rule, pass its `rule_id`.
 6. Use the tools to read more code when the context is not enough. Do not guess.
 7. Report each issue with `report_finding` as soon as you are sure of it.
-8. End with `submit_review`.
+8. End with `submit_review`. Every issue in the summary must also be a `report_finding`.
+   The summary explains the change. The findings carry the issues.
 
 What to report:
 - Only issues that a senior engineer on this team would raise. No praise, no summaries
@@ -63,7 +64,7 @@ STRICTNESS = {
 TASK = """Review this pull request. Use the tools when you need more context.
 Report findings with `report_finding`, then call `submit_review`."""
 
-FORCE_SUBMIT = "You have used your turns. Call `submit_review` now with your verdict."
+FORCE_SUBMIT = "You have used your turns. Report any issue you found with `report_finding` now, and call `submit_review` with your verdict."
 
 VERIFIER = """You check review findings for false positives.
 For each finding you get the claim, the code and the context. Decide if the finding is

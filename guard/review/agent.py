@@ -10,6 +10,22 @@ from guard.review.prompts import FORCE_SUBMIT, TASK
 from guard.review.run import ReviewRun, Verdict
 
 MAX_REPORTED = 60
+WARN_TURNS = 3
+TURNS_LOW = (
+	f"You have {WARN_TURNS} turns left. Stop exploring. Call report_finding for each issue you found, "
+	"on the changed line it concerns, then call submit_review."
+)
+NUDGE = (
+	"Not submitted. Your summary describes issues, but you reported no findings. "
+	"Call report_finding once for each issue, on the changed line it concerns, then call submit_review again."
+)
+
+
+def _mentions_issues(args: dict[str, Any]) -> bool:
+	score = args.get("confidence_score")
+	return isinstance(score, int | float) and score < 5
+
+
 READ_LIMIT = 600
 SEARCH_LIMIT = 8
 
@@ -152,6 +168,7 @@ class Agent:
 		self.max_turns = max_turns
 		self.messages: list[Message] = [Message("system", self.system, cache=True)]
 		self.reported: set[str] = set()
+		self.nudged = False
 
 	def run_loop(self, task: str) -> AgentResult:
 		from guard.llm.client import LLMClient
@@ -160,30 +177,37 @@ class Agent:
 		specs = tools(self.run)
 		self.messages.append(Message("user", task))
 		turns = 0
-		submitted = False
-		while turns < self.max_turns and not submitted:
+		while turns < self.max_turns and not self.run.verdict.submitted:
 			turns += 1
+			if turns == self.max_turns - WARN_TURNS:
+				self.messages.append(Message("user", TURNS_LOW))
 			result = client.chat(self.messages, tools=specs)
 			self.messages.append(result.as_message())
 			if not result.tool_calls:
 				break
 			for call in result.tool_calls:
 				self.messages.append(self._dispatch(call.name, call.arguments, call.id))
-			submitted = any(call.name == "submit_review" for call in result.tool_calls)
-		if not submitted and client.online:
-			# The model stopped or ran out of turns: ask once more, for the verdict only.
-			self.messages.append(Message("user", FORCE_SUBMIT))
-			final = client.chat(
+		if not self.run.verdict.submitted and client.online:
+			self._close(client, specs)
+		return AgentResult(self.run.findings, self.run.verdict, turns)
+
+	def _close(self, client, specs: list[ToolSpec]) -> None:
+		"""Out of turns: one call to report what is left, then one forced verdict. No nudge here."""
+		self.nudged = True
+		final_tools = [s for s in specs if s.name in ("report_finding", "submit_review")]
+		self.messages.append(Message("user", FORCE_SUBMIT))
+		result = client.chat(self.messages, tools=final_tools, tool_choice="required")
+		self.messages.append(result.as_message())
+		for call in result.tool_calls:
+			self.messages.append(self._dispatch(call.name, call.arguments, call.id))
+		if not self.run.verdict.submitted:
+			verdict = client.chat(
 				self.messages,
 				tools=[s for s in specs if s.name == "submit_review"],
 				tool_choice="submit_review",
 			)
-			for call in final.tool_calls:
-				if call.name == "submit_review":
-					self._dispatch(call.name, call.arguments, call.id)
-					submitted = True
-		self.run.verdict.submitted = submitted or self.run.verdict.submitted
-		return AgentResult(self.run.findings, self.run.verdict, turns)
+			for call in verdict.tool_calls:
+				self._dispatch(call.name, call.arguments, call.id)
 
 	def _dispatch(self, name: str, args: dict[str, Any], call_id: str) -> Message:
 		try:
@@ -207,6 +231,10 @@ class Agent:
 			run.findings.append(finding)
 			return f"reported #{len(run.findings)}"
 		if name == "submit_review":
+			if not self.reported and not self.nudged and _mentions_issues(args):
+				# Some models put every issue in the summary. Ask once for line findings.
+				self.nudged = True
+				return NUDGE
 			run.verdict = Verdict.from_arguments(args)
 			return "review submitted"
 		if name == "read_file":

@@ -1,11 +1,24 @@
 """The user message of a review: the pull request, the diff, and the graph context."""
 
 from guard.review import checks
-from guard.review.context import BuiltContext
+from guard.review.context import BuiltContext, excerpt
 from guard.review.prompts import TASK, data
 from guard.review.run import ReviewRun
 
 DIFF_LIMIT = 120_000
+BUDGET_TOKENS = {"base": 40_000, "plus": 80_000, "apex": 150_000}
+CHARS_PER_TOKEN = 4
+# Lower number = more important. Files beyond the budget are left out, least important first.
+PRIORITY = (
+	("project rule file", 1),
+	("custom instruction", 1),
+	("changed file", 1),
+	("caller of", 2),
+	("call site of", 2),
+	("impacted", 3),
+	("team context file", 4),
+	("similar", 5),
+)
 
 
 def compose(run: ReviewRun, built: BuiltContext, extra: str = "") -> str:
@@ -40,13 +53,33 @@ def compose(run: ReviewRun, built: BuiltContext, extra: str = "") -> str:
 		)
 	for note in built.pack.notes[:12]:
 		parts.append(data("context", note))
-	for file in built.pack.files:
-		parts.append(data(f"{file.path} ({file.reason})", checks.mask_secrets(file.content)))
-	diff = checks.mask_secrets("\n\n".join(f.annotated() for f in run.files))
-	parts.append("Annotated diff:\n" + data("diff", diff[:DIFF_LIMIT]))
+	diff = checks.mask_secrets("\n\n".join(f.annotated() for f in run.files))[:DIFF_LIMIT]
+	used = sum(len(p) for p in parts) + len(diff) + len(extra)
+	parts += context_files(built, BUDGET_TOKENS.get(run.tier, BUDGET_TOKENS["base"]) * CHARS_PER_TOKEN - used)
+	parts.append("Annotated diff:\n" + data("diff", diff))
 	if extra:
 		parts.append(extra)
 	return "\n\n".join(p for p in parts if p)
+
+
+def context_files(built: BuiltContext, budget_chars: int) -> list[str]:
+	"""Context files that fit the budget: spans only for files outside the diff, best first."""
+	blocks = []
+	for file in built.pack.files:
+		spans = built.spans.get(file.path) if not file.reason.startswith("changed file") else None
+		text = checks.mask_secrets(excerpt(file.content, spans))
+		blocks.append((_priority(file.reason), data(f"{file.path} ({file.reason[:200]})", text)))
+	chosen, used = [], 0
+	for priority, block in sorted(blocks, key=lambda b: b[0]):
+		if used + len(block) > budget_chars and priority > 1:
+			continue
+		chosen.append(block)
+		used += len(block)
+	return chosen
+
+
+def _priority(reason: str) -> int:
+	return next((rank for prefix, rank in PRIORITY if reason.startswith(prefix)), 3)
 
 
 def _rules(run: ReviewRun) -> str:
