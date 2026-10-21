@@ -62,7 +62,12 @@ def max_turns(tier: str) -> int:
 
 
 def trigger_handles() -> list[str]:
-	return _lines(settings().trigger_handles or "@guard")
+	"""Configured handles, plus `@<slug>` of each GitHub App, which is what GitHub suggests."""
+	handles = _lines(settings().trigger_handles or "@guard")
+	slugs = frappe.get_all(
+		"Code Provider", filters={"enabled": 1, "app_slug": ["is", "set"]}, pluck="app_slug"
+	)
+	return list(dict.fromkeys([*handles, *(f"@{slug}" for slug in slugs)]))
 
 
 def bot_logins() -> set[str]:

@@ -2,7 +2,7 @@
 
 ## Mentions
 
-A comment that contains a trigger handle is a mention. Guard ignores handles inside code blocks and quotes. Guard ignores comments from its own bot logins.
+A comment that contains a trigger handle is a mention. The handles are the Trigger Handles in Guard Settings and `@<slug>` of each GitHub App. Guard ignores handles inside code blocks and quotes. Guard ignores comments from its own bot logins.
 
 ### Intent
 

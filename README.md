@@ -4,7 +4,7 @@ Guard reviews GitHub pull requests with an AI agent that reads the whole codebas
 
 Guard is a Frappe app. One site serves one company. Everyone uses Frappe Desk.
 
-To put Guard on a production site, follow [Deploy Guard](docs/deployment.md).
+To put Guard on a production site, follow [Deploy Guard](docs/deployment.md). To change how Guard reviews, refer to [Configure Guard](docs/configuration.md).
 
 The specification is in [docs/spec](docs/spec/00-overview.md).
 

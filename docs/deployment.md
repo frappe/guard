@@ -139,7 +139,7 @@ If a delivery has the status Failed, open it to see the error. If no delivery ar
 | Approval | Guard approves at 5/5 with no open findings. A new push dismisses the approval. |
 | Summary sections | Collapsed |
 
-To change these settings, open **Review Settings** in Desk, or add `.guard/config.toml` to a repository. Refer to [Configuration](spec/06-configuration.md).
+To change these settings, open **Review Settings** in Desk, or add `.guard/config.toml` to a repository. Refer to [Configure Guard](configuration.md).
 
 To stop Guard from approving pull requests, clear **Auto Approve** in **Review Settings**.
 
