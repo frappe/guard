@@ -1,16 +1,34 @@
-<p align="center"><img src="guard/public/guard.svg" alt="Guard logo" width="80" height="80"></p>
+<div align="center" markdown="1">
 
-# Guard
+<img src="guard/public/guard.svg" alt="Guard logo" width="80"/>
+<h1>Guard</h1>
 
-Guard reviews GitHub pull requests with an AI agent that reads the whole codebase, not only the diff. It builds a graph of every repository it reviews: definitions, calls, imports, inheritance, and, for Frappe apps, doctypes, links, hooks and `frappe.call` strings. Each review uses the graph to find the callers that a change breaks and the code that a change should match.
+**AI Code Reviews That Read The Whole Codebase**
+
+[![CI](https://github.com/frappe/guard/actions/workflows/ci.yml/badge.svg)](https://github.com/frappe/guard/actions/workflows/ci.yml)
+[![Linters](https://github.com/frappe/guard/actions/workflows/linter.yml/badge.svg)](https://github.com/frappe/guard/actions/workflows/linter.yml)
+
+</div>
+
+<div align="center">
+	<a href="docs/deployment.md">Deploy</a>
+	-
+	<a href="docs/configuration.md">Configuration</a>
+	-
+	<a href="docs/spec/00-overview.md">Specification</a>
+</div>
+
+## Guard
+
+Guard reviews GitHub pull requests with an AI agent that reads the whole codebase, not only the diff. It builds a graph of every repository it reviews: definitions, calls, imports, inheritance, HTTP routes, and, for Frappe apps, doctypes, links, hooks and `frappe.call` strings. Each review uses the graph to find the callers that a change breaks, in the same repository and in the other repositories of the team, and the code that a change should match.
 
 Guard is a Frappe app. One site serves one company. Everyone uses Frappe Desk.
 
-To put Guard on a production site, follow [Deploy Guard](docs/deployment.md). To change how Guard reviews, refer to [Configure Guard](docs/configuration.md).
+### Motivation
 
-The specification is in [docs/spec](docs/spec/00-overview.md).
+We used a hosted AI reviewer on our pull requests. It had hard limits on new repositories, and it added paid features without notice. We already had [Grove](https://github.com/frappe/grove) as an AI gateway and Frappe for the rest, so we built our own reviewer: self-hosted, with no limit on repositories, and with the rules of the team in the repository.
 
-## What it does
+### What it does
 
 - Reviews pull requests on open, push or rebase, or when someone writes `@guard` in a comment.
 - Posts a summary with a 0 to 5 confidence score, a risk level, a findings table, a diagram and a blast radius line, and inline comments with P0, P1 or P2 severity and suggested fixes.
