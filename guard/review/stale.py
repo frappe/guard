@@ -7,6 +7,8 @@ from typing import Any
 
 import frappe
 
+from guard.git.repository import store_for
+from guard.git.store import GitError
 from guard.learning import feedback
 from guard.llm.client import LLMClient
 from guard.providers.base import ProviderError
@@ -15,8 +17,9 @@ from guard.review.run import ReviewRun
 from guard.utils import db
 
 RADIUS = 15
+DIFF_CHARS = 12000
 JUDGE = """A code review comment was posted on an earlier version of a pull request.
-Look at the current code and decide its state:
+Look at the changes since the comment and the current code, and decide its state:
 - "applies": the issue is still in the code.
 - "fixed": the code now handles the issue.
 - "invalid": the issue does not apply to this code any more, or it was never correct.
@@ -60,10 +63,26 @@ def _state(run: ReviewRun, row: dict[str, Any], client: LLMClient) -> str:
 		return "applies"
 	answer = client.complete_json(
 		JUDGE,
-		data("comment", f"{row['title']}\n{row['body']}") + data("current code", _around(source, start)),
+		data("comment", f"{row['title']}\n{row['body']}")
+		+ data("changes since the comment", _changes_since(run, row))
+		+ data("current code", _around(source, start)),
 		default={},
 	)
 	return str(answer.get("state")) if isinstance(answer, dict) else "applies"
+
+
+def _changes_since(run: ReviewRun, row: dict[str, Any]) -> str:
+	"""The diff from the reviewed head to the new head, for all files: a fix can be in a test or a callee."""
+	old = str(db.value("Code Review", row["code_review"], "head_sha") or "")
+	if not old or old == run.head_sha or not run.repository:
+		return ""
+	try:
+		store = store_for(run.repository)
+		if not store.has_commit(old):
+			return ""
+		return store.diff(old, run.head_sha)[:DIFF_CHARS]
+	except GitError:
+		return ""
 
 
 def _around(source: str, line: int) -> str:
@@ -76,7 +95,7 @@ def _earlier_open(run: ReviewRun) -> list[dict[str, Any]]:
 	if not run.review.pull_request:
 		return []
 	return db.dict_rows(
-		"""SELECT name, path, start_line, title, body, provider_thread_id FROM `tabReview Finding`
+		"""SELECT name, code_review, path, start_line, title, body, provider_thread_id FROM `tabReview Finding`
 		WHERE pull_request = %s AND status = 'Open' AND code_review != %s""",
 		(run.review.pull_request, run.review.name),
 	)

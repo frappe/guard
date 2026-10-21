@@ -121,7 +121,7 @@ class ReviewPipeline:
 		verify.verify(run)
 		self.stage("filter")
 		existing = self.existing_findings()
-		finding_filter = FindingFilter(run.files, run.settings, existing)
+		finding_filter = FindingFilter(run.files, run.settings, existing, rereview=self.review_number() > 1)
 		finding_filter.run(run.findings)
 		suppression.suppress(run.findings, run.repository)
 		if not run.verdict.submitted:

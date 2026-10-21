@@ -206,6 +206,7 @@ The summary comment starts with the marker `<!-- guard:summary -->`. On a re-rev
 
 - One headline line is always visible: confidence score, risk, finding counts and blast radius.
 - Sections are collapsed by default, including the diagram. A collapsible section is wrapped in `<details>`. `open` is set when the section is open by default.
+- A re-review posts only P0 and P1 findings. P2 findings come from the first review only.
 - The summary explains the change in at most 4 bullets. It does not repeat the findings. A finding body is at most 3 sentences.
 - `hide_footer` removes the footer.
 - `update_description` writes the same content into the description between `<!-- guard:start -->` and `<!-- guard:end -->`.

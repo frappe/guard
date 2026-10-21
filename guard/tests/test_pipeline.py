@@ -179,6 +179,23 @@ class TestPipeline(IntegrationTestCase):
 		self.assertEqual(len(self.adapter.named("resolve")), 1)
 		self.assertEqual(self.adapter.named("status")[-1], "success")
 
+	def test_rereview_drops_new_p2(self):
+		self.review([[("submit_review", {"summary": "s", "confidence_score": 5})]])
+		nit = {
+			"path": "app/models.py",
+			"start_line": 5,
+			"severity": "P2",
+			"comment_type": "style",
+			"title": "Name is vague",
+			"body": "x",
+			"confidence": 0.9,
+		}
+		with use_responder(
+			scripted([[("report_finding", nit), ("submit_review", {"summary": "s", "confidence_score": 4})]])
+		):
+			second = trigger.consider(self.pr, "open", manual=True, requested_by="ada")
+		self.assertEqual(self.row(second)["posted_count"], 0)
+
 	def test_gate_skips_drafts_and_disabled_repositories(self):
 		frappe.db.set_value("Pull Request", self.pr, "is_draft", 1)
 		self.assertIsNone(trigger.consider(self.pr, "open"))

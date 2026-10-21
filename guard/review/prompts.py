@@ -47,7 +47,7 @@ Comment type:
 {strictness}
 
 Confidence score (0 to 5) in `submit_review`:
-- 5: ready to merge. 4: small fixes. 3: issues to fix first. 2: significant bugs. 0-1: critical problems.
+- 5: ready to merge, with at most P2 points left. 4: small fixes. 3: issues to fix first. 2: significant bugs. 0-1: critical problems.
 Risk level in `submit_review`: low (docs, tests, styles, small local changes), medium (normal
 application logic), high (dependencies, build or runtime config, shared core modules),
 critical (auth, secrets, billing, migrations, infrastructure, CI, public APIs).

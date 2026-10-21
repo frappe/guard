@@ -78,11 +78,16 @@ class FindingFilter:
 	"""Anchor, filter by type and strictness, dedupe, and cap. Dropped findings keep a reason."""
 
 	def __init__(
-		self, files: list[FileDiff], settings: dict[str, Any], existing: list[dict[str, Any]] | None = None
+		self,
+		files: list[FileDiff],
+		settings: dict[str, Any],
+		existing: list[dict[str, Any]] | None = None,
+		rereview: bool = False,
 	):
 		self.files = {f.path: f for f in files}
 		self.settings = settings
 		self.existing = existing or []
+		self.rereview = rereview
 		# Names of earlier findings that this review raised again: they still apply.
 		self.reraised: set[str] = set()
 
@@ -91,6 +96,7 @@ class FindingFilter:
 			self.anchor(finding)
 		self.filter_types(findings)
 		self.filter_strictness(findings)
+		self.filter_rereview(findings)
 		self.dedupe(findings)
 		self.dedupe_existing(findings)
 		self.cap(findings)
@@ -135,6 +141,14 @@ class FindingFilter:
 				finding.drop("Dismissed", "strictness 3 posts only P0 and P1")
 			elif strictness == 2 and finding.severity == "P2" and finding.confidence < 0.6:
 				finding.drop("Dismissed", "low-confidence P2 at strictness 2")
+
+	def filter_rereview(self, findings: list[Finding]) -> None:
+		"""A re-review posts only P0 and P1, so each push does not bring new nitpicks."""
+		if not self.rereview:
+			return
+		for finding in findings:
+			if finding.kept and finding.severity == "P2":
+				finding.drop("Dismissed", "re-reviews post only P0 and P1")
 
 	def dedupe(self, findings: list[Finding]) -> None:
 		kept = sorted((f for f in findings if f.kept), key=_rank)
