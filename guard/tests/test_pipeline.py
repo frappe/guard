@@ -314,6 +314,8 @@ class TestPipeline(IntegrationTestCase):
 		self.review(
 			[[("report_finding", finding), ("submit_review", {"summary": "s", "confidence_score": 3})]]
 		)
+		# A finding shown only in the summary still blocks approval.
+		frappe.db.set_value("Review Finding", {"pull_request": self.pr}, "posted", 0)
 		clean = {"summary": "s", "confidence_score": 5, "risk_level": "low"}
 		with use_responder(scripted([[("submit_review", clean)]])):
 			second = trigger.consider(self.pr, "open", manual=True, requested_by="ada")

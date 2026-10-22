@@ -2,9 +2,10 @@ from frappe.tests import UnitTestCase
 
 from guard.evals import run as evals
 from guard.git.diff import parse_diff
-from guard.review import checks
+from guard.review import checks, verify
 from guard.review.findings import Finding, FindingFilter
-from guard.review.rule_files import collect, mandatory_rules
+from guard.review.rule_files import ProjectRule, collect, mandatory_rules
+from guard.review.run import ReviewRun
 
 RULES = """# Agent Guide
 
@@ -41,6 +42,31 @@ class TestProjectRules(UnitTestCase):
 		self.assertEqual(rules[0].text, "Always add or update tests for behavior changes.")
 		self.assertEqual([r.is_test_rule for r in rules], [True, False])
 
+	def test_only_rules_that_ask_for_tests(self):
+		def asks(text):
+			return ProjectRule("CLAUDE.md", 1, text).is_test_rule
+
+		self.assertTrue(asks("You must write tests for new endpoints."))
+		self.assertFalse(asks("Always run the tests before committing."))
+		self.assertFalse(asks("Never add flaky tests."))
+
+	def test_rule_covers_its_directory(self):
+		self.assertTrue(ProjectRule("CLAUDE.md", 1, "x").covers("app/a.py"))
+		self.assertTrue(ProjectRule("app/AGENTS.md", 1, "x").covers("app/a.py"))
+		self.assertFalse(ProjectRule("web/AGENTS.md", 1, "x").covers("app/a.py"))
+		self.assertTrue(ProjectRule(".cursor/rules/x.md", 1, "x").covers("app/a.py"))
+
+	def test_test_file_names(self):
+		for path in (
+			"pkg/a_test.go",
+			"spec/models/user_spec.rb",
+			"src/FooTest.java",
+			"a.test.ts",
+			"test_a.py",
+		):
+			self.assertTrue(checks.TEST_FILE.search(path), path)
+		self.assertFalse(checks.TEST_FILE.search("app/latest.py"))
+
 	def test_missing_tests(self):
 		rules = mandatory_rules([("CLAUDE.md", RULES)])
 		files = parse_diff(DIFF)
@@ -51,6 +77,14 @@ class TestProjectRules(UnitTestCase):
 		self.assertFalse(checks.missing_test_findings(files, ["app/a.py"], []))
 		docs = parse_diff(DIFF.replace("app/a.py", "docs/a.md"))
 		self.assertFalse(checks.missing_test_findings(docs, ["docs/a.md"], rules))
+
+	def test_missing_tests_respects_rule_directory(self):
+		web = [ProjectRule("web/AGENTS.md", 1, "Always add tests.")]
+		files = parse_diff(DIFF)
+		self.assertFalse(checks.missing_test_findings(files, ["app/a.py"], web))
+		app = [ProjectRule("app/AGENTS.md", 1, "Always add tests.")]
+		self.assertTrue(checks.missing_test_findings(files, ["app/a.py", "web/a.test.ts"], app))
+		self.assertFalse(checks.missing_test_findings(files, ["app/a.py", "app/a_test.py"], app))
 
 
 class TestRuleFilter(UnitTestCase):
@@ -73,6 +107,14 @@ class TestRuleFilter(UnitTestCase):
 		self.assertTrue(nit.kept)
 
 
+class TestVerifier(UnitTestCase):
+	def test_project_rule_text_goes_to_the_verifier(self):
+		run = ReviewRun(None, None, "", lambda path: "x = 1\n", lambda path: None, lambda path: [], "", "")
+		item = verify._item(run, 0, finding(rule_id="project:CLAUDE.md:5"), "Always add tests.")
+		self.assertIn("Always add tests.", item)
+		self.assertNotIn("mandatory project rule", verify._item(run, 0, finding()))
+
+
 class TestEvalCases(UnitTestCase):
 	def test_pilot_678_flags_missing_tests_without_a_model(self):
 		[case] = evals.load_cases("pilot-678")
@@ -85,7 +127,10 @@ class TestEvalCases(UnitTestCase):
 		self.assertTrue(evals.matches(expected[0], vars(missing[0])))
 
 	def test_matches(self):
-		expected = {"path": "a.ts", "keywords": ["port", "fail"]}
-		self.assertTrue(evals.matches(expected, {"path": "a.ts", "title": "Failed load", "body": "port 0"}))
-		self.assertFalse(evals.matches(expected, {"path": "b.ts", "title": "Failed load", "body": "port 0"}))
-		self.assertFalse(evals.matches(expected, {"path": "a.ts", "title": "Failed load", "body": ""}))
+		expected = {"path": "a.ts", "severity": "P1", "keywords": ["port", "fail"]}
+		found = {"path": "a.ts", "severity": "P1", "title": "Failed load", "body": "port 0"}
+		self.assertTrue(evals.matches(expected, found))
+		self.assertTrue(evals.matches(expected, {**found, "severity": "P0"}))
+		self.assertFalse(evals.matches(expected, {**found, "severity": "P2"}))
+		self.assertFalse(evals.matches(expected, {**found, "path": "b.ts"}))
+		self.assertFalse(evals.matches(expected, {**found, "body": ""}))

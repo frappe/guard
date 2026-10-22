@@ -138,7 +138,7 @@ Label, author, branch, keyword and path filters, with globs. Matching is case-in
 
 ### C6. Project rule files
 
-Guard reads `CLAUDE.md`, `AGENTS.md`, `.cursorrules`, `.cursor/rules/*` and `.github/copilot-instructions.md` as review context when they exist. A line that says always, must, never, do not, mandatory or required is a mandatory rule with the id `project:<path>:<line>`. A finding that breaks one is at least P1, whatever the model or the verifier says. When a mandatory rule asks for tests and the pull request changes code files but no test file, Guard reports a P1 finding without the model.
+Guard reads `CLAUDE.md`, `AGENTS.md`, `.cursorrules`, `.cursor/rules/*` and `.github/copilot-instructions.md` as review context when they exist. A line that says always, must, never, do not, mandatory or required is a mandatory rule with the id `project:<path>:<line>`. A finding that breaks one is at least P1, whatever the model or the verifier says. `CLAUDE.md` and `AGENTS.md` rules cover their own directory. When a mandatory rule asks to add, update or write tests, and the pull request changes code under it but adds or updates no test under it, Guard reports a P1 finding without the model.
 
 ### C7. Model and turn settings
 

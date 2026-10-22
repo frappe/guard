@@ -24,7 +24,9 @@ ASSIGNED_SECRET = re.compile(
 PLACEHOLDER = re.compile(
 	r"(?i)example|placeholder|dummy|test|xxx|changeme|your[_-]|<|\$\{|\{\{|os\.environ|getenv"
 )
-TEST_FILE = re.compile(r"(^|/)(tests?|__tests__|fixtures?)/|test_[^/]+$|\.test\.|\.spec\.")
+TEST_FILE = re.compile(
+	r"(^|/)(tests?|__tests__|fixtures?|spec)/|test_[^/]+$|_(test|spec)\.[a-z]+$|Tests?\.[a-z]+$|\.test\.|\.spec\."
+)
 
 FRAPPE_RULES = """Frappe review pack (the repository is a Frappe app):
 - A @frappe.whitelist() method must check permissions (frappe.has_permission, doc.check_permission or frappe.only_for) before it reads or writes records for the caller.
@@ -129,17 +131,16 @@ def frappe_findings(files: list[FileDiff]) -> list[Finding]:
 
 
 def missing_test_findings(
-	files: list[FileDiff], changed_paths: list[str], rules: list[ProjectRule]
+	files: list[FileDiff], written_paths: list[str], rules: list[ProjectRule]
 ) -> list[Finding]:
-	"""A project rule asks for tests, the code changed, and no test file changed."""
-	rule = next((r for r in rules if r.is_test_rule), None)
-	if rule is None or any(TEST_FILE.search(path) for path in changed_paths):
-		return []
+	"""A project rule asks for tests, code under it changed, and no test under it was added or updated."""
+	tests = [path for path in written_paths if TEST_FILE.search(path)]
 	for diff in files:
 		if TEST_FILE.search(diff.path) or not diff.path.endswith(tuple(EXTENSIONS)):
 			continue
+		rule = next((r for r in rules if r.is_test_rule and r.covers(diff.path)), None)
 		added = sorted(diff.added_lines())
-		if not added:
+		if rule is None or not added or any(rule.covers(path) for path in tests):
 			continue
 		return [
 			Finding(

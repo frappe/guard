@@ -124,4 +124,4 @@ When `include_rule_files` is on, Guard reads these files from the head commit an
 - `.cursorrules` and `.cursor/rules/*.md` / `*.mdc`.
 - `.github/copilot-instructions.md`.
 
-A line that says always, must, never, do not, mandatory or required is a mandatory rule with the id `project:<path>:<line>`. A finding that breaks one is at least P1, whatever the model or the verifier says. When a mandatory rule asks for tests and the pull request changes code files but no test file, Guard reports a P1 finding without the model.
+A line that says always, must, never, do not, mandatory or required is a mandatory rule with the id `project:<path>:<line>`. A finding that breaks one is at least P1, whatever the model or the verifier says. `CLAUDE.md` and `AGENTS.md` rules cover their own directory. Other rule files cover the repository. When a mandatory rule asks to add, update or write tests, and the pull request changes code under it but adds or updates no test under it, Guard reports a P1 finding without the model.

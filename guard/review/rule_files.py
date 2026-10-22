@@ -11,7 +11,8 @@ ROOT_ONLY = (".cursorrules", ".github/copilot-instructions.md")
 MAX_CHARS = 6000
 RULE_PREFIX = "project:"
 MANDATORY = re.compile(r"\b(always|must|never|do not|don't|mandatory|required)\b", re.I)
-TESTS = re.compile(r"\btests?\b", re.I)
+ASKS_FOR_TESTS = re.compile(r"\b(add|update|write)\b[^.]*\btests?\b", re.I)
+FORBIDS = re.compile(r"\b(never|do not|don't)\b", re.I)
 
 
 @dataclass
@@ -28,7 +29,16 @@ class ProjectRule:
 
 	@property
 	def is_test_rule(self) -> bool:
-		return bool(TESTS.search(self.text))
+		"""Asks to add or update tests. "Run the tests" or "never add flaky tests" do not count."""
+		return bool(ASKS_FOR_TESTS.search(self.text)) and not FORBIDS.search(self.text)
+
+	@property
+	def directory(self) -> str:
+		"""CLAUDE.md and AGENTS.md cover their directory. Other rule files cover the repository."""
+		return posixpath.dirname(self.path) if posixpath.basename(self.path) in PER_DIRECTORY else ""
+
+	def covers(self, path: str) -> bool:
+		return not self.directory or path.startswith(f"{self.directory}/")
 
 
 def collect(paths: list[str], read: Reader, list_dir: Lister | None = None) -> list[tuple[str, str]]:

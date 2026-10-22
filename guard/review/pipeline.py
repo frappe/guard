@@ -134,7 +134,9 @@ class ReviewPipeline:
 		run.findings += crossrepo.missing_targets(run.files, run.head, others, index)
 		run.findings += crossrepo.break_findings(run.changed)
 		run.findings += checks.missing_test_findings(
-			run.files, [f.path for f in run.all_files], rule_files.mandatory_rules(run.rule_files)
+			run.files,
+			[f.path for f in run.all_files if f.status != "deleted"],
+			rule_files.mandatory_rules(run.rule_files),
 		)
 		if run.frappe_app:
 			run.findings += checks.frappe_findings(run.files)

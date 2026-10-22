@@ -3,6 +3,7 @@
 from guard.llm.client import LLMClient
 from guard.review.findings import SEVERITIES, Finding
 from guard.review.prompts import VERIFIER, data
+from guard.review.rule_files import mandatory_rules
 from guard.review.run import ReviewRun
 
 CODE_RADIUS = 15
@@ -15,7 +16,11 @@ def verify(run: ReviewRun) -> None:
 	client = LLMClient(tier=run.tier, purpose="verify", usage=run.usage)
 	if not client.online:
 		return
-	prompt = "\n\n".join(_item(run, index, finding) for index, finding in enumerate(candidates))
+	rules = {rule.id: rule.text for rule in mandatory_rules(run.rule_files)}
+	prompt = "\n\n".join(
+		_item(run, index, finding, rules.get(finding.rule_id or "", ""))
+		for index, finding in enumerate(candidates)
+	)
 	answers = client.complete_json(VERIFIER, prompt, default=[])
 	if not isinstance(answers, list):
 		return
@@ -61,11 +66,12 @@ def proven_break(run: ReviewRun, finding: Finding) -> bool:
 	return False
 
 
-def _item(run: ReviewRun, index: int, finding: Finding) -> str:
+def _item(run: ReviewRun, index: int, finding: Finding, rule: str = "") -> str:
 	source = run.head(finding.path) or ""
 	lines = source.splitlines()
 	start = max(finding.start_line - CODE_RADIUS, 1)
 	end = min(finding.end_line + CODE_RADIUS, len(lines))
 	code = "\n".join(f"{n:5} {lines[n - 1]}" for n in range(start, end + 1)) if lines else ""
 	claim = f"[{index}] {finding.severity} {finding.comment_type} {finding.path}:{finding.start_line}-{finding.end_line}\n{finding.title}\n{finding.body}"
-	return data(f"finding {index}", claim) + "\n" + data(f"code {finding.path}", code)
+	block = data(f"finding {index}", claim) + "\n" + data(f"code {finding.path}", code)
+	return block + "\n" + data(f"mandatory project rule {finding.rule_id}", rule) if rule else block

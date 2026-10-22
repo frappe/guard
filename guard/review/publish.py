@@ -199,10 +199,10 @@ class Publisher:
 
 
 def open_finding_count(pull_request: str) -> int:
-	"""Posted findings on the pull request that are still open, from every review."""
+	"""Open findings on the pull request from every review, inline or only in the summary."""
 	return int(
 		db.scalar(
-			"SELECT COUNT(*) FROM `tabReview Finding` WHERE pull_request = %s AND status = 'Open' AND posted = 1",
+			"SELECT COUNT(*) FROM `tabReview Finding` WHERE pull_request = %s AND status = 'Open'",
 			(pull_request,),
 		)
 		or 0
