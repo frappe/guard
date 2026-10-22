@@ -156,20 +156,21 @@ def select_tier(
 	requested: str | None,
 	facts: PullRequestFacts,
 	contract_changes: int = 0,
+	first_review: bool = False,
 ) -> str:
 	tier = tier_for(config.efforts, tier_rules, requested)
-	return tier if tier != "auto" else auto_tier(facts, contract_changes)
+	return tier if tier != "auto" else auto_tier(facts, contract_changes, first_review)
 
 
-def auto_tier(facts: PullRequestFacts, contract_changes: int = 0) -> str:
-	"""Pick a tier from size, risk and complexity."""
+def auto_tier(facts: PullRequestFacts, contract_changes: int = 0, first_review: bool = False) -> str:
+	"""Pick a tier from size, risk and complexity. A first review is at least plus: size is not risk."""
 	points = (facts.additions + facts.deletions) / 200 + facts.files_changed / 10 + contract_changes * 0.5
 	if any(RISKY_PATH.search(path) for path in facts.paths):
 		points += 2
 	if RISKY_LABELS & {label.lower() for label in facts.labels}:
 		points += 2
 	if points < 2:
-		return "base"
+		return "plus" if first_review else "base"
 	return "plus" if points < 5 else "apex"
 
 

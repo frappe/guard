@@ -28,6 +28,8 @@ def change_email(user_id, email):
     return update_user_email(user, email)
 """
 
+AUTO_APPROVE = '[auto_approve]\nenabled = true\nrisk_ceiling = "low"\n'
+
 PATCHED = (
 	"guard.review.pipeline",
 	"guard.review.trigger",
@@ -117,7 +119,7 @@ class TestPipeline(IntegrationTestCase):
 		self.assertEqual(review["status"], "Completed", review["error"])
 		self.assertEqual(review["posted_count"], 1)
 		self.assertEqual(review["confidence_score"], 3)  # capped by the P1
-		self.assertEqual(review["credits"], 1)
+		self.assertEqual(review["credits"], 3)  # a first review is at least plus
 		posted = self.adapter.named("create_review")[0]
 		self.assertEqual(posted[0].path, "app/models.py")
 		self.assertIn("**P1**", posted[0].body)
@@ -201,6 +203,34 @@ class TestPipeline(IntegrationTestCase):
 		# Only a dropped P2 was left, so 4 becomes 5.
 		self.assertEqual(self.row(second)["confidence_score"], 5)
 
+	def test_rereview_posts_p2_on_new_lines(self):
+		self.review([[("submit_review", {"summary": "s", "confidence_score": 5})]])
+		models = (self.repo.path / "app/models.py").read_text() + "\n\nVALUE = 1\n"
+		self.repo.commit({"app/models.py": models}, "add value")
+		frappe.db.set_value("Pull Request", self.pr, "head_sha", self.repo.head())
+		nit = {
+			"path": "app/models.py",
+			"start_line": len(models.splitlines()),
+			"severity": "P2",
+			"comment_type": "style",
+			"title": "Name is vague",
+			"body": "x",
+			"confidence": 0.9,
+		}
+		with use_responder(
+			scripted([[("report_finding", nit), ("submit_review", {"summary": "s", "confidence_score": 4})]])
+		):
+			second = trigger.consider(self.pr, "open", manual=True, requested_by="ada")
+		self.assertEqual(self.row(second)["posted_count"], 1)
+
+	def test_project_test_rule_without_a_model_finding(self):
+		self.commit_on_main({"CLAUDE.md": "- Always add tests for behavior changes.\n"})
+		name = self.review([[("submit_review", {"summary": "s", "confidence_score": 5})]])
+		review = self.row(name)
+		self.assertEqual(review["posted_count"], 1)
+		self.assertEqual(review["confidence_score"], 3)
+		self.assertIn("Code changes without tests", self.adapter.named("create_review")[0][0].body)
+
 	def test_verifier_keeps_p0_for_a_proven_break(self):
 		finding = {
 			"path": "app/models.py",
@@ -252,14 +282,16 @@ class TestPipeline(IntegrationTestCase):
 		with use_responder(scripted([[("submit_review", {"summary": "s", "confidence_score": 5})]])):
 			self.assertTrue(trigger.consider(self.pr, "open"))
 
-	def test_auto_approve_clean_low_risk(self):
+	def commit_on_main(self, files):
+		"""Commit on the base branch and merge it into the pull request."""
 		self.repo.git("checkout", "-q", "main")
-		self.repo.commit(
-			{".guard/config.toml": '[auto_approve]\nenabled = true\nrisk_ceiling = "low"\n'}, "policy"
-		)
+		self.repo.commit(files, "on main")
 		self.repo.git("checkout", "-q", "feature")
 		self.repo.git("merge", "-q", "main", "-m", "merge main")
 		frappe.db.set_value("Pull Request", self.pr, "head_sha", self.repo.head())
+
+	def test_auto_approve_clean_low_risk(self):
+		self.commit_on_main({".guard/config.toml": AUTO_APPROVE})
 		name = self.review(
 			[[("submit_review", {"summary": "Small change.", "confidence_score": 5, "risk_level": "low"})]]
 		)
@@ -267,6 +299,28 @@ class TestPipeline(IntegrationTestCase):
 		self.assertTrue(self.adapter.named("approve"))
 		self.assertEqual(self.adapter.named("status")[-1], "success")
 		self.assertTrue(db.value("Pull Request", self.pr, "guard_approved"))
+
+	def test_auto_approve_waits_for_earlier_findings(self):
+		self.commit_on_main({".guard/config.toml": AUTO_APPROVE})
+		finding = {
+			"path": "app/models.py",
+			"start_line": 5,
+			"severity": "P1",
+			"comment_type": "logic",
+			"title": "Callers are not updated",
+			"body": "x",
+			"confidence": 0.9,
+		}
+		self.review(
+			[[("report_finding", finding), ("submit_review", {"summary": "s", "confidence_score": 3})]]
+		)
+		# A finding shown only in the summary still blocks approval.
+		frappe.db.set_value("Review Finding", {"pull_request": self.pr}, "posted", 0)
+		clean = {"summary": "s", "confidence_score": 5, "risk_level": "low"}
+		with use_responder(scripted([[("submit_review", clean)]])):
+			second = trigger.consider(self.pr, "open", manual=True, requested_by="ada")
+		self.assertEqual(self.row(second)["confidence_score"], 5)
+		self.assertFalse(self.adapter.named("approve"))
 
 	def test_mention_answers_question(self):
 		from guard.conversation import threads

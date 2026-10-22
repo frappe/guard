@@ -1,6 +1,6 @@
 """The user message of a review: the pull request, the diff, and the graph context."""
 
-from guard.review import checks
+from guard.review import checks, rule_files
 from guard.review.context import BuiltContext, excerpt
 from guard.review.prompts import TASK, data
 from guard.review.run import ReviewRun
@@ -36,6 +36,7 @@ def compose(run: ReviewRun, built: BuiltContext, extra: str = "") -> str:
 		meta.append("Commits:\n" + "\n".join(f"- {c.subject}" for c in run.commits[-30:]))
 	parts.append("Pull request:\n" + data("pull request", "\n".join(meta) + "\n\n" + (run.description or "")))
 	parts.append(_rules(run))
+	parts.append(_project_rules(run))
 	if run.frappe_app:
 		parts.append(checks.FRAPPE_RULES)
 	if run.blast and run.blast.sentence():
@@ -105,6 +106,16 @@ def _rules(run: ReviewRun) -> str:
 				seen.add(note.content)
 				lines.append(f"- Note for {path}: {note.content}")
 	return "Team rules:\n" + data("rules", "\n".join(lines)) if lines else ""
+
+
+def _project_rules(run: ReviewRun) -> str:
+	rules = rule_files.mandatory_rules(run.rule_files)[:40]
+	if not rules:
+		return ""
+	lines = "\n".join(f"- {rule.text} (rule_id: {rule.id})" for rule in rules)
+	return "Mandatory project rules. A finding that breaks one is at least P1:\n" + data(
+		"project rules", lines
+	)
 
 
 def _changed(run: ReviewRun) -> str:

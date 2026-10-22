@@ -1,11 +1,13 @@
-"""Checks that need no model: secrets in the diff, and the Frappe review pack."""
+"""Checks that need no model: secrets in the diff, the Frappe review pack, and project test rules."""
 
 import math
 import re
 from collections import Counter
 
 from guard.git.diff import FileDiff
+from guard.indexing.languages import EXTENSIONS
 from guard.review.findings import Finding
+from guard.review.rule_files import ProjectRule
 
 SECRET_PATTERNS = (
 	("GitHub token", re.compile(r"\b(gh[pousr]_[A-Za-z0-9]{36,}|github_pat_[A-Za-z0-9_]{60,})\b")),
@@ -22,7 +24,9 @@ ASSIGNED_SECRET = re.compile(
 PLACEHOLDER = re.compile(
 	r"(?i)example|placeholder|dummy|test|xxx|changeme|your[_-]|<|\$\{|\{\{|os\.environ|getenv"
 )
-TEST_FILE = re.compile(r"(^|/)(tests?|__tests__|fixtures?)/|test_[^/]+$|\.test\.|\.spec\.")
+TEST_FILE = re.compile(
+	r"(^|/)(tests?|__tests__|fixtures?|spec)/|test_[^/]+$|_(test|spec)\.[a-z]+$|Tests?\.[a-z]+$|\.test\.|\.spec\."
+)
 
 FRAPPE_RULES = """Frappe review pack (the repository is a Frappe app):
 - A @frappe.whitelist() method must check permissions (frappe.has_permission, doc.check_permission or frappe.only_for) before it reads or writes records for the caller.
@@ -124,6 +128,35 @@ def frappe_findings(files: list[FileDiff]) -> list[Finding]:
 							)
 						)
 	return findings
+
+
+def missing_test_findings(
+	files: list[FileDiff], written_paths: list[str], rules: list[ProjectRule]
+) -> list[Finding]:
+	"""A project rule asks for tests, code under it changed, and no test under it was added or updated."""
+	tests = [path for path in written_paths if TEST_FILE.search(path)]
+	for diff in files:
+		if TEST_FILE.search(diff.path) or not diff.path.endswith(tuple(EXTENSIONS)):
+			continue
+		rule = next((r for r in rules if r.is_test_rule and r.covers(diff.path)), None)
+		added = sorted(diff.added_lines())
+		if rule is None or not added or any(rule.covers(path) for path in tests):
+			continue
+		return [
+			Finding(
+				diff.path,
+				added[0],
+				added[0],
+				"P1",
+				"logic",
+				"Code changes without tests",
+				f"This pull request changes code but adds or updates no test. `{rule.path}` line {rule.line}: {rule.text}",
+				category="test-gap",
+				confidence=0.8,
+				rule_id=rule.id,
+			)
+		]
+	return []
 
 
 def _secret_kind(text: str) -> str | None:

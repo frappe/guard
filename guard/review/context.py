@@ -11,8 +11,7 @@ from guard.knowledge import store as kb_store
 from guard.learning.memories import for_paths as memories_for_paths
 from guard.review import crossrepo
 from guard.review.prompt import ContextFile, ContextPack, Question, context_file
-from guard.review.rule_files import collect as collect_rule_files
-from guard.review.run import Lister, Reader
+from guard.review.run import Reader
 from guard.review.spans import ContextSpan, symbol_span
 from guard.utils import db
 
@@ -56,7 +55,6 @@ def instructions(config: PullRequestConfig) -> list[tuple[str, str]]:
 
 def build(
 	read: Reader,
-	list_dir: Lister,
 	changed: list[ChangedEntity],
 	blast: BlastRadius,
 	graph: CodeGraph | None,
@@ -66,6 +64,7 @@ def build(
 	full_name: str | None = None,
 	team: str | None = None,
 	repository: str | None = None,
+	rule_files: list[tuple[str, str]] | None = None,
 ) -> BuiltContext:
 	pack = ContextPack()
 	spans: dict[str, list[ContextSpan]] = {}
@@ -74,7 +73,7 @@ def build(
 
 	for source, text in instructions(config)[:10]:
 		pack.files.append(ContextFile(f"instructions/{source}", text, "custom instruction"))
-	for path, text in collect_rule_files(paths, read, list_dir)[:6]:
+	for path, text in (rule_files or [])[:6]:
 		pack.files.append(ContextFile(path, text, "project rule file"))
 	for ticket in tickets or []:
 		sources.append(SourceNote("tickets", ticket.as_text()))

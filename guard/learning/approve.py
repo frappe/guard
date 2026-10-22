@@ -9,6 +9,7 @@ from guard.config.resolver import ConfigResolver
 from guard.git.repository import store_for
 from guard.providers import adapter_for_repository
 from guard.providers.base import ProviderError
+from guard.review.publish import open_finding_count
 from guard.utils import db
 
 if TYPE_CHECKING:
@@ -51,6 +52,8 @@ def check(review: "CodeReview", pr: "PullRequest") -> tuple[bool, str]:
 		return False, "a label blocks approval"
 	if review.confidence_score != 5 or review.posted_count:
 		return False, "the review is not a clean 5/5"
+	if open_finding_count(str(pr.name)):
+		return False, "an earlier finding is still open"
 	snapshot = frappe.parse_json(review.config_snapshot or "{}") or {}
 	if not ((snapshot.get("sections") or {}).get("confidence") or {}).get("included", True):
 		return False, "the confidence section is off"

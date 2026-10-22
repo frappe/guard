@@ -166,13 +166,7 @@ class Publisher:
 		"""Open findings on the pull request, from this review and earlier ones."""
 		if not self.run.review.pull_request:
 			return sum(1 for f in self.run.findings if f.kept)
-		return int(
-			db.scalar(
-				"SELECT COUNT(*) FROM `tabReview Finding` WHERE pull_request = %s AND status = 'Open' AND posted = 1",
-				(self.run.review.pull_request,),
-			)
-			or 0
-		)
+		return open_finding_count(str(self.run.review.pull_request))
 
 	def _status(self, state: str, text: str) -> None:
 		try:
@@ -202,6 +196,17 @@ class Publisher:
 
 	def _reaction_key(self, content: str) -> str:
 		return f"guard:reaction:{self.repo}:{self.number}:{content}"
+
+
+def open_finding_count(pull_request: str) -> int:
+	"""Open findings on the pull request from every review, inline or only in the summary."""
+	return int(
+		db.scalar(
+			"SELECT COUNT(*) FROM `tabReview Finding` WHERE pull_request = %s AND status = 'Open'",
+			(pull_request,),
+		)
+		or 0
+	)
 
 
 def _comment(finding: Finding, name: str, fix: bool) -> InlineComment:

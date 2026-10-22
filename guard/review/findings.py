@@ -46,6 +46,11 @@ class Finding:
 		return hashlib.blake2b(f"{self.path}|{title}".encode(), digest_size=10).hexdigest()
 
 	@property
+	def is_project_rule(self) -> bool:
+		"""Breaks a mandatory line of CLAUDE.md, AGENTS.md or similar."""
+		return bool(self.rule_id and self.rule_id.startswith("project:"))
+
+	@property
 	def kept(self) -> bool:
 		return self.status == "Open"
 
@@ -82,12 +87,13 @@ class FindingFilter:
 		files: list[FileDiff],
 		settings: dict[str, Any],
 		existing: list[dict[str, Any]] | None = None,
-		rereview: bool = False,
+		fresh_lines: dict[str, set[int]] | None = None,
 	):
 		self.files = {f.path: f for f in files}
 		self.settings = settings
 		self.existing = existing or []
-		self.rereview = rereview
+		# Lines added since the last review. None on a first review.
+		self.fresh_lines = fresh_lines
 		# Names of earlier findings that this review raised again: they still apply.
 		self.reraised: set[str] = set()
 
@@ -95,6 +101,7 @@ class FindingFilter:
 		for finding in findings:
 			self.anchor(finding)
 		self.filter_types(findings)
+		self.raise_project_rules(findings)
 		self.filter_strictness(findings)
 		self.filter_rereview(findings)
 		self.dedupe(findings)
@@ -142,13 +149,23 @@ class FindingFilter:
 			elif strictness == 2 and finding.severity == "P2" and finding.confidence < 0.6:
 				finding.drop("Dismissed", "low-confidence P2 at strictness 2")
 
+	def raise_project_rules(self, findings: list[Finding]) -> None:
+		"""A project rule is mandatory: breaking it is at least P1, whatever the model or verifier said."""
+		for finding in findings:
+			if finding.kept and finding.is_project_rule and finding.severity == "P2":
+				finding.severity = "P1"
+
 	def filter_rereview(self, findings: list[Finding]) -> None:
-		"""A re-review posts only P0 and P1, so each push does not bring new nitpicks."""
-		if not self.rereview:
+		"""A re-review posts P2 only on lines added since the last review, so old lines bring no new nitpicks."""
+		if self.fresh_lines is None:
 			return
 		for finding in findings:
-			if finding.kept and finding.severity == "P2":
-				finding.drop("Dismissed", "re-reviews post only P0 and P1")
+			if finding.kept and finding.severity == "P2" and not self.is_fresh(finding):
+				finding.drop("Dismissed", "re-reviews post P2 only on new lines")
+
+	def is_fresh(self, finding: Finding) -> bool:
+		lines = (self.fresh_lines or {}).get(finding.path, set())
+		return any(finding.start_line <= line <= finding.end_line for line in lines)
 
 	def dedupe(self, findings: list[Finding]) -> None:
 		kept = sorted((f for f in findings if f.kept), key=_rank)
