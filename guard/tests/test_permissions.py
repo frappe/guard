@@ -63,32 +63,3 @@ class TestPermissions(IntegrationTestCase):
 		team = frappe.get_doc({"doctype": "Review Settings", "scope": "Team", "team": self.team})
 		self.assertTrue(permissions.review_settings(team, "write", "lead@example.com"))
 		self.assertFalse(permissions.review_settings(team, "write", "dev@example.com"))
-
-
-class TestViewerOnLogin(IntegrationTestCase):
-	def login_as(self, email):
-		from guard.access import on_session_creation
-
-		if not frappe.db.exists("User", email):
-			frappe.get_doc(
-				{"doctype": "User", "email": email, "first_name": "x", "user_type": "Website User"}
-			).insert(ignore_permissions=True)
-		previous = frappe.session.user
-		frappe.session.user = email
-		try:
-			on_session_creation()
-		finally:
-			frappe.session.user = previous
-		return frappe.get_doc("User", email)
-
-	def test_company_domain_gets_viewer(self):
-		frappe.db.set_single_value("Guard Settings", "viewer_domains", "frappe.io\nerpnext.com")
-		user = self.login_as("new-dev@erpnext.com")
-		self.assertEqual(user.get("user_type"), "System User")
-		self.assertIn("Guard Viewer", frappe.get_roles(user.name))
-
-	def test_other_domain_gets_nothing(self):
-		frappe.db.set_single_value("Guard Settings", "viewer_domains", "frappe.io")
-		user = self.login_as("someone@gmail.com")
-		self.assertEqual(user.get("user_type"), "Website User")
-		self.assertNotIn("Guard Viewer", frappe.get_roles(user.name))

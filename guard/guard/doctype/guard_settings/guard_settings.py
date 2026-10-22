@@ -47,7 +47,6 @@ class GuardSettings(Document):
 		sandbox_setup_command: DF.SmallText | None
 		sandbox_timeout: DF.Int
 		sandbox_when: DF.Literal["On request", "Always", "Never"]
-		viewer_domains: DF.SmallText | None
 		teach_permission: DF.Literal["Everyone", "Organization members", "Guard users"]
 		trigger_by_authoring: DF.Literal["Everyone", "Organization members", "Guard users"]
 		trigger_by_tagging: DF.Literal["Everyone", "Organization members", "Guard users"]

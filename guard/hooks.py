@@ -38,9 +38,6 @@ scheduler_events = {
 	"weekly": ["guard.learning.suggestions.weekly_suggestions"],
 }
 
-# Company users get read access on login. See guard/access.py.
-on_session_creation = ["guard.access.on_session_creation"]
-
 has_permission = {
 	"Custom Context": "guard.permissions.custom_context",
 	"Review Settings": "guard.permissions.review_settings",
