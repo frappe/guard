@@ -206,6 +206,7 @@ class TestGate(UnitTestCase):
 		self.assertEqual(tier_for(["plus"], ["auto"], None), "auto")
 		self.assertEqual(tier_for(["plus"], ["auto"], "apex"), "apex")
 		self.assertEqual(gate.auto_tier(self.facts()), "base")
+		self.assertEqual(gate.auto_tier(self.facts(), first_review=True), "plus")
 		self.assertEqual(gate.auto_tier(self.facts(paths=["src/auth/login.py"], additions=300)), "plus")
 		self.assertEqual(
 			gate.auto_tier(self.facts(paths=[f"f{i}" for i in range(40)], additions=900)), "apex"

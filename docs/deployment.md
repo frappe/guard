@@ -133,7 +133,7 @@ If a delivery has the status Failed, open it to see the error. If no delivery ar
 | Setting | Default |
 | - | - |
 | Reviews | On pull request open and on each push |
-| Re-reviews | Post only P0 and P1 findings |
+| Re-reviews | Post P2 findings only on lines added since the last review |
 | Earlier findings | Guard resolves a thread when the code fixes the finding, or when the finding no longer applies |
 | Guard check | Passes only at 5/5 with no open findings |
 | Approval | Guard approves at 5/5 with no open findings. A new push dismisses the approval. |

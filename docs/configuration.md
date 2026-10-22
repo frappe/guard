@@ -43,7 +43,7 @@ Commit it on the branch of the pull request. Guard reads the settings from the h
 
 All files are optional. If a directory has both `.guard/` and `guard.toml`, Guard reads `.guard/` and ignores `guard.toml`.
 
-Guard also reads `CLAUDE.md` and `AGENTS.md` in any directory, and `.cursorrules` and `.github/copilot-instructions.md` at the root. To stop this, set `include_rule_files = false`.
+Guard also reads `CLAUDE.md` and `AGENTS.md` in any directory, and `.cursorrules` and `.github/copilot-instructions.md` at the root. To stop this, set `include_rule_files = false`. Lines that say always, must or never are mandatory: breaking one is at least P1, and a rule that asks for tests flags code changes that touch no test file.
 
 ### Monorepos
 
@@ -87,7 +87,7 @@ A file with a `scope` is read only when the pull request changes a file in that 
 | - | - | - |
 | `strictness` | `2` | `1` posts all real issues, also small style points. `2` drops P2 findings that Guard is not sure of. `3` posts only P0 and P1. |
 | `comment_types` | all | Any of `logic`, `syntax` and `style`. |
-| `effort` | unset | `base`, `plus` or `apex`. A higher tier uses a stronger model and more turns. `auto` lets Guard select. |
+| `effort` | unset | `base`, `plus` or `apex`. A higher tier uses a stronger model and more turns. `auto` lets Guard select: the first review of a pull request is at least `plus`. |
 | `auto_review` | `["open", "push"]` | When Guard reviews without a request: `open`, `push`, `rebase`. `[]` means only when someone asks. |
 | `review_drafts` | `false` | Review draft pull requests. |
 

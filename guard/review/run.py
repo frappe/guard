@@ -79,6 +79,9 @@ class ReviewRun:
 	tier: str = "base"
 	instructions: str = ""
 	frappe_app: bool = False
+	rule_files: list[tuple[str, str]] = field(default_factory=list)  # (path, text) of CLAUDE.md and similar
+	# Head lines added since the last reviewed commit. None on a first review.
+	fresh_lines: dict[str, set[int]] | None = None
 	usage: Usage = field(default_factory=Usage)
 	findings: list[Finding] = field(default_factory=list)
 	verdict: Verdict = field(default_factory=Verdict)

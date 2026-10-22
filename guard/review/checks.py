@@ -1,11 +1,13 @@
-"""Checks that need no model: secrets in the diff, and the Frappe review pack."""
+"""Checks that need no model: secrets in the diff, the Frappe review pack, and project test rules."""
 
 import math
 import re
 from collections import Counter
 
 from guard.git.diff import FileDiff
+from guard.indexing.languages import EXTENSIONS
 from guard.review.findings import Finding
+from guard.review.rule_files import ProjectRule
 
 SECRET_PATTERNS = (
 	("GitHub token", re.compile(r"\b(gh[pousr]_[A-Za-z0-9]{36,}|github_pat_[A-Za-z0-9_]{60,})\b")),
@@ -124,6 +126,36 @@ def frappe_findings(files: list[FileDiff]) -> list[Finding]:
 							)
 						)
 	return findings
+
+
+def missing_test_findings(
+	files: list[FileDiff], changed_paths: list[str], rules: list[ProjectRule]
+) -> list[Finding]:
+	"""A project rule asks for tests, the code changed, and no test file changed."""
+	rule = next((r for r in rules if r.is_test_rule), None)
+	if rule is None or any(TEST_FILE.search(path) for path in changed_paths):
+		return []
+	for diff in files:
+		if TEST_FILE.search(diff.path) or not diff.path.endswith(tuple(EXTENSIONS)):
+			continue
+		added = sorted(diff.added_lines())
+		if not added:
+			continue
+		return [
+			Finding(
+				diff.path,
+				added[0],
+				added[0],
+				"P1",
+				"logic",
+				"Code changes without tests",
+				f"This pull request changes code but adds or updates no test. `{rule.path}` line {rule.line}: {rule.text}",
+				category="test-gap",
+				confidence=0.8,
+				rule_id=rule.id,
+			)
+		]
+	return []
 
 
 def _secret_kind(text: str) -> str | None:

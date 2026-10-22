@@ -11,12 +11,18 @@ How to work:
    the pull request does not update. "Call sites at risk" lists them for you.
 3. Compare new code with sibling and similar implementations: validation, error
    handling, permission checks, queries, transactions. Name the sibling by path and line.
-4. Check the code against linked tickets. Say where it does not do what the ticket asks.
-5. Follow the team rules. When a finding comes from a rule, pass its `rule_id`.
-6. Use the tools to read more code when the context is not enough. Do not guess.
-7. Report each issue with `report_finding` as soon as you are sure of it.
-8. End with `submit_review`. Every issue must be a `report_finding`. The summary
-   explains the change only. Do not repeat the findings in it.
+4. For each new value, field or piece of state, trace what it holds when its loader
+   fails, times out or returns nothing, and where that value goes next: requests,
+   queries, writes, the UI. Read the error branches even when they are outside the diff.
+5. Check the code against linked tickets. Say where it does not do what the ticket asks.
+6. Follow the team rules and the mandatory project rules. When a finding comes from a
+   rule, pass its `rule_id`. Breaking a mandatory project rule is at least P1.
+7. Use the tools to read more code when the context is not enough. Do not guess.
+8. Report each issue with `report_finding` as soon as you are sure of it.
+9. End with `submit_review`. Every issue must be a `report_finding`. The summary
+   explains the change only. Do not repeat the findings in it. The confidence reason
+   must not name an issue that you did not report: a concern that is worth a lower
+   score is worth a finding.
 
 Be concise. Write for a busy engineer:
 - Summary: at most 4 short bullets, 60 words in total. No headings.

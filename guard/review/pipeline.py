@@ -11,6 +11,7 @@ from guard.config import gate
 from guard.config.resolver import ConfigResolver
 from guard.git.diff import parse_diff
 from guard.git.repository import store_for
+from guard.git.store import GitStore
 from guard.graph.overlay import PullRequestGraph
 from guard.graph.queries import CodeGraph
 from guard.indexing import frappe_plugin
@@ -19,7 +20,7 @@ from guard.integrations import tickets
 from guard.learning import suppression
 from guard.llm.types import GatewayBusy
 from guard.providers import adapter_for_repository
-from guard.review import checks, context, crossrepo, prompts, sandbox, stale, verify
+from guard.review import checks, context, crossrepo, prompts, rule_files, sandbox, stale, verify
 from guard.review.agent import Agent
 from guard.review.findings import FindingFilter, score_cap, score_floor
 from guard.review.publish import Publisher
@@ -103,6 +104,8 @@ class ReviewPipeline:
 		others = self.linked_repositories(run)
 		crossrepo.attach(run.changed, others, index)
 		run.blast = overlay.blast_radius(run.changed)
+		if run.settings.get("include_rule_files", True):
+			run.rule_files = rule_files.collect(run.paths, run.head, run.list_dir)
 		self.pick_tier(run)
 		if not self.credits_allow(run):
 			return
@@ -115,7 +118,6 @@ class ReviewPipeline:
 		team = db.value("Code Repository", run.repository, "team") if run.repository else None
 		built = context.build(
 			run.head,
-			run.list_dir,
 			run.changed,
 			run.blast,
 			run.graph,
@@ -125,11 +127,15 @@ class ReviewPipeline:
 			run.full_name,
 			team,
 			run.repository,
+			run.rule_files,
 		)
 		self.stage("review")
 		run.findings += checks.secret_findings(run.files)
 		run.findings += crossrepo.missing_targets(run.files, run.head, others, index)
 		run.findings += crossrepo.break_findings(run.changed)
+		run.findings += checks.missing_test_findings(
+			run.files, [f.path for f in run.all_files], rule_files.mandatory_rules(run.rule_files)
+		)
 		if run.frappe_app:
 			run.findings += checks.frappe_findings(run.files)
 		run.sandbox = sandbox.Sandbox(run) if sandbox.wanted(run) else None
@@ -142,7 +148,7 @@ class ReviewPipeline:
 		verify.verify(run)
 		self.stage("filter")
 		existing = self.existing_findings()
-		finding_filter = FindingFilter(run.files, run.settings, existing, rereview=self.review_number() > 1)
+		finding_filter = FindingFilter(run.files, run.settings, existing, run.fresh_lines)
 		finding_filter.run(run.findings)
 		suppression.suppress(run.findings, run.repository)
 		if not run.verdict.submitted:
@@ -216,6 +222,7 @@ class ReviewPipeline:
 			frappe_app=frappe_plugin.is_frappe_app({e.path for e in store.ls_tree(head)}),
 		)
 		run.notes = list(config.errors)
+		run.fresh_lines = self.get_fresh_lines(store, pr.last_reviewed_sha or "", head)
 		self.review.db_set(
 			{
 				"head_sha": head,
@@ -251,7 +258,14 @@ class ReviewPipeline:
 		rules = gate.dashboard_rules(get_effective(team))
 		tier_rules = [r.review_tier for r in rules if r.review_tier and gate.rule_matches(r, facts)]
 		contracts = sum(1 for e in run.changed if e.contract_changed)
-		run.tier = gate.select_tier(run.cfg, tier_rules, self.review.requested_tier or None, facts, contracts)
+		run.tier = gate.select_tier(
+			run.cfg,
+			tier_rules,
+			self.review.requested_tier or None,
+			facts,
+			contracts,
+			first_review=self.review_number() == 1,
+		)
 		self.review.db_set("tier", run.tier)
 
 	def credits_allow(self, run: ReviewRun) -> bool:
@@ -376,6 +390,14 @@ class ReviewPipeline:
 			WHERE pull_request = %s AND status = 'Open' AND posted = 1 AND code_review != %s""",
 			(self.review.pull_request, self.review.name),
 		)
+
+	def get_fresh_lines(self, store: GitStore, last_sha: str, head: str) -> dict[str, set[int]] | None:
+		"""Head lines added since the last reviewed commit. Empty when that commit is gone."""
+		if self.review_number() <= 1:
+			return None
+		if not last_sha or not store.has_commit(last_sha):
+			return {}
+		return {f.path: f.added_lines() for f in parse_diff(store.diff(last_sha, head))}
 
 	def review_number(self) -> int:
 		if not self.review.pull_request:
