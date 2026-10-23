@@ -213,7 +213,7 @@ class ProviderAdapter:
 		raise NotImplementedError
 
 	def set_status(self, repo: str, sha: str, state: str, description: str, url: str = "") -> None:
-		"""`state` is pending, success, failure or error."""
+		"""`state` is pending, success, failure, error or skipped."""
 		raise NotImplementedError
 
 	def close_open_checks(self, repo: str, sha: str, description: str) -> int:
