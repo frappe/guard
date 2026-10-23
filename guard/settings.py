@@ -11,7 +11,9 @@ if TYPE_CHECKING:
 
 TIERS = ("base", "plus", "apex")
 CREDITS = {"base": 1, "plus": 3, "apex": 10}
-DEFAULT_TURNS = {"base": 15, "plus": 30, "apex": 50}
+# Every turn sends the whole conversation again, so the cost of a review grows with the
+# square of its turns. The model can ask for several tools in one turn.
+DEFAULT_TURNS = {"base": 10, "plus": 16, "apex": 24}
 DEFAULT_CONCURRENT_REVIEWS = 4
 
 

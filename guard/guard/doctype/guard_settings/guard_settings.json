@@ -157,7 +157,7 @@
    "label": "Agent Turns"
   },
   {
-   "default": "15",
+   "default": "10",
    "fieldname": "max_turns_base",
    "fieldtype": "Int",
    "idx": 16,
@@ -169,7 +169,7 @@
    "idx": 17
   },
   {
-   "default": "30",
+   "default": "16",
    "fieldname": "max_turns_plus",
    "fieldtype": "Int",
    "idx": 18,
@@ -181,7 +181,7 @@
    "idx": 19
   },
   {
-   "default": "50",
+   "default": "24",
    "fieldname": "max_turns_apex",
    "fieldtype": "Int",
    "idx": 20,
@@ -391,7 +391,7 @@
  "index_web_pages_for_search": 0,
  "issingle": 1,
  "links": [],
- "modified": "2026-10-23 20:52:05.524909",
+ "modified": "2026-10-24 08:00:00.000000",
  "modified_by": "Administrator",
  "module": "Guard",
  "name": "Guard Settings",

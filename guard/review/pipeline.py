@@ -361,6 +361,8 @@ class ReviewPipeline:
 		if run.tier != "apex" or len(run.files) <= AREA_FILES:
 			Agent(run, system, turns).run_loop(compose(run, built))
 			return
+		# Each part, and the pass across the parts, reviews less than the whole: half the turns.
+		turns = max(turns // 2, guard_settings.max_turns("base"))
 		all_files = run.files
 		for start in range(0, len(all_files), AREA_FILES):
 			self.check_cancel()
