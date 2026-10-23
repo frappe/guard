@@ -11,10 +11,14 @@ frappe.pages["guard-health"].on_page_load = function (wrapper) {
 
 	const table = (title, columns, rows) => {
 		if (!rows.length)
-			return `<h5 class="mt-4">${esc(title)}</h5><p class="text-muted">${__("Nothing to show.")}</p>`;
+			return `<h5 class="mt-4">${esc(title)}</h5><p class="text-muted">${__(
+				"Nothing to show."
+			)}</p>`;
 		const head = columns.map(([, label]) => `<th>${esc(label)}</th>`).join("");
 		const body = rows
-			.map((row) => `<tr>${columns.map(([key]) => `<td>${esc(row[key])}</td>`).join("")}</tr>`)
+			.map(
+				(row) => `<tr>${columns.map(([key]) => `<td>${esc(row[key])}</td>`).join("")}</tr>`
+			)
 			.join("");
 		return `<h5 class="mt-4">${esc(title)}</h5>
 			<table class="table table-bordered table-sm"><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>`;
@@ -29,10 +33,12 @@ frappe.pages["guard-health"].on_page_load = function (wrapper) {
 				__("Reviews are paused: the AI gateway is down since {0}. Last error: {1}", [
 					esc(gateway.outage_since),
 					esc(gateway.last_error),
-				]),
+				])
 			);
 		if (rate.ended && rate.rate > 0.2)
-			alerts.push(__("{0} of {1} reviews failed in the last hour.", [rate.failed, rate.ended]));
+			alerts.push(
+				__("{0} of {1} reviews failed in the last hour.", [rate.failed, rate.ended])
+			);
 		const banner = alerts.length
 			? `<div class="alert alert-danger">${alerts.join("<br>")}</div>`
 			: `<div class="alert alert-success">${__("No problems found.")}</div>`;
@@ -48,7 +54,7 @@ frappe.pages["guard-health"].on_page_load = function (wrapper) {
 						["workers", __("Workers")],
 						["error", __("Error")],
 					],
-					data.queues,
+					data.queues
 				) +
 				table(
 					__("Reviews in the last 24 hours"),
@@ -56,7 +62,7 @@ frappe.pages["guard-health"].on_page_load = function (wrapper) {
 						["status", __("Status")],
 						["count", __("Reviews")],
 					],
-					reviews,
+					reviews
 				) +
 				table(
 					__("Why reviews failed in the last 24 hours"),
@@ -64,7 +70,7 @@ frappe.pages["guard-health"].on_page_load = function (wrapper) {
 						["count", __("Reviews")],
 						["cause", __("Error")],
 					],
-					data.failures,
+					data.failures
 				) +
 				table(
 					__("AI gateway"),
@@ -73,7 +79,7 @@ frappe.pages["guard-health"].on_page_load = function (wrapper) {
 						["paused_for", __("Paused for (seconds)")],
 						["outage_since", __("Outage since")],
 					],
-					[gateway],
+					[gateway]
 				) +
 				table(
 					__("Indexes that need attention"),
@@ -85,8 +91,8 @@ frappe.pages["guard-health"].on_page_load = function (wrapper) {
 						["started_at", __("Started")],
 						["error", __("Error")],
 					],
-					data.indexes,
-				),
+					data.indexes
+				)
 		);
 	};
 
