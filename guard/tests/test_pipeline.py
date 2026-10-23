@@ -11,7 +11,7 @@ from guard.graph.overlay import ChangedEntity
 from guard.graph.queries import Link
 from guard.llm.client import ChatRequest, LLMClient, use_responder
 from guard.llm.types import ChatResult, ToolCall, Usage
-from guard.providers.base import ProviderComment
+from guard.providers.base import ProviderComment, ProviderError
 from guard.review import jobs, trigger
 from guard.review import pipeline as pipeline_module
 from guard.review.agent import Agent
@@ -373,6 +373,15 @@ class TestPipeline(PullRequestCase):
 		self.assertEqual(db.value("Code Review", dead, "status"), "Failed")
 		self.assertEqual(self.adapter.named("status"), ["error"])
 		self.assertIn("confused", self.adapter.named("react"))
+
+	def test_failed_review_closes_the_check_when_the_reaction_fails(self):
+		from guard.review.jobs import fail_dead_reviews
+
+		dead = self.running_review("publish")
+		with patch.object(self.adapter, "add_reaction", side_effect=ProviderError("no reactions")):
+			fail_dead_reviews()
+		self.assertEqual(db.value("Code Review", dead, "status"), "Failed")
+		self.assertEqual(self.adapter.named("status"), ["error"])
 
 	def test_rereview_edits_summary_and_dedupes(self):
 		finding = {
