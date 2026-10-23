@@ -297,3 +297,39 @@ class TestRoutes(UnitTestCase):
 		self.assertEqual(routes.strength(route, "virtual-machines/*/actions/hibernate"), 0)
 		self.assertEqual(routes.strength("atlas/vms/*/public-ipv4", "vms/*/public-ipv*"), 2)
 		self.assertEqual(routes.strength("atlas/images", "virtual-machines"), 0)
+
+
+class TestImpactDiagram(UnitTestCase):
+	def test_counts_tests_instead_of_drawing_them(self):
+		from guard.graph.overlay import ChangedEntity, impact_diagram
+		from guard.graph.queries import Entity, Link
+
+		def link(path, line, name):
+			caller = Entity(name, "function", name, f"app.{name}", path, None, line, line, "", "python")
+			return Link(caller, "build", "build()", path, line, True)
+
+		base = Entity(
+			"b", "function", "build", "app.api.build", "app/api.py", None, 1, 3, "def build(a)", "python"
+		)
+		entity = ChangedEntity(
+			"app/api.py",
+			"function",
+			"build",
+			"app.api.build",
+			"modified",
+			base=base,
+			head_signature="def build(a, b)",
+		)
+		entity.callers = [
+			link("app/views.py", 10, "get_settings"),
+			*(link("app/tests/test_api.py", n, f"test_case_{n}") for n in (1, 2, 3)),
+			link("app/tests/test_api.py", 9, "test_old_call"),
+		]
+		entity.not_updated = [entity.callers[-1]]
+		diagram = impact_diagram([entity])
+		self.assertIn('["get_settings"]', diagram)
+		self.assertIn('["3 tests of build"]:::tests', diagram)
+		self.assertNotIn("test_case_1", diagram)
+		# A test that the new signature breaks is still drawn.
+		self.assertIn('["test_old_call"]', diagram)
+		self.assertIn("-.->|may break|", diagram)

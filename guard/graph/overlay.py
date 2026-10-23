@@ -342,18 +342,24 @@ def impact_diagram(changed: list[ChangedEntity], limit: int = 12) -> str:
 			":::changed",
 		)
 		pending = {link.path + str(link.line) for link in entity.not_updated}
-		for link in entity.callers[:8]:
+
+		def breaks(link: Link) -> bool:
+			return entity.contract_changed and (link.path + str(link.line)) in pending
+
+		# Tests crowd out the real callers. Count them, and draw only the ones that may break.
+		tests = [link for link in entity.callers if TEST_PATH.search(link.path) and not breaks(link)]
+		callers = [link for link in entity.callers if not any(link is test for test in tests)]
+		for link in callers[:8]:
 			caller = (
 				link.entity.qualified_name.rsplit(".", 1)[-1]
 				if link.entity
 				else f"{link.path.rsplit('/', 1)[-1]}:{link.line}"
 			)
-			edge = (
-				"-.->|may break|"
-				if (link.path + str(link.line)) in pending and entity.contract_changed
-				else "-->"
-			)
+			edge = "-.->|may break|" if breaks(link) else "-->"
 			lines.append(f"  {node(caller)} {edge} {target}")
+		if tests:
+			count = f"{len(tests)} test{'s' if len(tests) > 1 else ''} of {entity.name}"
+			lines.append(f"  {node(count, ':::tests')} --> {target}")
 		for external in entity.external[:6]:
 			label = f"{external.full_name}: {external.path.rsplit('/', 1)[-1]}:{external.line}"
 			edge = "-.->|breaks|" if external.breaks else "-.->|may break|"
@@ -362,4 +368,5 @@ def impact_diagram(changed: list[ChangedEntity], limit: int = 12) -> str:
 		return ""
 	lines.append("  classDef changed fill:#fff3cd,stroke:#d39e00")
 	lines.append("  classDef external fill:#e7f1ff,stroke:#0b5ed7")
+	lines.append("  classDef tests fill:#f1f3f5,stroke:#adb5bd,color:#495057")
 	return "\n".join(lines)
