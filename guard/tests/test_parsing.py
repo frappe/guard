@@ -124,6 +124,13 @@ def entry():
 		inherits = [e.target_name for e in parsed.edges if e.kind == "inherits"]
 		self.assertEqual(inherits, ["Base"])
 
+	def test_one_entity_for_two_tags(self):
+		# Two tag patterns match `a.B = function B() {}`, at the same line with the same name.
+		parsed = parse_file("app/sms.js", "app.SMS = function SMS(doc) {\n\tthis.doc = doc;\n};\n")
+		keys = [e.key for e in parsed.entities]
+		self.assertEqual(len(keys), len(set(keys)))
+		self.assertEqual([e.name for e in parsed.entities if e.kind != "file"], ["SMS"])
+
 	def test_unknown_language_is_file_only(self):
 		parsed = parse_file("notes/readme.txt", "hello")
 		self.assertEqual(len(parsed.entities), 1)

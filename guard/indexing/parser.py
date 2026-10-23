@@ -206,6 +206,7 @@ class _Extractor:
 		if not query:
 			return
 		tree = _parser(self.language).parse(self.code.encode())
+		seen: set[str] = set()
 		for _, captures in ts.QueryCursor(query).matches(tree.root_node):
 			definition = next((k for k in captures if k.startswith("definition.")), None)
 			names = captures.get("name")
@@ -215,8 +216,13 @@ class _Extractor:
 			kind = KINDS.get(definition.split(".", 1)[1], "function")
 			start = node.start_point[0] + 1 + self.offset
 			qualified = f"{self.parsed.module}.{name}"
+			key = f"{qualified}@{start}"
+			# More than one pattern can match one definition, as in `a.B = function B() {}`.
+			if key in seen:
+				continue
+			seen.add(key)
 			entity = ParsedEntity(
-				f"{qualified}@{start}",
+				key,
 				kind,
 				name,
 				qualified,
