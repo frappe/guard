@@ -73,6 +73,31 @@ class TestPipeline(PullRequestCase):
 		self.assertEqual((row["status"], row["stage"]), ("Queued", "waiting 60s for the code graph index"))
 		self.assertEqual(retries, [(60, 1)])
 
+	def test_review_waits_while_the_gateway_is_down(self):
+		from guard.llm.types import GatewayDown
+		from guard.review import jobs
+
+		real, retries = jobs.enqueue_review, []
+
+		def enqueue(review, delay=0, attempt=0, tier=""):
+			if attempt:
+				retries.append((delay, attempt))
+				return
+			real(review, delay=delay, attempt=attempt, tier=tier)
+
+		def down(request):
+			raise GatewayDown("Gateway request failed: Gateway answered 502: upstream account unpaid")
+
+		with (
+			use_responder(down),
+			patch("guard.llm.client.LLMClient.online", new=True),
+			patch("guard.review.jobs.enqueue_review", side_effect=enqueue),
+		):
+			name = trigger.consider(self.pr, "open")
+		row = db.values("Code Review", str(name), ("status", "stage")) or {}
+		self.assertEqual((row["status"], row["stage"]), ("Queued", "waiting 60s for the AI gateway"))
+		self.assertEqual(retries, [(60, 1)])
+
 	def test_dead_review_job_fails_the_review(self):
 		from frappe.utils import now_datetime
 

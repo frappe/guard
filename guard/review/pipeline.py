@@ -19,7 +19,7 @@ from guard.indexing.indexer import IndexBusy
 from guard.indexing.jobs import ensure_fresh
 from guard.integrations import tickets
 from guard.learning import suppression
-from guard.llm.types import GatewayBusy
+from guard.llm.types import GatewayBusy, GatewayDown
 from guard.providers import adapter_for_repository
 from guard.review import checks, context, crossrepo, prompts, rule_files, sandbox, stale, verify
 from guard.review.agent import Agent
@@ -72,7 +72,8 @@ class ReviewPipeline:
 		except Cancelled:
 			self.review.db_set({"status": "Cancelled", "completed_at": now_datetime()})
 		except GatewayBusy as busy:
-			self.retry(attempt, busy.retry_after, "the AI gateway", f"AI gateway busy: {busy}")
+			state = "down" if isinstance(busy, GatewayDown) else "busy"
+			self.retry(attempt, busy.retry_after, "the AI gateway", f"AI gateway {state}: {busy}")
 		except IndexBusy:
 			# Do not index the branch a second time, in parallel.
 			self.retry(attempt, 0, "the code graph index", "The code graph index stayed busy.")

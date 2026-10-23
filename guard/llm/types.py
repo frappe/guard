@@ -62,3 +62,11 @@ class GatewayBusy(LLMError):
 	def __init__(self, message: str, retry_after: int = 60):
 		super().__init__(message)
 		self.retry_after = retry_after
+
+
+class GatewayDown(GatewayBusy):
+	"""The gateway kept failing after the retries: 5xx answers, or no connection.
+
+	An outage of the gateway or its provider is not a fault of the review, so the review
+	goes back to the queue, as for a rate limit.
+	"""

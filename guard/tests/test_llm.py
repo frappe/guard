@@ -1,3 +1,5 @@
+from unittest.mock import patch
+
 from frappe.tests import UnitTestCase
 
 from guard.llm.anthropic_dialect import _messages
@@ -125,3 +127,37 @@ class TestParseJsonOuter(UnitTestCase):
 		self.assertEqual(parse_json('[{"index": 0}]'), [{"index": 0}])
 		self.assertEqual(parse_json('Answer: {"items": [1, 2]}'), {"items": [1, 2]})
 		self.assertEqual(parse_json('```json\n[{"a": 1},]\n```'), [{"a": 1}])
+
+
+class TestGatewayErrors(UnitTestCase):
+	def post(self, status: int, calls: list[int] | None = None):
+		import httpx
+
+		from guard.llm.http import post_json
+
+		def answer(*args, **kwargs):
+			if calls is not None:
+				calls.append(status)
+			return httpx.Response(status, json={"error": {"message": "upstream account unpaid"}})
+
+		with patch("guard.llm.http.httpx.post", side_effect=answer), patch("guard.llm.http.time.sleep"):
+			return post_json("https://gateway.test/v1", {}, {}, 5)
+
+	def test_lasting_5xx_is_gateway_down(self):
+		from guard.llm.types import GatewayBusy, GatewayDown
+
+		calls: list[int] = []
+		with self.assertRaises(GatewayDown) as raised:
+			self.post(502, calls)
+		self.assertGreater(len(calls), 1)  # retried before giving up
+		self.assertIsInstance(raised.exception, GatewayBusy)  # so a review waits, not fails
+		self.assertIn("upstream account unpaid", str(raised.exception))
+
+	def test_4xx_is_not_retried(self):
+		from guard.llm.types import GatewayDown, LLMError
+
+		calls: list[int] = []
+		with self.assertRaises(LLMError) as raised:
+			self.post(400, calls)
+		self.assertNotIsInstance(raised.exception, GatewayDown)
+		self.assertEqual(calls, [400])
