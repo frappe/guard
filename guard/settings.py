@@ -12,6 +12,7 @@ if TYPE_CHECKING:
 TIERS = ("base", "plus", "apex")
 CREDITS = {"base": 1, "plus": 3, "apex": 10}
 DEFAULT_TURNS = {"base": 15, "plus": 30, "apex": 50}
+DEFAULT_CONCURRENT_REVIEWS = 4
 
 
 @dataclass
@@ -59,6 +60,12 @@ def gateway() -> GatewayConfig:
 
 def max_turns(tier: str) -> int:
 	return cint(_value(f"max_turns_{tier}")) or DEFAULT_TURNS.get(tier, 15)
+
+
+def max_concurrent_reviews() -> int:
+	"""Reviews that may run at once. 0 means no limit."""
+	value = _value("max_concurrent_reviews")
+	return DEFAULT_CONCURRENT_REVIEWS if value in (None, "") else max(cint(value), 0)
 
 
 def trigger_handles() -> list[str]:

@@ -40,6 +40,7 @@
   "teach_permission",
   "org_section",
   "monthly_credit_cap",
+  "max_concurrent_reviews",
   "auto_enable_new_repositories",
   "org_col",
   "feature_tips",
@@ -284,29 +285,37 @@
    "label": "Monthly Credit Cap"
   },
   {
+   "default": "4",
+   "description": "Reviews that run at the same time. A review over this number waits for a free slot. 0 means no limit.",
+   "fieldname": "max_concurrent_reviews",
+   "fieldtype": "Int",
+   "label": "Max Concurrent Reviews",
+   "non_negative": 1
+  },
+  {
    "default": "1",
    "fieldname": "auto_enable_new_repositories",
    "fieldtype": "Check",
-   "idx": 35,
+   "idx": 36,
    "label": "Auto Enable New Repositories"
   },
   {
    "fieldname": "org_col",
    "fieldtype": "Column Break",
-   "idx": 36
+   "idx": 37
   },
   {
    "default": "0",
    "fieldname": "feature_tips",
    "fieldtype": "Check",
-   "idx": 37,
+   "idx": 38,
    "label": "Feature Tips"
   },
   {
    "default": "1",
    "fieldname": "learn_from_activity",
    "fieldtype": "Check",
-   "idx": 38,
+   "idx": 39,
    "label": "Learn From Activity"
   },
   {
@@ -314,27 +323,27 @@
    "description": "List open pull requests every 5 minutes. Use when webhooks cannot reach this site.",
    "fieldname": "polling_enabled",
    "fieldtype": "Check",
-   "idx": 39,
+   "idx": 40,
    "label": "Poll Providers"
   },
   {
    "fieldname": "sandbox_tab",
    "fieldtype": "Tab Break",
-   "idx": 40,
+   "idx": 41,
    "label": "Runtime Validation"
   },
   {
    "default": "0",
    "fieldname": "sandbox_enabled",
    "fieldtype": "Check",
-   "idx": 41,
+   "idx": 42,
    "label": "Enable Runtime Validation"
   },
   {
    "default": "On request",
    "fieldname": "sandbox_when",
    "fieldtype": "Select",
-   "idx": 42,
+   "idx": 43,
    "label": "Run",
    "options": "On request\nAlways\nNever"
   },
@@ -342,47 +351,47 @@
    "default": "podman",
    "fieldname": "sandbox_runtime",
    "fieldtype": "Select",
-   "idx": 43,
+   "idx": 44,
    "label": "Container Runtime",
    "options": "podman\ndocker"
   },
   {
    "fieldname": "sandbox_col",
    "fieldtype": "Column Break",
-   "idx": 44
+   "idx": 45
   },
   {
    "default": "docker.io/library/python:3.14-slim",
    "fieldname": "sandbox_image",
    "fieldtype": "Data",
-   "idx": 45,
+   "idx": 46,
    "label": "Sandbox Image"
   },
   {
    "fieldname": "sandbox_setup_command",
    "fieldtype": "Small Text",
-   "idx": 46,
+   "idx": 47,
    "label": "Sandbox Setup Command"
   },
   {
    "default": "600",
    "fieldname": "sandbox_timeout",
    "fieldtype": "Int",
-   "idx": 47,
+   "idx": 48,
    "label": "Timeout (seconds)"
   },
   {
    "default": "0",
    "fieldname": "sandbox_network",
    "fieldtype": "Check",
-   "idx": 48,
+   "idx": 49,
    "label": "Allow Network"
   }
  ],
  "index_web_pages_for_search": 0,
  "issingle": 1,
  "links": [],
- "modified": "2026-10-20 10:00:00.000000",
+ "modified": "2026-10-23 20:52:05.524909",
  "modified_by": "Administrator",
  "module": "Guard",
  "name": "Guard Settings",

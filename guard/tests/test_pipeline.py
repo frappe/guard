@@ -113,6 +113,41 @@ class TestPipeline(PullRequestCase):
 		self.assertIn("The code graph is not available", summary)
 		self.assertIn("parser broke", summary)
 
+	def test_review_waits_for_a_free_slot(self):
+		from frappe.utils import now_datetime
+
+		from guard.review import jobs
+
+		real, later = jobs.enqueue_review, []
+
+		def enqueue(review, delay=0, attempt=0, tier=""):
+			if delay or attempt:
+				later.append((review, delay, attempt))
+				return
+			real(review, delay=delay, attempt=attempt, tier=tier)
+
+		frappe.get_doc(
+			{
+				"doctype": "Code Review",
+				"pull_request": self.pr,
+				"repository": self.repository,
+				"source": "pull_request",
+				"status": "Running",
+				"trigger": "open",
+				"started_at": now_datetime(),
+			}
+		).insert(ignore_permissions=True)
+		frappe.db.set_single_value("Guard Settings", "max_concurrent_reviews", 1)
+		self.addCleanup(frappe.db.set_single_value, "Guard Settings", "max_concurrent_reviews", 4)
+		with patch("guard.review.jobs.enqueue_review", side_effect=enqueue):
+			waiting = trigger.consider(self.pr, "open")
+		row = db.values("Code Review", str(waiting), ("status", "stage")) or {}
+		self.assertEqual((row["status"], row["stage"]), ("Queued", "waiting for a free review slot"))
+		self.assertEqual(later, [(waiting, 60, 0)])  # the retries stay unused
+
+		frappe.db.set_single_value("Guard Settings", "max_concurrent_reviews", 0)  # no limit
+		self.assertEqual(self.row(self.review([]))["status"], "Completed")
+
 	def test_breaker_pauses_reviews_and_reruns_them(self):
 		from frappe.utils import now_datetime
 

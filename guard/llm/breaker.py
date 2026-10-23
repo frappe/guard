@@ -9,6 +9,7 @@ import time
 import frappe
 from frappe.utils import now_datetime
 
+from guard.review.jobs import retry_review
 from guard.utils import cache, db
 
 THRESHOLD = 3  # outages in a row that open the breaker
@@ -55,8 +56,6 @@ def record_success() -> None:
 
 def rerun_failed(since: str) -> list[str]:
 	"""Queue again the reviews that failed on the gateway since `since`."""
-	from guard.review.jobs import retry_review
-
 	names = [
 		str(row[0])
 		for row in db.rows(

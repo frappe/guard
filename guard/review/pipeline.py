@@ -37,6 +37,8 @@ if TYPE_CHECKING:
 
 AREA_FILES = 8
 RETRY_DELAYS = (60, 300, 900)
+SLOT_WAIT = 60  # seconds a review waits for a free slot before it looks again
+GATEWAY_DOWN = "paused: the AI gateway is down"
 
 
 class Cancelled(Exception):
@@ -69,7 +71,10 @@ class ReviewPipeline:
 
 	def attempt(self, attempt: int) -> None:
 		if wait := breaker.wait_seconds():
-			self.park(attempt, wait)
+			self.park(attempt, wait, GATEWAY_DOWN)
+			return
+		if self.slots_full():
+			self.park(attempt, SLOT_WAIT, "waiting for a free review slot")
 			return
 		try:
 			self.execute()
@@ -78,7 +83,7 @@ class ReviewPipeline:
 		except GatewayDown as down:
 			breaker.record_failure(str(down))
 			if wait := breaker.wait_seconds():
-				self.park(attempt, wait)
+				self.park(attempt, wait, GATEWAY_DOWN)
 				return
 			self.retry(attempt, down.retry_after, "the AI gateway", f"{breaker.FAILED_PREFIX}: {down}")
 		except GatewayBusy as busy:
@@ -92,9 +97,24 @@ class ReviewPipeline:
 			if frappe.flags.in_test:
 				raise
 
-	def park(self, attempt: int, wait: int) -> None:
-		"""The AI gateway is down. Wait for it without using up a retry."""
-		self.review.db_set({"status": "Queued", "stage": "paused: the AI gateway is down"})
+	def slots_full(self) -> bool:
+		"""As many reviews run as `max_concurrent_reviews` allows.
+
+		Two reviews that start at the same moment can both pass, so the limit can be passed by one
+		or two. It stops a burst of pull requests from taking every worker and all the memory.
+		"""
+		limit = guard_settings.max_concurrent_reviews()
+		if not limit:
+			return False
+		running = db.scalar(
+			"SELECT COUNT(*) FROM `tabCode Review` WHERE status = 'Running' AND name != %s",
+			(str(self.review.name),),
+		)
+		return int(running or 0) >= limit
+
+	def park(self, attempt: int, wait: int, stage: str) -> None:
+		"""Wait without using up a retry: the gateway is down, or every review slot is taken."""
+		self.review.db_set({"status": "Queued", "stage": stage})
 		db.commit()
 		from guard.review.jobs import enqueue_review
 

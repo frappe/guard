@@ -32,6 +32,7 @@ class GuardSettings(Document):
 		gateway_dialect: DF.Literal["openai", "anthropic"]
 		gateway_url: DF.Data | None
 		learn_from_activity: DF.Check
+		max_concurrent_reviews: DF.Int
 		max_turns_apex: DF.Int
 		max_turns_base: DF.Int
 		max_turns_plus: DF.Int
