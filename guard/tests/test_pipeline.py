@@ -98,6 +98,55 @@ class TestPipeline(PullRequestCase):
 		self.assertEqual((row["status"], row["stage"]), ("Queued", "waiting 60s for the AI gateway"))
 		self.assertEqual(retries, [(60, 1)])
 
+	def test_breaker_pauses_reviews_and_reruns_them(self):
+		from frappe.utils import now_datetime
+
+		from guard.llm import breaker
+		from guard.review import jobs
+
+		real, later = jobs.enqueue_review, []
+
+		def enqueue(review, delay=0, attempt=0, tier=""):
+			if delay or attempt:
+				later.append((review, attempt))
+				return
+			real(review, delay=delay, attempt=attempt, tier=tier)
+
+		with patch("guard.llm.breaker._notify_admins") as notify:
+			for _ in range(breaker.THRESHOLD + 1):
+				breaker.record_failure("Gateway answered 502: upstream account unpaid")
+		self.assertGreater(breaker.wait_seconds(), 0)
+		notify.assert_called_once()
+
+		# While the breaker is open, a review waits and keeps its retries.
+		with patch("guard.review.jobs.enqueue_review", side_effect=enqueue):
+			paused = trigger.consider(self.pr, "open")
+		row = db.values("Code Review", str(paused), ("status", "stage")) or {}
+		self.assertEqual((row["status"], row["stage"]), ("Queued", "paused: the AI gateway is down"))
+		self.assertEqual(later, [(paused, 0)])
+
+		# A review that failed in the outage runs again when the gateway answers.
+		failed = frappe.get_doc(
+			{
+				"doctype": "Code Review",
+				"pull_request": self.pr,
+				"repository": self.repository,
+				"source": "pull_request",
+				"status": "Failed",
+				"trigger": "open",
+				"error": f"{breaker.FAILED_PREFIX}: Gateway answered 502",
+				"completed_at": now_datetime(),
+			}
+		).insert(ignore_permissions=True)
+		later.clear()
+		with patch(
+			"guard.review.jobs.enqueue_review", side_effect=lambda review, **kw: later.append((review, 0))
+		):
+			breaker.record_success()
+		self.assertEqual(breaker.wait_seconds(), 0)
+		self.assertEqual(later, [(str(failed.name), 0)])
+		self.assertEqual(db.value("Code Review", str(failed.name), "status"), "Queued")
+
 	def test_dead_review_job_fails_the_review(self):
 		from frappe.utils import now_datetime
 

@@ -19,6 +19,7 @@ from guard.indexing.indexer import IndexBusy
 from guard.indexing.jobs import ensure_fresh
 from guard.integrations import tickets
 from guard.learning import suppression
+from guard.llm import breaker
 from guard.llm.types import GatewayBusy, GatewayDown
 from guard.providers import adapter_for_repository
 from guard.review import checks, context, crossrepo, prompts, rule_files, sandbox, stale, verify
@@ -67,13 +68,21 @@ class ReviewPipeline:
 		)
 
 	def attempt(self, attempt: int) -> None:
+		if wait := breaker.wait_seconds():
+			self.park(attempt, wait)
+			return
 		try:
 			self.execute()
 		except Cancelled:
 			self.review.db_set({"status": "Cancelled", "completed_at": now_datetime()})
+		except GatewayDown as down:
+			breaker.record_failure(str(down))
+			if wait := breaker.wait_seconds():
+				self.park(attempt, wait)
+				return
+			self.retry(attempt, down.retry_after, "the AI gateway", f"{breaker.FAILED_PREFIX}: {down}")
 		except GatewayBusy as busy:
-			state = "down" if isinstance(busy, GatewayDown) else "busy"
-			self.retry(attempt, busy.retry_after, "the AI gateway", f"AI gateway {state}: {busy}")
+			self.retry(attempt, busy.retry_after, "the AI gateway", f"AI gateway busy: {busy}")
 		except IndexBusy:
 			# Do not index the branch a second time, in parallel.
 			self.retry(attempt, 0, "the code graph index", "The code graph index stayed busy.")
@@ -82,6 +91,14 @@ class ReviewPipeline:
 			self.fail(redact(f"{type(error).__name__}: {error}"))
 			if frappe.flags.in_test:
 				raise
+
+	def park(self, attempt: int, wait: int) -> None:
+		"""The AI gateway is down. Wait for it without using up a retry."""
+		self.review.db_set({"status": "Queued", "stage": "paused: the AI gateway is down"})
+		db.commit()
+		from guard.review.jobs import enqueue_review
+
+		enqueue_review(str(self.review.name), delay=wait, attempt=attempt)
 
 	def retry(self, attempt: int, after: int, waiting_for: str, failure: str) -> None:
 		delay = max(after, RETRY_DELAYS[min(attempt, len(RETRY_DELAYS) - 1)])

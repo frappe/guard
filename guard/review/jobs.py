@@ -96,6 +96,28 @@ def fail_dead_reviews() -> None:
 		pipeline.acknowledge()
 
 
+def retry_review(review: str) -> bool:
+	"""Run a failed or cancelled review again, from the start. False when it is in another state."""
+	row = db.values("Code Review", review, ("status", "tier")) or {}
+	if row.get("status") not in ("Failed", "Cancelled"):
+		return False
+	db.set_values(
+		"Code Review",
+		review,
+		{
+			"status": "Queued",
+			"stage": "",
+			"error": None,
+			"attempt": 0,
+			"retry_at": None,
+			"completed_at": None,
+			"cancel_requested": 0,
+		},
+	)
+	enqueue_review(review, attempt=0, tier=str(row.get("tier") or ""))
+	return True
+
+
 def resume_waiting() -> None:
 	"""Every minute: queue reviews whose retry time has passed."""
 	rows = frappe.get_all(

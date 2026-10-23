@@ -83,6 +83,10 @@ class LLMClient:
 			result = _responder(ChatRequest(self.model, messages, tools, tool_choice, self.purpose))
 		else:
 			result = self.dialect.chat(self.model, messages, tools, tool_choice, max_tokens, temperature)
+		if self.online:
+			from guard.llm import breaker
+
+			breaker.record_success()
 		self.usage.add(result.usage)
 		return result
 
