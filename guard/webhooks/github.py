@@ -31,6 +31,18 @@ def parse(event: str, payload: dict[str, Any]) -> list[WebhookEvent]:
 	return parser(payload) if parser else [IGNORED]
 
 
+def wanted(event: str, payload: dict[str, Any]) -> bool:
+	"""False when the handler would ignore the delivery, such as a CI check run.
+
+	A busy repository sends many of these. Storing and queueing each one fills the queue.
+	"""
+	try:
+		return any(e.kind != "ignored" for e in parse(event, payload))
+	except Exception:
+		# Let the handler store the error.
+		return True
+
+
 def repository(data: dict[str, Any] | None) -> RepositoryInfo | None:
 	if not data:
 		return None

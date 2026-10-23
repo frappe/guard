@@ -197,6 +197,23 @@ class TestWebhookHeaders(UnitTestCase):
 		self.assertFalse(github.verify(headers, body, "wrong"))
 		self.assertEqual((github.event_name(headers), github.delivery_id(headers)), ("pull_request", "d1"))
 
+	def test_wanted_drops_ci_noise(self):
+		from guard.webhooks import github
+
+		repo = {"full_name": "acme/app", "owner": {"login": "acme"}}
+		run = {"pull_requests": [{"number": 7}]}
+		self.assertFalse(
+			github.wanted("check_run", {"action": "completed", "check_run": run, "repository": repo})
+		)
+		self.assertFalse(github.wanted("check_suite", {"action": "completed", "repository": repo}))
+		self.assertTrue(
+			github.wanted("check_run", {"action": "rerequested", "check_run": run, "repository": repo})
+		)
+		# A payload the parser cannot read goes on to the handler, which stores the error.
+		self.assertTrue(
+			github.wanted("check_run", {"action": "rerequested", "check_run": {"pull_requests": [{}]}})
+		)
+
 
 class TestCallFit(UnitTestCase):
 	def fit(self, signature, call, name="place_order"):

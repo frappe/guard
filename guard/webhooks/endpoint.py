@@ -24,11 +24,13 @@ def github_webhook(**kwargs: Any) -> dict[str, Any]:
 	if not secret or not github.verify(headers, body, str(secret)):
 		frappe.local.response.http_status_code = 401
 		return {"ok": False, "error": "invalid signature"}
+	event = github.event_name(headers)
+	payload = _payload(body)
+	if event != "ping" and not github.wanted(event, payload):
+		return {"ok": True, "ignored": True}
 	delivery = github.delivery_id(headers) or frappe.generate_hash()
 	if frappe.db.exists("Webhook Delivery", {"delivery_id": delivery}):
 		return {"ok": True, "duplicate": True}
-	event = github.event_name(headers)
-	payload = _payload(body)
 	doc = frappe.get_doc(
 		{
 			"doctype": "Webhook Delivery",
