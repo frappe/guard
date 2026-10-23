@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from guard.config.resolver import PullRequestConfig
-from guard.graph.overlay import BlastRadius, CallSite, ChangedEntity
+from guard.graph.overlay import TEST_PATH, BlastRadius, CallSite, ChangedEntity
 from guard.graph.queries import ChunkHit, CodeGraph, Link
 from guard.integrations.tickets import Ticket
 from guard.knowledge import store as kb_store
@@ -19,6 +19,9 @@ MAX_CONTEXT_FILES = 40
 MAX_FILE_LINES = 800
 BUDGET_BY_SIZE = {1: 1200, 3: 700, 6: 500, 12: 350, 24: 250, 40: 200}
 CALLER_PAD = 10
+# Similar code is a hint for the model, not evidence. A few files are enough.
+MAX_SIMILAR_FILES = 4
+SIMILAR_LINES = 60
 
 
 @dataclass
@@ -112,7 +115,7 @@ def build(
 			]
 
 	if graph:
-		_symbol_context(read, changed, graph, pack, spans, budget, paths)
+		_symbol_context(read, changed, graph, pack, spans, budget)
 
 	for path in paths:
 		if not any(f.path == path for f in pack.files):
@@ -166,7 +169,6 @@ def _symbol_context(
 	pack: ContextPack,
 	spans: dict[str, list[ContextSpan]],
 	budget: int,
-	paths: list[str],
 ) -> None:
 	for entity in changed[:12]:
 		question_id = f"{entity.qualified_name}@{entity.path}"
@@ -220,17 +222,27 @@ def _pattern_chunks(
 	spans: dict[str, list[ContextSpan]],
 	budget: int,
 ) -> None:
-	if not entity.head_body.strip():
+	"""Code like the changed entity, as a hint. Not for tests: a similar test says little."""
+	if not entity.head_body.strip() or TEST_PATH.search(entity.path):
 		return
-	hits = graph.similar(entity.head_body, k=3)
-	for hit in hits:
+	if _similar_files(pack) >= MAX_SIMILAR_FILES:
+		return
+	for hit in graph.similar(entity.head_body, k=3):
 		if hit.path == entity.path:
 			continue
-		f = context_file(read, hit.path, f"similar code to {entity.name}", limit=budget // 2)
-		if f:
+		if not any(f.path == hit.path for f in pack.files):
+			if _similar_files(pack) >= MAX_SIMILAR_FILES:
+				continue
+			f = context_file(read, hit.path, f"similar code to {entity.name}", limit=budget // 2)
+			if not f:
+				continue
 			pack.files.append(f)
-			span = symbol_span(hit.start_line, hit.end_line)
-			spans[hit.path] = [*spans.get(hit.path, []), span]
+		end = min(hit.end_line, hit.start_line + SIMILAR_LINES)
+		spans[hit.path] = [*spans.get(hit.path, []), symbol_span(hit.start_line, end)]
+
+
+def _similar_files(pack: ContextPack) -> int:
+	return sum(1 for f in pack.files if f.reason.startswith("similar code"))
 
 
 def _add_file(
