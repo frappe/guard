@@ -267,7 +267,12 @@ class GitHubAdapter(ProviderAdapter):
 		if self.doc.get("auth_mode") == "App":
 			self._check_run(repo, sha, state, description, url)
 			return
-		payload = {"state": state, "description": description[:140], "context": "Guard"}
+		# A commit status has no skipped state.
+		payload = {
+			"state": "success" if state == "skipped" else state,
+			"description": description[:140],
+			"context": "Guard",
+		}
 		if url:
 			payload["target_url"] = url
 		self.request("POST", f"/repos/{repo}/statuses/{sha}", json=payload)
@@ -319,9 +324,12 @@ class GitHubAdapter(ProviderAdapter):
 			payload["status"] = "in_progress"
 		else:
 			payload["status"] = "completed"
-			payload["conclusion"] = {"success": "success", "failure": "failure", "error": "neutral"}.get(
-				state, "neutral"
-			)
+			payload["conclusion"] = {
+				"success": "success",
+				"failure": "failure",
+				"error": "neutral",
+				"skipped": "skipped",
+			}.get(state, "neutral")
 		# The cache can lose the id, for example when a deploy clears it. Then look for the run on
 		# GitHub: a second run on the commit would leave the first in progress for ever.
 		open_ids = [str(run_id)] if run_id else self._open_check_runs(repo, sha)
