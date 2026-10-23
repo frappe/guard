@@ -6,7 +6,7 @@ from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 
 import frappe
-from frappe.utils import now_datetime
+from frappe.utils import add_to_date, now_datetime
 
 from guard.git.repository import store_for
 from guard.graph.overlay import TEST_PATH
@@ -17,6 +17,11 @@ from guard.utils import db
 
 MAX_AREAS = 25
 MAX_FLOWS = 8
+# A large repository gets documents only for the areas that pull requests change most.
+LARGE_REPO_FILES = 3000
+FOCUS_AREAS = 8
+FOCUS_FLOWS = 3
+FOCUS_DAYS = 90
 SPLIT_SHARE = 0.4
 MIN_FILES = 3
 REVERT = r"revert|rollback|roll back|hotfix|incident"
@@ -64,6 +69,9 @@ class KnowledgeBuilder:
 				)
 			]
 			areas = split_areas(files)
+			scoped = len(files) > LARGE_REPO_FILES
+			if scoped:
+				areas = self._busiest(areas)
 			written = 0
 			bodies: dict[str, str] = {}
 			for area in areas:
@@ -82,12 +90,13 @@ class KnowledgeBuilder:
 					path, "docs", area.title, self._area(area), area.files, area.title
 				)
 				written += 1
-			for name, tree, files_in in self._flows():
+			flows = self._flows([a.prefix for a in areas], FOCUS_FLOWS) if scoped else self._flows()
+			for name, tree, files_in in flows:
 				path = f"docs/flows/{_slug(name)}.md"
 				if only is None or path in only:
 					self._save(path, "docs", f"Flow: {name}", tree, files_in, "flows")
 					written += 1
-			self._save("index.md", "index", "Overview", self._index(areas, bodies), [], "")
+			self._save("index.md", "index", "Overview", self._index(areas, bodies, scoped), [], "")
 			self._save("docs/reverts.md", "reverts", "Reverts and incidents", self._reverts(), [], "")
 			if only is None:
 				for name in frappe.get_all(
@@ -143,7 +152,27 @@ class KnowledgeBuilder:
 			AREA_PROMPT, f"Area: {area.title} ({area.prefix})\n\n{prompt}", max_tokens=3000
 		)
 
-	def _flows(self) -> list[tuple[str, str, list[str]]]:
+	def _busiest(self, areas: list[Area]) -> list[Area]:
+		"""The areas with the most changed files in recent reviews. The largest, without reviews."""
+		since = add_to_date(now_datetime(), days=-FOCUS_DAYS)
+		by_prefix = sorted(areas, key=lambda a: -len(a.prefix))
+		counts: Counter[str] = Counter()
+		for (raw,) in db.rows(
+			"SELECT changed_files FROM `tabCode Review` WHERE repository = %s AND creation > %s",
+			(self.repository, since),
+		):
+			for item in frappe.parse_json(raw or "[]") or []:
+				path = str(item.get("path") or "") if isinstance(item, dict) else ""
+				area = next((a for a in by_prefix if path.startswith(a.prefix)), None)
+				if path and area:
+					counts[area.slug] += 1
+		return sorted(areas, key=lambda a: (-counts[a.slug], -len(a.files)))[:FOCUS_AREAS]
+
+	def _flows(
+		self, prefixes: list[str] | None = None, limit: int = MAX_FLOWS
+	) -> list[tuple[str, str, list[str]]]:
+		"""The longest call trees from entry points, written up. With `prefixes`, only trees that
+		reach a file under one of them."""
 		entries = db.dict_rows(
 			"""SELECT name, qualified_name, path FROM `tabCode Entity` WHERE `index` = %s
 			AND kind IN ('function', 'method') AND (is_entry_point = 1 OR name IN (
@@ -167,8 +196,10 @@ class KnowledgeBuilder:
 			lines, files = self._tree(entity, 0, set())
 			trees.append((len(lines), entity.qualified_name, lines, files))
 		trees.sort(key=lambda t: -t[0])
+		if prefixes is not None:
+			trees = [t for t in trees if any(path.startswith(tuple(prefixes)) for path in t[3])]
 		flows = []
-		for _, name, lines, files in trees[:MAX_FLOWS]:
+		for _, name, lines, files in trees[:limit]:
 			if len(lines) < 3:
 				continue
 			tree = "\n".join(lines)
@@ -197,7 +228,7 @@ class KnowledgeBuilder:
 				files |= more_files
 		return lines, files
 
-	def _index(self, areas: list[Area], bodies: dict[str, str]) -> str:
+	def _index(self, areas: list[Area], bodies: dict[str, str], scoped: bool = False) -> str:
 		diagram = self._diagram(areas)
 		file_map = "\n".join(
 			f"| `{a.prefix or '/'}` | [{a.title}](docs/{a.slug}.md) | {len(a.files)} |" for a in areas
@@ -207,7 +238,13 @@ class KnowledgeBuilder:
 			overview = self.client.complete(
 				INDEX_PROMPT, "\n\n".join(data(t, b[:3000]) for t, b in bodies.items()), max_tokens=2500
 			)
-		return f"# Knowledge base\n\n{overview}\n\n## File map\n\n| Path | Area | Files |\n| - | - | - |\n{file_map}\n\n## System diagram\n\n```mermaid\n{diagram}\n```\n"
+		scope = (
+			f"This repository is large, so the knowledge base covers only the {len(areas)} areas that "
+			f"pull requests changed most in the last {FOCUS_DAYS} days.\n\n"
+			if scoped
+			else ""
+		)
+		return f"# Knowledge base\n\n{scope}{overview}\n\n## File map\n\n| Path | Area | Files |\n| - | - | - |\n{file_map}\n\n## System diagram\n\n```mermaid\n{diagram}\n```\n"
 
 	def _diagram(self, areas: list[Area]) -> str:
 		rows = db.rows(

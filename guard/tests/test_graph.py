@@ -280,3 +280,39 @@ class TestIndexCheck(IntegrationTestCase):
 			with self.assertRaises(IndexCheckFailed) as raised:
 				check([(name, str(repo.path), "main")])
 		self.assertIn("parser broke", str(raised.exception))
+
+
+class TestScopedKnowledgeBase(IntegrationTestCase):
+	def test_large_repository_covers_the_busiest_areas(self):
+		from guard.knowledge import builder
+
+		files = {
+			f"{area}/m{n}.py": f"def f{n}():\n    return {n}\n"
+			for area in ("billing", "stock")
+			for n in range(4)
+		}
+		repo = TempRepo(files)
+		self.addCleanup(repo.cleanup)
+		repository = make_repository(repo, full_name=f"acme/{frappe.generate_hash(length=6)}")
+		index = index_for(repository)
+		Indexer(index).run()
+		frappe.db.set_value("Code Repository", repository, "default_index", index)
+		frappe.get_doc(
+			{
+				"doctype": "Code Review",
+				"repository": repository,
+				"source": "cli",
+				"status": "Completed",
+				"trigger": "cli",
+				"changed_files": json.dumps([{"path": "stock/m1.py", "status": "modified"}]),
+			}
+		).insert(ignore_permissions=True)
+		with patch.object(builder, "LARGE_REPO_FILES", 4), patch.object(builder, "FOCUS_AREAS", 1):
+			builder.KnowledgeBuilder(repository).build()
+		paths = set(frappe.get_all("Knowledge Base Document", {"repository": repository}, pluck="path"))
+		self.assertIn("docs/stock.md", paths)
+		self.assertNotIn("docs/billing.md", paths)
+		overview = db.value(
+			"Knowledge Base Document", {"repository": repository, "path": "index.md"}, "content"
+		)
+		self.assertIn("covers only the 1 areas", str(overview))
