@@ -17,7 +17,7 @@ The server must have:
 | Python 3.14 or later | Guard requires it. |
 | The `git` command | Guard keeps a mirror of each repository. |
 | Persistent disk | The mirrors are in `sites/<site>/private/guard/git/`. |
-| Workers for the `short`, `default` and `long` queues | Reviews and indexing run on `long`. |
+| Workers for the `short`, `default` and `long` queues | Webhooks run on `short`, reviews on `default`, and indexing on `long`. Refer to [Size the workers](#size-the-workers). |
 | The scheduler | Guard polls reactions and runs maintenance jobs. |
 | MariaDB 11.7 or later (recommended) | Native vector search. Older versions use a slower fallback. |
 | `podman` (optional) | Only for runtime validation, which runs tests in a container. |
@@ -127,6 +127,27 @@ To add repositories later, change the installation on GitHub. Guard receives the
    - sets a check named Guard.
 
 If a delivery has the status Failed, open it to see the error. If no delivery arrives, open the App on GitHub, go to **Advanced**, and look at **Recent Deliveries**.
+
+## Size the workers
+
+Give each queue its own workers. Then a long job on one queue does not stop the others.
+
+| Queue | Jobs | Workers |
+| - | - | - |
+| `short` | Webhooks, and small jobs after a review | 3 |
+| `default` | Reviews (`base` and `plus` tier), replies to comments | 4 to 6 |
+| `long` | Indexing, knowledge base builds, `apex` reviews | 2 |
+
+Do not add a worker for all three queues together.
+
+Each worker is a full Frappe process. It uses about 130 MB of memory when it is idle, and up to 500 MB when it indexes a large repository such as erpnext. Calculate the memory for the workers as the number of workers × 500 MB, and add memory for MariaDB, Redis and the web workers.
+
+| Server | Workers |
+| - | - |
+| 2 vCPU, 8 GB | 3 `short`, 4 `default`, 2 `long` |
+| 4 vCPU, 16 GB | 3 `short`, 6 `default`, 2 `long` |
+
+More workers do not make reviews faster when the server is full. If the server uses 100% CPU, look at the memory first. Too many workers fill the memory, and then the server swaps.
 
 ## Default behavior
 
