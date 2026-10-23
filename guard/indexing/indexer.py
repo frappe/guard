@@ -28,6 +28,9 @@ BATCH = 300
 LOCK_TTL = 7200  # the timeout of the index job
 # A run sets these. When a new run finds one, the run before it died and left the rows half done.
 RUNNING = ("cloning", "processing")
+# The qualified name of code has the module path in it. These kinds have none, so two files
+# can hold the same one: three services can each serve GET /health. Their names use the path.
+PATH_IN_NAME = ("file", "route", "doctype", "field")
 ENTITY_COLUMNS = (
 	"name",
 	"creation",
@@ -230,7 +233,7 @@ class Indexer:
 			seen[(entity.kind, entity.qualified_name)] += 1
 			names[entity.key] = short_hash(
 				self.index,
-				parsed.path if entity.kind == "file" else "",
+				parsed.path if entity.kind in PATH_IN_NAME else "",
 				entity.kind,
 				entity.qualified_name,
 				occurrence,

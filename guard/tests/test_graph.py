@@ -227,3 +227,29 @@ class TestGitStore(IntegrationTestCase):
 			store.rev_parse("refs/heads/hotfix")
 		store.fetch_branches()
 		self.assertEqual(store.rev_parse("refs/heads/hotfix"), repo.head())
+
+
+class TestSameNameInTwoFiles(IntegrationTestCase):
+	def test_routes_and_doctypes_with_one_name(self):
+		# Three services can each serve GET /health; two apps can each have a Settings DocType.
+		doctype = json.dumps({"doctype": "DocType", "name": "Settings", "module": "Core", "fields": []})
+		repo = TempRepo(
+			{
+				"svc_a/app.js": 'app.get("/health", (req, res) => res.send("ok"));\n',
+				"svc_b/server.py": '@app.get("/health")\ndef health():\n    return "ok"\n',
+				"app/hooks.py": 'app_name = "app"\n',
+				"app/modules.txt": "One\nTwo\n",
+				"app/one/doctype/settings/settings.json": doctype,
+				"app/two/doctype/settings/settings.json": doctype,
+			}
+		)
+		self.addCleanup(repo.cleanup)
+		index = index_for(make_repository(repo, full_name=f"acme/{frappe.generate_hash(length=6)}"))
+		Indexer(index).run()
+		self.assertEqual(db.value("Repository Index", index, "status"), "completed")
+		graph = CodeGraph(index)
+		self.assertEqual(
+			{e.path for e in graph.definitions("route:GET app:health", "route")},
+			{"svc_a/app.js", "svc_b/server.py"},
+		)
+		self.assertEqual(len(graph.definitions("doctype:Settings", "doctype")), 2)
