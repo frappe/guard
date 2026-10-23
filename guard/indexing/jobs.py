@@ -2,7 +2,7 @@
 
 import frappe
 
-from guard.indexing.indexer import RUNNING, IndexBusy, Indexer
+from guard.indexing.indexer import RUNNING, IndexBusy, Indexer, IndexFailed, recent_failure
 from guard.indexing.vectors import VectorRow, VectorStore
 from guard.llm.embeddings import Embedder
 from guard.utils import db
@@ -57,13 +57,21 @@ def run_index(index: str, full: bool = False) -> None:
 def ensure_fresh(repository: str, sha: str | None = None) -> str:
 	"""Make the default index cover `sha` (or the branch head). Run inline.
 
-	Raise IndexBusy when another job is indexing it now.
+	Raise IndexBusy when another job is indexing it now, and IndexFailed when the run fails or
+	failed in the last hour.
 	"""
 	index = index_for(repository)
 	row = db.values("Repository Index", index, ("status", "sha"))
 	if row and row["status"] == "completed" and (sha is None or row["sha"] == sha):
 		return index
-	Indexer(index).run()
+	if error := recent_failure(index):
+		raise IndexFailed(error)
+	try:
+		Indexer(index).run()
+	except IndexBusy:
+		raise
+	except Exception as error:
+		raise IndexFailed(str(error)) from error
 	return index
 
 

@@ -26,6 +26,7 @@ if TYPE_CHECKING:
 
 BATCH = 300
 LOCK_TTL = 7200  # the timeout of the index job
+FAILED_FOR = 3600  # seconds a review skips an index that failed
 # A run sets these. When a new run finds one, the run before it died and left the rows half done.
 RUNNING = ("cloning", "processing")
 # The qualified name of code has the module path in it. These kinds have none, so two files
@@ -95,9 +96,22 @@ class IndexBusy(Exception):
 	"""Another job is indexing the same branch now."""
 
 
+class IndexFailed(Exception):
+	"""The index of the branch failed, now or in the last hour. A review goes on without it."""
+
+
 def index_lock(index: str) -> AbstractContextManager[bool]:
 	"""Held while a run writes the index, so two runs never write the same rows."""
 	return cache.exclusive(f"guard:index:{index}", LOCK_TTL)
+
+
+def recent_failure(index: str) -> str:
+	"""The error of a run that failed in the last hour, else an empty string."""
+	return str(cache.get(_failed_key(index)) or "")
+
+
+def _failed_key(index: str) -> str:
+	return f"guard:index-failed:{index}"
 
 
 class Indexer:
@@ -122,7 +136,10 @@ class Indexer:
 				self._set(status="failed", sha=None, error=str(error)[:5000])
 				frappe.db.set_value("Code Repository", self.repository, "index_status", "Failed")
 				db.commit()
+				# Reviews skip the index for an hour, rather than fail the same way one by one.
+				cache.set(_failed_key(self.index), str(error)[:500], FAILED_FOR)
 				raise
+			cache.delete(_failed_key(self.index))
 
 	def _run(self) -> None:
 		# Read it before the status changes below.

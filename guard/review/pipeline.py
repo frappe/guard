@@ -15,7 +15,7 @@ from guard.git.store import GitStore
 from guard.graph.overlay import PullRequestGraph
 from guard.graph.queries import CodeGraph
 from guard.indexing import frappe_plugin
-from guard.indexing.indexer import IndexBusy
+from guard.indexing.indexer import IndexBusy, IndexFailed
 from guard.indexing.jobs import ensure_fresh
 from guard.integrations import tickets
 from guard.learning import suppression
@@ -121,7 +121,7 @@ class ReviewPipeline:
 		self.stage("start")
 		publisher.start()
 		self.stage("index")
-		index = ensure_fresh(run.repository) if run.repository else None
+		index = self.index(run)
 		run.graph = CodeGraph(index) if index else None
 		self.stage("context")
 		overlay = PullRequestGraph(run.graph, run.head, run.base, run.files, run.frappe_app)
@@ -192,6 +192,19 @@ class ReviewPipeline:
 		self.stage("after")
 		suppression.remember(names, run.findings, run.repository)
 		self.after(run, number)
+
+	def index(self, run: ReviewRun) -> str | None:
+		"""The fresh index of the repository, or None when it failed: review without the graph."""
+		if not run.repository:
+			return None
+		try:
+			return ensure_fresh(run.repository)
+		except IndexFailed as error:
+			run.notes.append(
+				"The code graph is not available, so this review read the diff and the changed files only. "
+				f"Indexing failed: {redact(str(error))[:200]}"
+			)
+			return None
 
 	def linked_repositories(self, run: ReviewRun) -> list[crossrepo.OtherRepository]:
 		if not run.repository:

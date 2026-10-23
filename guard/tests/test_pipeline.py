@@ -98,6 +98,21 @@ class TestPipeline(PullRequestCase):
 		self.assertEqual((row["status"], row["stage"]), ("Queued", "waiting 60s for the AI gateway"))
 		self.assertEqual(retries, [(60, 1)])
 
+	def test_review_goes_on_without_a_failed_index(self):
+		from guard.indexing.indexer import Indexer
+
+		with patch.object(Indexer, "_run", side_effect=RuntimeError("parser broke")) as index:
+			first = self.review([])
+			with use_responder(scripted([])):
+				second = trigger.consider(self.pr, "open", manual=True, requested_by="ada")
+		for name in (first, second):
+			self.assertEqual(self.row(name)["status"], "Completed", self.row(name)["error"])
+		# The second review skips the index that failed a moment ago, instead of failing again.
+		self.assertEqual(index.call_count, 1)
+		summary = self.adapter.named("post_comment")[0]
+		self.assertIn("The code graph is not available", summary)
+		self.assertIn("parser broke", summary)
+
 	def test_breaker_pauses_reviews_and_reruns_them(self):
 		from frappe.utils import now_datetime
 
