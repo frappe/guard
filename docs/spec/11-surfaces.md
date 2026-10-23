@@ -6,7 +6,7 @@ Guard has no separate front end. One site serves one company, and every employee
 
 ### Guard workspace
 
-- Shortcuts: Pull Requests, Code Reviews, Review Findings, Repositories, Custom Context, Knowledge Base, Repository Clusters, Integrations, Guard Settings, Review Settings.
+- Shortcuts: Pull Requests, Code Reviews, Review Findings, Repositories, Custom Context, Learned Memories, Knowledge Base, Repository Clusters, Integrations, Guard Settings, Review Settings.
 - Number cards: reviews this month, open findings, bugs caught this month, addressed rate, my open findings.
 - Charts: reviews per day, bugs caught by severity, addressed rate per week.
 - Links: the reports below, the `guard-pr` page and the `guard-chat` page.
@@ -19,7 +19,7 @@ Guard has no separate front end. One site serves one company, and every employee
 | Code Review | Rendered summary, findings table, token and credit use. Buttons: Retry, Cancel. |
 | Review Finding | Code excerpt, provider link, fix prompt with Copy, agent links. Buttons: Dismiss, Reopen. |
 | Code Repository | Index status and counts. Buttons: Index now, Full rebuild, Build knowledge base, Explain config. |
-| Custom Context | Usage and addressed rate. Buttons: Improve with AI, Approve, Ignore. |
+| Custom Context | Usage, addressed rate, status reason and the evidence comments. Buttons: Improve with AI, Approve, Ignore, Retire, Restore. |
 | Knowledge Base Document | Markdown editor. Rendered Mermaid. |
 | Repository Cluster | Buttons: Use this, Discard (for suggestions). |
 | Code Provider | Buttons: Test connection, Sync repositories, Show webhook URL. |

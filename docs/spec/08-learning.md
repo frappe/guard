@@ -1,20 +1,23 @@
 # Learning
 
-Learning makes reviews fit the team. It has five parts: feedback, addressed detection, memories, suppression and suggested rules. The setting `learn_from_activity` turns all five on or off. Only people who pass `teach_permission` can teach Guard.
+Learning makes reviews fit the team. It has six parts: feedback, addressed detection, missed issues, memories, suppression and suggested rules. The setting `learn_from_activity` turns all five on or off. Only people who pass `teach_permission` can teach Guard.
 
 ## Feedback
 
 | Source | How Guard gets it | Review Feedback kind |
 | - | - | - |
-| 👍 on a Guard comment | GitHub sends no reaction webhook. A job every 15 minutes reads reactions on findings of pull requests that changed in the last 14 days. | Upvote |
-| 👎 on a Guard comment | Same | Downvote |
+| 👍, ❤️, 🎉 or 🚀 on a Guard comment | GitHub sends no reaction webhook. A job every 15 minutes reads reactions on findings of pull requests that changed in the last 14 days. | Upvote |
+| 👎 or 😕 on a Guard comment | Same | Downvote |
 | A reply in a Guard thread | Webhook | Reply, with a sentiment |
 | A push that fixes the finding | Addressed detection | Addressed |
 | A merged or closed pull request with the finding still open | Close job | Ignored |
+| A human comment on a problem that Guard missed | Webhook, see [Missed issues](#missed-issues) | Missed |
 
-Guard keeps one Upvote or Downvote row for each person and finding. A removed reaction deletes the row.
+Guard keeps one Upvote or Downvote row for each person and finding. A removed reaction deletes the row. Guard skips reactions from its bot logins and from people who fail `teach_permission`.
 
-The fast model gives each reply a sentiment: Agree, Disagree, Context, Question or Neutral. "Good catch, fixed" is Agree. "We do this on purpose because the webhook needs a quick answer" is Context.
+The fast model reads each reply with the finding and the earlier replies of the thread. One call gives the class that decides how Guard answers ([07-conversations.md](07-conversations.md#thread-replies)) and a sentiment: Agree, Disagree, Context, Question or Neutral. "Good catch, fixed" is Agree. "We do this on purpose because the webhook needs a quick answer" is Context.
+
+The `upvotes` and `downvotes` of a finding count people. A person with a 👎 or 😕, or a reply with sentiment Disagree or Context, is one downvote. A rejecting reply does not close the finding, so the pull request author cannot clear a finding by replying.
 
 ## Addressed detection
 
@@ -44,13 +47,24 @@ On GitHub, resolving a thread needs the App permission **Contents: Read & write*
 2. The fast model judges each one.
 3. Addressed findings get Addressed. The rest get Ignored, and Guard adds Review Feedback of kind Ignored.
 
+## Missed issues
+
+A human review comment can raise a problem that Guard did not. Guard checks a comment when all of these are true:
+
+1. Learning is on.
+2. The comment is an inline comment that starts a thread, not a reply.
+3. The author is not the pull request author and passes `teach_permission`.
+4. The pull request has a completed Guard review.
+
+The fast model reads the comment, the code around its line at the pull request head, and the posted Guard findings on the file. When the comment raises a bug, a risk or a required change that no finding covers, Guard adds Review Feedback of kind Missed. When the problem applies beyond this change, the same answer gives a memory, which Guard stores as below.
+
 ## Memories
 
 A memory is Custom Context of type Pattern, source Learned, status Active.
 
-1. Guard reads Review Feedback of kind Reply with sentiment Context or Disagree, and mentions with intent feedback.
+1. Guard reads Review Feedback of kind Reply with sentiment Context or Disagree, mentions with intent feedback, and Missed feedback.
 2. The fast model writes one memory: the preference, why, and where it applies (paths and repository).
-3. If an existing memory is close (cosine 0.9 or more), Guard adds the evidence to it. It does not create a new one.
+3. If an existing memory of the same repository is close (cosine 0.9 or more), Guard adds the evidence to it. It does not create a new one. Rules never absorb a memory.
 4. Each memory links to its evidence comments.
 
 Examples:
@@ -60,7 +74,15 @@ Examples:
 | "Webhook handlers are sync on purpose. The provider needs an answer in 3 seconds." | In `webhooks/**`, synchronous handling is intended. Do not suggest async. |
 | "@guard you missed a null check on line 45" | Check for null results from `get_user` before use. |
 
-The reviewer reads memories that match the changed paths, at priority 3.
+The reviewer reads memories that match the changed paths, at priority 3. Each memory has the rule id `memory:<name>`. A finding that acts on a memory cites it, so the finding links to the memory in `custom_context` and the memory gets [rule metrics](#rule-metrics).
+
+### Review and retire
+
+The **Learned Memories** shortcut in the Guard workspace lists them. The form shows each evidence comment with its author, kind and pull request. **Retire** sets the status to Inactive and **Restore** sets it back to Active. The reviewer reads only Active memories. New feedback close to a retired memory adds evidence to it and leaves it retired.
+
+A daily job retires a learned memory when, since `active_since`, the team rejected 3 or more of the findings that cite it and rejected more than it accepted. A finding is rejected when it has more downvotes than upvotes, or Guard marked it Ignored. It is accepted when it was addressed or has more upvotes than downvotes. A memory that only tells Guard what not to flag produces no findings, so only a person can retire it.
+
+Every status change writes `status_reason`: who changed it, or the numbers behind an automatic retirement. Setting a memory Active again sets `active_since`, so the rejections from before do not count.
 
 ## Suppression
 
@@ -68,7 +90,7 @@ Before posting, Guard checks each finding against past findings in the same repo
 
 1. Skip this check for P0 findings and for the security category. Guard never suppresses those.
 2. Find past findings with cosine 0.85 or more.
-3. For these neighbors, compute: `score = upvotes + addressed - 2 × downvotes - ignored`.
+3. For these neighbors, compute: `score = upvotes + addressed - 2 × downvotes - ignored`. Rejecting replies count in `downvotes`.
 4. Suppress the finding when there are 3 or more neighbors and `score < 0`.
 5. Also suppress when one neighbor has cosine 0.93 or more, at least one downvote and no upvote.
 

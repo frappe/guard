@@ -16,7 +16,7 @@ class ReviewFeedback(Document):
 		author: DF.Data | None
 		body: DF.LongText | None
 		finding: DF.Link | None
-		kind: DF.Literal["Upvote", "Downvote", "Reply", "Addressed", "Ignored"]
+		kind: DF.Literal["Upvote", "Downvote", "Reply", "Addressed", "Ignored", "Missed"]
 		processed: DF.Check
 		provider_ref: DF.Data | None
 		pull_request: DF.Link | None

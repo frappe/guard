@@ -14,6 +14,8 @@
   "team",
   "source",
   "rule_id",
+  "status_reason",
+  "active_since",
   "body_section",
   "body",
   "file_path",
@@ -27,6 +29,8 @@
   "metrics_col",
   "addressed_count",
   "addressed_rate",
+  "evidence_section",
+  "evidence_html",
   "evidence"
  ],
  "fields": [
@@ -93,6 +97,20 @@
    "fieldtype": "Data",
    "idx": 8,
    "label": "Rule Id"
+  },
+  {
+   "fieldname": "status_reason",
+   "fieldtype": "Small Text",
+   "label": "Status Reason",
+   "read_only": 1,
+   "depends_on": "status_reason"
+  },
+  {
+   "fieldname": "active_since",
+   "fieldtype": "Datetime",
+   "label": "Active Since",
+   "read_only": 1,
+   "description": "Guard retires a learned memory only for findings after this time."
   },
   {
    "fieldname": "body_section",
@@ -179,16 +197,27 @@
    "read_only": 1
   },
   {
+   "fieldname": "evidence_section",
+   "fieldtype": "Section Break",
+   "label": "Evidence"
+  },
+  {
+   "fieldname": "evidence_html",
+   "fieldtype": "HTML",
+   "label": "Evidence Comments"
+  },
+  {
    "fieldname": "evidence",
    "fieldtype": "JSON",
    "idx": 22,
    "label": "Evidence",
-   "read_only": 1
+   "read_only": 1,
+   "hidden": 1
   }
  ],
  "index_web_pages_for_search": 0,
  "links": [],
- "modified": "2026-10-20 10:00:00.000000",
+ "modified": "2026-10-23 12:00:00.000000",
  "modified_by": "Administrator",
  "module": "Guard",
  "name": "Custom Context",

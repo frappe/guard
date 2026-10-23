@@ -2,6 +2,7 @@
 
 import frappe
 
+from guard.learning import memories
 from guard.providers.base import InlineComment, PostedComment, ProviderAdapter, ProviderError
 from guard.review import links, render
 from guard.review.findings import Finding
@@ -30,7 +31,7 @@ class Publisher:
 		rules = self._rule_contexts()
 		for finding in self.run.findings:
 			if finding.rule_id and not finding.context_name:
-				finding.context_name = rules.get(finding.rule_id)
+				finding.context_name = rules.get(finding.rule_id) or memories.cited(finding.rule_id)
 			doc = frappe.get_doc(
 				{
 					"doctype": "Review Finding",

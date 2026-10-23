@@ -8,7 +8,7 @@ from guard.graph.overlay import BlastRadius, CallSite, ChangedEntity
 from guard.graph.queries import ChunkHit, CodeGraph, Link
 from guard.integrations.tickets import Ticket
 from guard.knowledge import store as kb_store
-from guard.learning.memories import for_paths as memories_for_paths
+from guard.learning import memories
 from guard.review import crossrepo
 from guard.review.prompt import ContextFile, ContextPack, Question, context_file
 from guard.review.run import Reader
@@ -77,8 +77,8 @@ def build(
 		pack.files.append(ContextFile(path, text, "project rule file"))
 	for ticket in tickets or []:
 		sources.append(SourceNote("tickets", ticket.as_text()))
-	for memory in memories_for_paths(full_name, team, paths):
-		sources.append(SourceNote("memory", f"{memory.get('title') or 'Memory'}: {memory.get('content')}"))
+	for memory in memories.for_paths(full_name, team, paths):
+		sources.append(SourceNote("memory", memories.note(memory)))
 
 	if repository:
 		for document in kb_store.documents_for_paths(repository, paths):

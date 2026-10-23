@@ -41,7 +41,7 @@ The reply ends with **Sources** when the answer used tickets or knowledge base p
 
 Guard reads every new comment in a thread that it started, even with no mention.
 
-The fast model classifies the comment:
+The fast model reads the comment with the finding and the earlier replies, and classifies it. The same call gives the sentiment for learning:
 
 | Class | Action |
 | - | - |

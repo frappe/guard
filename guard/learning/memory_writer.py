@@ -41,13 +41,19 @@ def write(feedback: str) -> str | None:
 	answer = client.complete_json(PROMPT, context + "\n" + data("feedback", row["body"]), default={})
 	if not isinstance(answer, dict) or not answer.get("useful") or not answer.get("memory"):
 		return None
-	text = str(answer["memory"]).strip()
-	full_name = db.value("Code Repository", row["repository"], "full_name") if row.get("repository") else None
+	return save(
+		str(answer["memory"]).strip(), answer.get("path_scope") or [], row.get("repository"), feedback
+	)
+
+
+def save(text: str, path_scope: list[str], repository: str | None, feedback: str) -> str:
+	"""Store a memory, or add the evidence to a close memory of the same repository."""
 	vector = Embedder().embed_one(text)
-	near = [ref for ref, d in VectorStore().nearest("context", vector, k=3) if d <= DUPLICATE_DISTANCE]
-	if near:
-		_add_evidence(near[0], feedback)
-		return near[0]
+	duplicate = nearest_memory(vector, repository)
+	if duplicate:
+		_add_evidence(duplicate, feedback)
+		return duplicate
+	full_name = db.value("Code Repository", repository, "full_name") if repository else None
 	doc = frappe.get_doc(
 		{
 			"doctype": "Custom Context",
@@ -57,12 +63,23 @@ def write(feedback: str) -> str | None:
 			"status": "Active",
 			"source": "Learned",
 			"repository_scope": full_name or "",
-			"path_scope": "\n".join(str(p) for p in answer.get("path_scope") or []),
+			"path_scope": "\n".join(str(p) for p in path_scope),
 			"evidence": frappe.as_json([feedback]),
 		}
 	).insert(ignore_permissions=True)
-	VectorStore().upsert([VectorRow(str(doc.name), "context", str(doc.name), row.get("repository"), vector)])
+	VectorStore().upsert([VectorRow(str(doc.name), "context", str(doc.name), repository, vector)])
 	return str(doc.name)
+
+
+def nearest_memory(vector: list[float], repository: str | None) -> str | None:
+	"""A memory, not a rule, close enough to be the same preference."""
+	repositories = [repository] if repository else None
+	for ref, distance in VectorStore().nearest("context", vector, k=5, repositories=repositories):
+		if distance > DUPLICATE_DISTANCE:
+			break
+		if db.value("Custom Context", ref, "context_type") == "Pattern":
+			return ref
+	return None
 
 
 def _add_evidence(context: str, feedback: str) -> None:

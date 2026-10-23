@@ -1,15 +1,19 @@
 """Whitelisted methods for Desk pages and forms."""
 
-from typing import Any
+from typing import TYPE_CHECKING, Any, cast
 
 import frappe
 from frappe import _
 
 from guard.git.diff import parse_diff
 from guard.git.repository import store_for
+from guard.learning import memories
 from guard.llm.client import LLMClient
 from guard.review import links
 from guard.utils import db
+
+if TYPE_CHECKING:
+	from guard.guard.doctype.custom_context.custom_context import CustomContext
 
 MAX_DIFF_FILES = 300
 
@@ -260,5 +264,14 @@ def set_cluster_status(cluster: str, status: str) -> None:
 def set_context_status(context: str, status: str) -> None:
 	if status not in ("Active", "Inactive", "Ignored"):
 		frappe.throw(_("Use Active, Inactive or Ignored."))
-	frappe.get_doc("Custom Context", context).check_permission("write")
-	frappe.db.set_value("Custom Context", context, "status", status)
+	doc = cast("CustomContext", frappe.get_doc("Custom Context", context))
+	doc.check_permission("write")
+	doc.set("status", status)
+	doc.save()
+
+
+@frappe.whitelist()
+def get_context_evidence(context: str) -> list[dict]:
+	"""The comments and feedback behind a memory or a suggested rule."""
+	frappe.get_doc("Custom Context", context).check_permission("read")
+	return memories.evidence(context)

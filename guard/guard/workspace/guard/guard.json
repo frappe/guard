@@ -10,7 +10,7 @@
    "label": "Bugs Caught per Week"
   }
  ],
- "content": "[{\"id\": \"g0\", \"type\": \"header\", \"data\": {\"text\": \"<span class=\\\"h4\\\"><b>Guard</b></span>\", \"col\": 12}}, {\"id\": \"g1\", \"type\": \"number_card\", \"data\": {\"number_card_name\": \"Reviews This Month\", \"col\": 4}}, {\"id\": \"g2\", \"type\": \"number_card\", \"data\": {\"number_card_name\": \"Open Findings\", \"col\": 4}}, {\"id\": \"g3\", \"type\": \"number_card\", \"data\": {\"number_card_name\": \"Bugs Caught This Month\", \"col\": 4}}, {\"id\": \"g4\", \"type\": \"number_card\", \"data\": {\"number_card_name\": \"Addressed Rate\", \"col\": 6}}, {\"id\": \"g5\", \"type\": \"number_card\", \"data\": {\"number_card_name\": \"My Open Findings\", \"col\": 6}}, {\"id\": \"g6\", \"type\": \"chart\", \"data\": {\"chart_name\": \"Reviews per Day\", \"col\": 6}}, {\"id\": \"g7\", \"type\": \"chart\", \"data\": {\"chart_name\": \"Bugs Caught per Week\", \"col\": 6}}, {\"id\": \"g8\", \"type\": \"header\", \"data\": {\"text\": \"<span class=\\\"h4\\\"><b>Go to</b></span>\", \"col\": 12}}, {\"id\": \"g9\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Review Pull Requests\", \"col\": 3}}, {\"id\": \"g10\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Codebase Chat\", \"col\": 3}}, {\"id\": \"g11\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Pull Requests\", \"col\": 3}}, {\"id\": \"g12\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Code Reviews\", \"col\": 3}}, {\"id\": \"g13\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Review Findings\", \"col\": 3}}, {\"id\": \"g14\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Repositories\", \"col\": 3}}, {\"id\": \"g15\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Custom Context\", \"col\": 3}}, {\"id\": \"g16\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Knowledge Base\", \"col\": 3}}, {\"id\": \"g17\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Guard Analytics\", \"col\": 3}}, {\"id\": \"g18\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Bugs Caught\", \"col\": 3}}, {\"id\": \"g19\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"My Guard\", \"col\": 3}}, {\"id\": \"g20\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Guard Settings\", \"col\": 3}}, {\"id\": \"g21\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Review Settings\", \"col\": 3}}, {\"id\": \"g22\", \"type\": \"card\", \"data\": {\"card_name\": \"Setup\", \"col\": 6}}, {\"id\": \"g23\", \"type\": \"card\", \"data\": {\"card_name\": \"Activity\", \"col\": 6}}]",
+ "content": "[{\"id\": \"g0\", \"type\": \"header\", \"data\": {\"text\": \"<span class=\\\"h4\\\"><b>Guard</b></span>\", \"col\": 12}}, {\"id\": \"g1\", \"type\": \"number_card\", \"data\": {\"number_card_name\": \"Reviews This Month\", \"col\": 4}}, {\"id\": \"g2\", \"type\": \"number_card\", \"data\": {\"number_card_name\": \"Open Findings\", \"col\": 4}}, {\"id\": \"g3\", \"type\": \"number_card\", \"data\": {\"number_card_name\": \"Bugs Caught This Month\", \"col\": 4}}, {\"id\": \"g4\", \"type\": \"number_card\", \"data\": {\"number_card_name\": \"Addressed Rate\", \"col\": 6}}, {\"id\": \"g5\", \"type\": \"number_card\", \"data\": {\"number_card_name\": \"My Open Findings\", \"col\": 6}}, {\"id\": \"g6\", \"type\": \"chart\", \"data\": {\"chart_name\": \"Reviews per Day\", \"col\": 6}}, {\"id\": \"g7\", \"type\": \"chart\", \"data\": {\"chart_name\": \"Bugs Caught per Week\", \"col\": 6}}, {\"id\": \"g8\", \"type\": \"header\", \"data\": {\"text\": \"<span class=\\\"h4\\\"><b>Go to</b></span>\", \"col\": 12}}, {\"id\": \"g9\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Review Pull Requests\", \"col\": 3}}, {\"id\": \"g10\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Codebase Chat\", \"col\": 3}}, {\"id\": \"g11\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Pull Requests\", \"col\": 3}}, {\"id\": \"g12\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Code Reviews\", \"col\": 3}}, {\"id\": \"g13\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Review Findings\", \"col\": 3}}, {\"id\": \"g14\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Repositories\", \"col\": 3}}, {\"id\": \"g15\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Custom Context\", \"col\": 3}}, {\"id\": \"g24\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Learned Memories\", \"col\": 3}}, {\"id\": \"g16\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Knowledge Base\", \"col\": 3}}, {\"id\": \"g17\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Guard Analytics\", \"col\": 3}}, {\"id\": \"g18\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Bugs Caught\", \"col\": 3}}, {\"id\": \"g19\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"My Guard\", \"col\": 3}}, {\"id\": \"g20\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Guard Settings\", \"col\": 3}}, {\"id\": \"g21\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Review Settings\", \"col\": 3}}, {\"id\": \"g22\", \"type\": \"card\", \"data\": {\"card_name\": \"Setup\", \"col\": 6}}, {\"id\": \"g23\", \"type\": \"card\", \"data\": {\"card_name\": \"Activity\", \"col\": 6}}]",
  "creation": "2026-10-21 10:00:00.000000",
  "custom_blocks": [],
  "docstatus": 0,
@@ -148,7 +148,7 @@
    "type": "Link"
   }
  ],
- "modified": "2026-10-21 10:00:00.000000",
+ "modified": "2026-10-23 12:00:00.000000",
  "modified_by": "Administrator",
  "module": "Guard",
  "name": "Guard",
@@ -229,6 +229,14 @@
    "label": "Custom Context",
    "link_to": "Custom Context",
    "type": "DocType"
+  },
+  {
+   "color": "Purple",
+   "doc_view": "",
+   "label": "Learned Memories",
+   "link_to": "Custom Context",
+   "type": "DocType",
+   "stats_filter": "[[\"Custom Context\", \"context_type\", \"=\", \"Pattern\"], [\"Custom Context\", \"source\", \"=\", \"Learned\"]]"
   },
   {
    "color": "Green",

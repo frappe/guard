@@ -34,7 +34,7 @@ We used a hosted AI reviewer on our pull requests. It had hard limits on new rep
 - Posts a summary with a 0 to 5 confidence score, a risk level, a findings table, a diagram and a blast radius line, and inline comments with P0, P1 or P2 severity and suggested fixes.
 - Reads team rules from `.guard/config.toml`, `.guard/rules.md`, `.guard/files.toml` and `guard.toml` in any directory, merged over dashboard settings.
 - Answers questions in pull request threads, and in Chat with PR and codebase chat in Desk.
-- Learns from 👍 and 👎 reactions, replies and fixes. It suppresses findings that the team rejects, and suggests rules from human review comments.
+- Learns from reactions, replies, fixes and human review comments. It suppresses findings that the team rejects, remembers problems that human reviewers caught and it missed, and suggests rules from human review comments.
 - Builds a knowledge base for each repository and reads Jira, Confluence and Linear tickets.
 - Approves a pull request after a clean 5/5 review, and resolves its own threads when the code fixes them.
 - Runs targeted tests in a rootless container, when runtime validation is on.

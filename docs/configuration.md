@@ -229,6 +229,8 @@ A **Custom Context** record adds a rule, a file or a note from Desk, without a c
 
 Guard also suggests rules from the review comments of your team. Suggested rules appear as Custom Context records with the status Suggested. Set the status to Active to use one.
 
+Guard learns memories from replies, reactions and review comments. Open **Learned Memories** in the Guard workspace to read them and the comments behind each one. Click **Retire** to stop using a memory and **Restore** to use it again. Guard also retires a learned memory when the team keeps rejecting the findings that cite it.
+
 ### Code Repository
 
 On a **Code Repository**, you can:

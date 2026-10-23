@@ -148,11 +148,11 @@ Admins pick the LLM provider, the model for each tier, a fast model for small ta
 
 ### L1. Reactions
 
-👍 and 👎 on a Guard comment are feedback. Other emoji are neutral.
+👍, ❤️, 🎉 and 🚀 on a Guard comment count as up. 👎 and 😕 count as down. Other emoji are neutral. Each person counts once.
 
 ### L2. Replies
 
-A reply to a Guard comment is feedback. Guard classifies it as agree, disagree, context or question, and learns from it.
+A reply to a Guard comment is feedback. Guard reads it with the finding and the thread, classifies it as agree, disagree, context or question, and learns from it. A disagree or context reply counts as a downvote.
 
 ### L3. Addressed detection
 
@@ -161,7 +161,7 @@ A reply to a Guard comment is feedback. Guard classifies it as agree, disagree, 
 
 ### L4. Memories
 
-Guard turns context replies and repeated feedback into memories. A memory is custom context with source "Learned". The reviewer reads memories on later reviews.
+Guard turns context replies, repeated feedback, and human review comments on problems it missed into memories. A memory is custom context with source "Learned". The reviewer reads memories on later reviews.
 
 ### L5. Suppression
 

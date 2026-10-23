@@ -188,7 +188,7 @@ Every comment on a pull request, human or bot. Learning, thread replies and comm
 
 ### Review Feedback
 
-`finding`, `pull_request`, `repository`, `author`, `kind` (Upvote, Downvote, Reply, Addressed, Ignored), `sentiment` (Agree, Disagree, Context, Question, Neutral), `body`, `processed`.
+`finding`, `pull_request`, `repository`, `author`, `kind` (Upvote, Downvote, Reply, Addressed, Ignored, Missed), `sentiment` (Agree, Disagree, Context, Question, Neutral), `body`, `processed`.
 
 ### Sandbox Run
 
@@ -204,6 +204,8 @@ Every comment on a pull request, human or bot. Learning, thread replies and comm
 | `title`, `body` | text | |
 | `file_path` | Data | For `File`. |
 | `status` | Select | `Active`, `Inactive`, `Suggested`, `Ignored` |
+| `status_reason` | Small Text | Who changed the status, or why Guard retired it. |
+| `active_since` | Datetime | Set when the status becomes Active. Automatic retirement counts findings after it. |
 | `severity` | Select | `low`, `medium`, `high` |
 | `team` | Link | Blank means organization scope. |
 | `repository_scope` | Small Text | One pattern each line, wildcards allowed (`acme/*`). Blank means all. |
@@ -211,7 +213,7 @@ Every comment on a pull request, human or bot. Learning, thread replies and comm
 | `source` | Select | `Dashboard`, `Learned`, `Suggested`, `MCP`, `Chat` |
 | `usage_count`, `addressed_count`, `merged_count` | Int | |
 | `addressed_rate` | Percent | `addressed_count / merged_count` |
-| `evidence` | JSON | Links to the comments that made a learned item. |
+| `evidence` | JSON | Review Feedback or Pull Request Comment names behind a learned or suggested item. The form shows them as a table. |
 
 ### Knowledge Base Document
 

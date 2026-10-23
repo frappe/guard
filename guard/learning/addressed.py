@@ -2,12 +2,14 @@
 
 from typing import Any
 
+from guard import settings as guard_settings
 from guard.git.diff import parse_diff
 from guard.git.repository import store_for
 from guard.learning import feedback
 from guard.llm.client import LLMClient
 from guard.providers import adapter_for_repository
 from guard.providers.base import ProviderComment, ProviderError
+from guard.review import permissions
 from guard.review.prompts import data
 from guard.utils import db
 
@@ -104,29 +106,37 @@ def poll_reactions() -> None:
 		repository = row["repository"]
 		if repository not in adapters:
 			adapters[repository] = adapter_for_repository(repository)
-		adapter = adapters[repository]
-		if not adapter:
-			continue
-		full_name = str(db.value("Code Repository", repository, "full_name"))
-		try:
-			reactions = adapter.list_reactions(
-				full_name, ProviderComment(row["provider_comment_id"], "inline", "", "")
-			)
-		except ProviderError:
-			continue
-		current = {(r.user, r.content) for r in reactions if r.content in ("+1", "-1")}
-		stored = {
-			(a, {"Upvote": "+1", "Downvote": "-1"}[k])
-			for a, k in db.rows(
-				"SELECT author, kind FROM `tabReview Feedback` WHERE finding = %s AND kind IN ('Upvote', 'Downvote')",
-				(row["name"],),
-			)
-		}
-		for user, content in current - stored:
-			feedback.record_reaction(row["name"], user, content)
-		for user, content in stored - current:
-			feedback.record_reaction(row["name"], user, content, removed=True)
-		db.commit()
+		if adapters[repository]:
+			sync_reactions(row["name"], row["provider_comment_id"], repository, adapters[repository])
+			db.commit()
+
+
+def sync_reactions(finding: str, comment_id: str, repository: str, adapter: Any) -> None:
+	"""Mirror the reactions of people who may teach Guard into Review Feedback."""
+	full_name = str(db.value("Code Repository", repository, "full_name"))
+	try:
+		reactions = adapter.list_reactions(full_name, ProviderComment(comment_id, "inline", "", ""))
+	except ProviderError:
+		return
+	bots = guard_settings.bot_logins()
+	current = {
+		(r.user, feedback.REACTION_KINDS[r.content])
+		for r in reactions
+		if r.content in feedback.REACTION_KINDS
+		and r.user.lower() not in bots
+		and permissions.allowed("teach", r.user, repository)
+	}
+	stored = {
+		(author, kind)
+		for author, kind in db.rows(
+			"SELECT author, kind FROM `tabReview Feedback` WHERE finding = %s AND kind IN ('Upvote', 'Downvote')",
+			(finding,),
+		)
+	}
+	for user, kind in current - stored:
+		feedback.record_reaction(finding, user, kind)
+	for user, kind in stored - current:
+		feedback.record_reaction(finding, user, kind, removed=True)
 
 
 def _open(pull_request: str) -> list[dict[str, Any]]:

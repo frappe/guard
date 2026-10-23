@@ -34,7 +34,11 @@ scheduler_events = {
 		"*/15 * * * *": ["guard.learning.addressed.poll_reactions"],
 		"0 */6 * * *": ["guard.knowledge.builder.sync_stale"],
 	},
-	"daily": ["guard.webhooks.endpoint.cleanup_deliveries", "guard.learning.suggestions.update_rule_metrics"],
+	"daily": [
+		"guard.webhooks.endpoint.cleanup_deliveries",
+		"guard.learning.suggestions.update_rule_metrics",
+		"guard.learning.memories.retire_unhelpful",
+	],
 	"weekly": ["guard.learning.suggestions.weekly_suggestions"],
 }
 
