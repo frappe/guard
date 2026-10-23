@@ -82,8 +82,13 @@ class CodeGraph:
 
 	def definitions(self, name: str, kind: str | None = None, limit: int = 20) -> list[Entity]:
 		"""Entities with this name, qualified name, or qualified-name suffix."""
-		condition = "(entity_name = %s OR qualified_name = %s OR qualified_name LIKE %s) AND kind != 'file'"
-		values: tuple = (name, name, f"%.{_escape_like(name)}")
+		# A qualified name ends with the entity name. Match the entity name first, so that each
+		# term uses an index, and the suffix LIKE reads only those rows.
+		condition = (
+			"(entity_name = %s OR qualified_name = %s OR (entity_name = %s AND qualified_name LIKE %s))"
+			" AND kind != 'file'"
+		)
+		values: tuple = (name, name, name.rsplit(".", 1)[-1], f"%.{_escape_like(name)}")
 		if kind:
 			condition += " AND kind = %s"
 			values += (kind,)

@@ -12,6 +12,7 @@ COMPOSITE_INDEXES = (
 	("Code Edge", "index_target_name", ("index", "target_name")),
 	("Code Edge", "index_path", ("index", "path(255)")),
 	("Code Chunk", "index_path", ("index", "path(255)")),
+	("Code Chunk", "index_entity", ("index", "entity")),
 	("Review Finding", "pr_status", ("pull_request", "status")),
 	("Pull Request", "repository_number", ("repository", "number")),
 )

@@ -271,10 +271,11 @@ def _read(run: ReviewRun, path: str, args: dict[str, Any]) -> str:
 
 
 def _search(graph: CodeGraph, query: str) -> str:
-	hits = graph.search(query, k=SEARCH_LIMIT) + graph._lexical(query, k=SEARCH_LIMIT)
+	# `search` already ranks the FULLTEXT hits with the others.
+	hits = graph.search(query, k=SEARCH_LIMIT)
 	seen: set[tuple[str, int]] = set()
 	lines = []
-	for hit in sorted(hits, key=lambda h: -h.score):
+	for hit in hits:
 		key = (hit.path, hit.start_line)
 		if key in seen:
 			continue
