@@ -4,9 +4,10 @@ from unittest.mock import patch
 import frappe
 from frappe.tests import IntegrationTestCase
 
+from guard.git import maintenance
 from guard.git.diff import parse_diff
 from guard.git.repository import store_for
-from guard.git.store import GitError
+from guard.git.store import GitError, GitStore
 from guard.graph.overlay import PullRequestGraph
 from guard.graph.queries import CodeGraph
 from guard.indexing import indexer
@@ -227,6 +228,35 @@ class TestGitStore(IntegrationTestCase):
 			store.rev_parse("refs/heads/hotfix")
 		store.fetch_branches()
 		self.assertEqual(store.rev_parse("refs/heads/hotfix"), repo.head())
+
+	def test_maintenance_drops_refs_of_closed_pull_requests(self):
+		repo = TempRepo({"a.py": "x = 1\n"})
+		self.addCleanup(repo.cleanup)
+		repository = make_repository(repo, full_name=f"acme/{frappe.generate_hash(length=6)}")
+		git = store_for(repository)
+		for number in (1, 2):
+			git.fetch_branch("main", number)
+		frappe.get_doc(
+			{
+				"doctype": "Pull Request",
+				"title": "Open",
+				"repository": repository,
+				"number": 1,
+				"state": "open",
+			}
+		).insert(ignore_permissions=True)
+		maintenance.maintain(git)
+		self.assertEqual(git.refs("refs/guard/pr/"), ["refs/guard/pr/1"])
+		self.assertGreater(git.size_kb(), 0)
+
+	def test_fetch_waits_for_the_lock(self):
+		repo = TempRepo({"a.py": "x = 1\n"})
+		self.addCleanup(repo.cleanup)
+		git = store_for(make_repository(repo, full_name=f"acme/{frappe.generate_hash(length=6)}"))
+		git.fetch_branches("main")
+		with git._lock(), patch("guard.git.store.TIMEOUT", 0), patch("guard.git.store.LOCK_POLL", 0):
+			with self.assertRaises(GitError):
+				git.fetch_branches("main")
 
 
 class TestSameNameInTwoFiles(IntegrationTestCase):

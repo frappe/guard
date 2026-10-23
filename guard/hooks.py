@@ -42,6 +42,7 @@ scheduler_events = {
 		"guard.learning.suggestions.update_rule_metrics",
 		"guard.learning.memories.retire_unhelpful",
 	],
+	"daily_long": ["guard.git.maintenance.run"],
 	"weekly": ["guard.learning.suggestions.weekly_suggestions"],
 }
 

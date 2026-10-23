@@ -1,7 +1,11 @@
 """One bare mirror for each repository, driven by the git CLI."""
 
+import fcntl
 import os
 import subprocess
+import time
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -11,6 +15,9 @@ from guard.utils.redact import redact
 
 TIMEOUT = 600
 EMPTY_TREE = "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
+# A fetch starts git's automatic gc. On a big mirror that is a detached repack on every core.
+NO_GC = ("-c", "gc.auto=0", "-c", "maintenance.auto=false")
+LOCK_POLL = 0.5
 
 
 class GitError(Exception):
@@ -52,9 +59,10 @@ class GitStore:
 
 	def fetch(self, *refspecs: str) -> None:
 		"""Fetch branches, or the given refspecs."""
-		self.ensure()
 		specs = refspecs or ("+refs/heads/*:refs/heads/*",)
-		self._git("fetch", "--quiet", "--prune", "--no-tags", "origin", *specs, auth=True)
+		with self._lock():
+			self.ensure()
+			self._git("fetch", "--quiet", "--prune", "--no-tags", "origin", *specs, auth=True)
 
 	def fetch_branches(self, *branches: str) -> None:
 		"""Fetch only these branches, or every branch when none is given.
@@ -73,17 +81,21 @@ class GitStore:
 
 	def fetch_branch(self, branch: str, number: int, url: str | None = None) -> str:
 		"""Fetch a head branch, from a fork when `url` is given, into `refs/guard/pr/<n>`."""
-		self.ensure()
 		ref = f"refs/guard/pr/{number}"
-		self._git("fetch", "--quiet", "--no-tags", url or "origin", f"+refs/heads/{branch}:{ref}", auth=True)
+		with self._lock():
+			self.ensure()
+			self._git(
+				"fetch", "--quiet", "--no-tags", url or "origin", f"+refs/heads/{branch}:{ref}", auth=True
+			)
 		return self.rev_parse(ref)
 
 	def fetch_sha(self, sha: str, url: str | None = None) -> None:
 		"""Fetch one commit, from a fork when `url` is given."""
-		self.ensure()
-		if self.has_commit(sha):
-			return
-		self._git("fetch", "--quiet", "--no-tags", url or "origin", sha, auth=True)
+		with self._lock():
+			self.ensure()
+			if self.has_commit(sha):
+				return
+			self._git("fetch", "--quiet", "--no-tags", url or "origin", sha, auth=True)
 
 	# --------------------------------------------------------------- reads
 
@@ -106,6 +118,9 @@ class GitStore:
 		except GitError:
 			return False
 		return True
+
+	def refs(self, prefix: str) -> list[str]:
+		return self._git("for-each-ref", "--format=%(refname)", prefix).split()
 
 	def ls_tree(self, sha: str) -> list[TreeEntry]:
 		out = self._git("ls-tree", "-r", "-l", "-z", sha)
@@ -141,7 +156,7 @@ class GitStore:
 		if not blobs:
 			return {}
 		process = subprocess.run(
-			["git", "-C", str(self.path), "cat-file", "--batch"],
+			["git", "-C", str(self.path), *NO_GC, "cat-file", "--batch"],
 			input=("\n".join(blobs) + "\n").encode(),
 			capture_output=True,
 			timeout=TIMEOUT,
@@ -212,19 +227,64 @@ class GitStore:
 		return self.log(f"{base}..{head}", limit=250)
 
 	def size_kb(self) -> int:
-		total = sum(f.stat().st_size for f in self.path.rglob("*") if f.is_file())
-		return total // 1024
+		"""Loose and packed objects, in KiB."""
+		counts = dict(line.split(": ", 1) for line in self._git("count-objects", "-v").splitlines())
+		return int(counts.get("size", 0)) + int(counts.get("size-pack", 0))
+
+	# --------------------------------------------------------- maintenance
+
+	def maintain(self) -> None:
+		"""Roll loose objects and small packs into bigger ones, on one thread, and pack the refs."""
+		with self._lock():
+			self._git("repack", "-d", "-l", "--geometric=2", "--quiet", config=("pack.threads=1",))
+			self._git("pack-refs", "--all")
+
+	def delete_refs(self, refs: list[str]) -> None:
+		if not refs:
+			return
+		with self._lock():
+			self._git("update-ref", "--stdin", stdin="".join(f"delete {ref}\n" for ref in refs))
 
 	# ------------------------------------------------------------ internal
 
-	def _git(self, *args: str, auth: bool = False) -> str:
-		command = ["git", "-C", str(self.path)]
+	@contextmanager
+	def _lock(self) -> Iterator[None]:
+		"""Held while git writes refs or config: two fetches into one repository fail to lock a ref.
+		The kernel drops the lock when a process dies."""
+		self.path.mkdir(parents=True, exist_ok=True)
+		fd = os.open(self.path / "guard.lock", os.O_CREAT | os.O_RDWR, 0o600)
+		try:
+			deadline = time.monotonic() + TIMEOUT
+			while True:
+				try:
+					fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+					break
+				except BlockingIOError as error:
+					if time.monotonic() > deadline:
+						raise GitError(f"{self.name} is locked by another git command") from error
+					time.sleep(LOCK_POLL)
+			yield
+		finally:
+			# Closing the file drops the lock.
+			os.close(fd)
+
+	def _git(
+		self, *args: str, auth: bool = False, stdin: str | None = None, config: tuple[str, ...] = ()
+	) -> str:
+		command = ["git", "-C", str(self.path), *NO_GC]
 		if auth and self.auth_header:
 			command += ["-c", f"http.extraHeader={self.auth_header}"]
+		for option in config:
+			command += ["-c", option]
 		command += list(args)
 		try:
 			result = subprocess.run(
-				command, capture_output=True, timeout=TIMEOUT, env=self._env(), check=False
+				command,
+				input=stdin.encode() if stdin is not None else None,
+				capture_output=True,
+				timeout=TIMEOUT,
+				env=self._env(),
+				check=False,
 			)
 		except subprocess.TimeoutExpired as error:
 			raise GitError(f"git {args[0]} timed out") from error
