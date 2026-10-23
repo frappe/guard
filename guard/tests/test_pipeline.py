@@ -207,6 +207,56 @@ class TestPipeline(PullRequestCase):
 		send.assert_called_once()
 		self.assertIn("reviews failed in the last hour", send.call_args.args[1]["subject"])
 
+	def test_eval_case_from_a_finished_review(self):
+		from guard.evals import build, run
+
+		finding = {
+			"path": "app/models.py",
+			"start_line": 5,
+			"severity": "P1",
+			"comment_type": "logic",
+			"title": "Callers of update_user_email miss the notify argument",
+			"body": "`app/service.py:6` still calls it with two arguments.",
+			"confidence": 0.9,
+		}
+		rejected = {**finding, "start_line": 1, "severity": "P2", "title": "Rename the signature flag"}
+		name = self.review(
+			[
+				[
+					("report_finding", finding),
+					("report_finding", rejected),
+					("submit_review", {"summary": "s", "confidence_score": 3}),
+				]
+			]
+		)
+		for title, status in ((finding["title"], "Addressed"), (rejected["title"], "Ignored")):
+			frappe.db.set_value("Review Finding", {"code_review": name, "title": title}, "status", status)
+		case = build.case_from_review(str(name))
+		assert case is not None
+		self.assertIn("app/models.py", case["payload"]["files"])
+		self.assertIn("def update_user_email(user, email, notify):", case["payload"]["diff"])
+		self.assertEqual(case["expected"][0]["keywords"], ["update_user_email", "argument"])
+		self.assertEqual(case["unexpected"][0]["keywords"], ["signature", "rename"])
+
+		# Replayed, the same findings come back: the addressed one is found, the ignored one raised again.
+		with use_responder(
+			scripted(
+				[
+					[
+						("report_finding", finding),
+						("report_finding", rejected),
+						("submit_review", {"summary": "s", "confidence_score": 3}),
+					]
+				]
+			)
+		):
+			[result] = [run.review_case(case)]
+		summary = run.score([result])
+		self.assertEqual((result["found"], result["expected"]), (1, 1))
+		self.assertEqual(result["raised"], [rejected["title"]])
+		self.assertEqual(summary["recall"], 1.0)
+		self.assertIn("| 1/1 | 1/1 |", summary["markdown"])
+
 	def test_breaker_pauses_reviews_and_reruns_them(self):
 		from frappe.utils import now_datetime
 

@@ -1,4 +1,5 @@
 import json
+import os
 from pathlib import Path
 from typing import Any
 
@@ -21,10 +22,84 @@ def run(case: str = "", tier: str = "") -> list[dict[str, Any]]:
 		if result["status"] != "Completed":
 			print(f"{result['case']}: review {result['review']} is {result['status']}: {result['error']}")
 			continue
-		print(f"{result['case']}: {result['found']}/{result['expected']} expected, review {result['review']}")
+		print(
+			f"{result['case']}: {result['found']}/{result['expected']} expected, "
+			f"{len(result['raised'])}/{result['unexpected']} rejected raised again, review {result['review']}"
+		)
 		for why in result["missed"]:
 			print(f"  missed: {why}")
+		for why in result["raised"]:
+			print(f"  raised again: {why}")
 	return results
+
+
+def ci() -> None:
+	"""Run every case in CI and fail on a review that does not finish, or on low recall.
+
+	Reads the gateway from GUARD_EVAL_GATEWAY_URL, GUARD_EVAL_GATEWAY_KEY, GUARD_EVAL_MODEL and
+	GUARD_EVAL_DIALECT. Without them it skips. EVAL_MIN_RECALL (0 to 1, default 0) is the share of
+	expected findings that must come back. Writes a table to GITHUB_STEP_SUMMARY when it is set.
+	"""
+	env = os.environ
+	if not env.get("GUARD_EVAL_GATEWAY_URL") or not env.get("GUARD_EVAL_MODEL"):
+		print("Evals skipped: set GUARD_EVAL_GATEWAY_URL and GUARD_EVAL_MODEL.")
+		return
+	settings = frappe.get_single("Guard Settings")
+	model = env["GUARD_EVAL_MODEL"]
+	settings.update(
+		{
+			"gateway_url": env["GUARD_EVAL_GATEWAY_URL"],
+			"gateway_api_key": env.get("GUARD_EVAL_GATEWAY_KEY", ""),
+			"gateway_dialect": env.get("GUARD_EVAL_DIALECT") or "openai",
+			"base_model": model,
+			"plus_model": model,
+			"apex_model": model,
+			"max_concurrent_reviews": 0,
+		}
+	)
+	settings.save(ignore_permissions=True)
+	db.commit()
+	results = run()
+	summary = score(results)
+	if path := env.get("GITHUB_STEP_SUMMARY"):
+		try:
+			with open(path, "a") as out:
+				out.write(summary["markdown"])
+		except OSError as error:
+			print(f"Could not write the job summary: {error}")
+	print(summary["line"])
+	if summary["unfinished"]:
+		raise EvalFailed(f"Reviews did not finish: {', '.join(summary['unfinished'])}")
+	if summary["recall"] < float(env.get("EVAL_MIN_RECALL") or 0):
+		raise EvalFailed(f"Recall {summary['recall']:.0%} is below EVAL_MIN_RECALL")
+
+
+class EvalFailed(Exception):
+	pass
+
+
+def score(results: list[dict[str, Any]]) -> dict[str, Any]:
+	"""Totals over all cases: recall of expected findings, and rejected findings raised again."""
+	done = [r for r in results if r["status"] == "Completed"]
+	expected = sum(r["expected"] for r in done)
+	found = sum(r["found"] for r in done)
+	unexpected = sum(r["unexpected"] for r in done)
+	raised = sum(len(r["raised"]) for r in done)
+	recall = found / expected if expected else 1.0
+	rows = "\n".join(
+		f"| {r['case']} | {r['found']}/{r['expected']} | {len(r['raised'])}/{r['unexpected']} |"
+		if r["status"] == "Completed"
+		else f"| {r['case']} | {r['status']}: {r.get('error') or ''} | |"
+		for r in results
+	)
+	line = f"Found {found}/{expected} expected ({recall:.0%}). Raised {raised}/{unexpected} rejected findings again."
+	return {
+		"recall": recall,
+		"raised": raised,
+		"unfinished": [r["case"] for r in results if r["status"] != "Completed"],
+		"line": line,
+		"markdown": f"## Guard evals\n\n{line}\n\n| Case | Expected found | Rejected raised again |\n| - | - | - |\n{rows}\n",
+	}
 
 
 def load_cases(name: str = "") -> list[dict[str, Any]]:
@@ -59,6 +134,9 @@ def review_case(case: dict[str, Any], tier: str = "") -> dict[str, Any]:
 		fields=["path", "severity", "title", "body"],
 	)
 	missed = [e for e in case["expected"] if not any(matches(e, f) for f in findings)]
+	# A finding the team rejected, raised again at any severity.
+	unexpected = case.get("unexpected") or []
+	raised = [u for u in unexpected if any(matches({**u, "severity": "P2"}, f) for f in findings)]
 	return {
 		"case": case["name"],
 		"review": review.name,
@@ -66,6 +144,8 @@ def review_case(case: dict[str, Any], tier: str = "") -> dict[str, Any]:
 		"expected": len(case["expected"]),
 		"found": len(case["expected"]) - len(missed),
 		"missed": [e["why"] for e in missed],
+		"unexpected": len(unexpected),
+		"raised": [u["why"] for u in raised],
 	}
 
 
