@@ -215,7 +215,7 @@ class Indexer:
 				parsed = parse_file(entry.path, source)
 				if frappe_app:
 					frappe_plugin.augment(parsed, source)
-				names = self._names(parsed, entry.blob)
+				names = self._names(parsed, table)
 				rows += self._entity_rows(parsed, names, entry.blob)
 				for row in _entity_rows_for_table(parsed, names):
 					table.add(row)
@@ -225,19 +225,28 @@ class Indexer:
 			db.commit()
 		return results
 
-	def _names(self, parsed: ParsedFile, blob: str) -> dict[str, str]:
+	def _names(self, parsed: ParsedFile, table: SymbolTable) -> dict[str, str]:
 		names: dict[str, str] = {}
 		seen: Counter[tuple[str, str]] = Counter()
 		for entity in parsed.entities:
 			occurrence = seen[(entity.kind, entity.qualified_name)]
 			seen[(entity.kind, entity.qualified_name)] += 1
-			names[entity.key] = short_hash(
+			name = short_hash(
 				self.index,
 				parsed.path if entity.kind in PATH_IN_NAME else "",
 				entity.kind,
 				entity.qualified_name,
 				occurrence,
 			)
+			if name in table.rows:
+				# Another file has the same entity, for example `x.js` and `x.ts`. One clash must
+				# not fail the whole index, so give this one a name with its path.
+				frappe.logger("guard.indexer").warning(
+					f"{self.index}: {entity.kind} {entity.qualified_name} in {parsed.path} "
+					f"has the name of one in {table.rows[name].path}"
+				)
+				name = short_hash(name, parsed.path)
+			names[entity.key] = name
 		return names
 
 	def _entity_rows(self, parsed: ParsedFile, names: dict[str, str], blob: str) -> list[tuple]:

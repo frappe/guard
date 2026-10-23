@@ -253,3 +253,14 @@ class TestSameNameInTwoFiles(IntegrationTestCase):
 			{"svc_a/app.js", "svc_b/server.py"},
 		)
 		self.assertEqual(len(graph.definitions("doctype:Settings", "doctype")), 2)
+
+	def test_a_name_clash_does_not_fail_the_index(self):
+		# `x.js` and `x.ts` share the module path `app/x`, so both define `app/x.foo`.
+		source = "function foo() {\n  return 1;\n}\n"
+		repo = TempRepo({"app/x.js": source, "app/x.ts": source})
+		self.addCleanup(repo.cleanup)
+		index = index_for(make_repository(repo, full_name=f"acme/{frappe.generate_hash(length=6)}"))
+		Indexer(index).run()
+		self.assertEqual(db.value("Repository Index", index, "status"), "completed")
+		paths = {e.path for e in CodeGraph(index).definitions("app/x.foo", "function")}
+		self.assertEqual(paths, {"app/x.js", "app/x.ts"})
