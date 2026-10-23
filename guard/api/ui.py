@@ -16,6 +16,7 @@ if TYPE_CHECKING:
 	from guard.guard.doctype.custom_context.custom_context import CustomContext
 
 MAX_DIFF_FILES = 300
+MAX_BULK = 100  # reviews one bulk action can retry
 
 
 @frappe.whitelist(methods=["GET", "POST"])
@@ -161,6 +162,29 @@ def retry_review(review: str) -> str | None:
 	if not pull_request:
 		frappe.throw(_("Only pull request reviews can be retried here."))
 	return rereview(str(pull_request))
+
+
+@frappe.whitelist(methods=["POST"])
+def retry_reviews(reviews: str | list[str]) -> list[str]:
+	"""Review again the pull requests of these reviews that did not finish.
+
+	One new review for each pull request, at its current head. Returns the new reviews.
+	"""
+	names = frappe.parse_json(reviews) if isinstance(reviews, str) else reviews
+	if not isinstance(names, list) or len(names) > MAX_BULK:
+		frappe.throw(_("Select at most {0} reviews.").format(MAX_BULK))
+	rows = frappe.get_all(
+		"Code Review",
+		filters={
+			"name": ["in", [str(n) for n in names]],
+			"status": ["in", ["Failed", "Cancelled", "Skipped"]],
+			"pull_request": ["is", "set"],
+		},
+		fields=["pull_request"],
+		order_by="creation asc",
+	)
+	pull_requests = dict.fromkeys(str(row.pull_request) for row in rows)
+	return [review for pr in pull_requests if (review := rereview(pr))]
 
 
 @frappe.whitelist(methods=["POST"])

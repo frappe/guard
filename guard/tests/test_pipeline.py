@@ -148,6 +148,29 @@ class TestPipeline(PullRequestCase):
 		frappe.db.set_single_value("Guard Settings", "max_concurrent_reviews", 0)  # no limit
 		self.assertEqual(self.row(self.review([]))["status"], "Completed")
 
+	def test_bulk_retry_makes_one_review_for_each_pull_request(self):
+		from guard.api.ui import retry_reviews
+
+		done = self.review([])
+		failed = []
+		for status in ("Failed", "Cancelled"):
+			doc = frappe.get_doc(
+				{
+					"doctype": "Code Review",
+					"pull_request": self.pr,
+					"repository": self.repository,
+					"source": "pull_request",
+					"status": status,
+					"trigger": "open",
+				}
+			).insert(ignore_permissions=True)
+			failed.append(str(doc.name))
+		with use_responder(scripted([])):
+			created = retry_reviews([*failed, str(done)])
+		self.assertEqual(len(created), 1)  # two failed reviews of one pull request, and a finished one
+		self.assertNotIn(created[0], [*failed, str(done)])
+		self.assertEqual(self.row(created[0])["status"], "Completed")
+
 	def test_breaker_pauses_reviews_and_reruns_them(self):
 		from frappe.utils import now_datetime
 
