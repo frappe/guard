@@ -10,6 +10,8 @@ from guard.review.pipeline import ReviewPipeline
 from guard.utils import db
 
 CASES = Path(__file__).parent / "cases"
+SUMMARY_START = "<!-- guard-evals -->"
+SUMMARY_END = "<!-- /guard-evals -->"
 
 
 def run(case: str = "", tier: str = "") -> list[dict[str, Any]]:
@@ -38,7 +40,8 @@ def ci() -> None:
 
 	Reads the gateway from GUARD_EVAL_GATEWAY_URL, GUARD_EVAL_GATEWAY_KEY, GUARD_EVAL_MODEL and
 	GUARD_EVAL_DIALECT. Without them it skips. EVAL_MIN_RECALL (0 to 1, default 0) is the share of
-	expected findings that must come back. Writes a table to GITHUB_STEP_SUMMARY when it is set.
+	expected findings that must come back. Prints a Markdown table between SUMMARY_START and
+	SUMMARY_END, which the workflow adds to the job summary.
 	"""
 	env = os.environ
 	if not env.get("GUARD_EVAL_GATEWAY_URL") or not env.get("GUARD_EVAL_MODEL"):
@@ -61,12 +64,7 @@ def ci() -> None:
 	db.commit()
 	results = run()
 	summary = score(results)
-	if path := env.get("GITHUB_STEP_SUMMARY"):
-		try:
-			with open(path, "a") as out:
-				out.write(summary["markdown"])
-		except OSError as error:
-			print(f"Could not write the job summary: {error}")
+	print(f"{SUMMARY_START}\n{summary['markdown']}{SUMMARY_END}")
 	print(summary["line"])
 	if summary["unfinished"]:
 		raise EvalFailed(f"Reviews did not finish: {', '.join(summary['unfinished'])}")

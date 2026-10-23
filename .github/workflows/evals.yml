@@ -98,7 +98,16 @@ jobs:
 
       - name: Run evals
         working-directory: /home/runner/frappe-bench
-        run: bench --site test_site execute guard.evals.run.ci
+        shell: bash
+        run: |
+          set +e
+          bench --site test_site execute guard.evals.run.ci | tee evals.log
+          status=${PIPESTATUS[0]}
+          set -e
+          # The summary also helps when the run fails, so write it first.
+          sed -n '/<!-- guard-evals -->/,/<!-- \/guard-evals -->/p' evals.log \
+            >> "$GITHUB_STEP_SUMMARY"
+          exit "$status"
         env:
           GUARD_EVAL_GATEWAY_URL: ${{ secrets.GUARD_EVAL_GATEWAY_URL }}
           GUARD_EVAL_GATEWAY_KEY: ${{ secrets.GUARD_EVAL_GATEWAY_KEY }}
