@@ -264,3 +264,19 @@ class TestSameNameInTwoFiles(IntegrationTestCase):
 		self.assertEqual(db.value("Repository Index", index, "status"), "completed")
 		paths = {e.path for e in CodeGraph(index).definitions("app/x.foo", "function")}
 		self.assertEqual(paths, {"app/x.js", "app/x.ts"})
+
+
+class TestIndexCheck(IntegrationTestCase):
+	def test_reports_and_raises(self):
+		from guard.indexing.check import IndexCheckFailed, check
+
+		repo = TempRepo(FILES)
+		self.addCleanup(repo.cleanup)
+		name = f"acme/{frappe.generate_hash(length=6)}"
+		[result] = check([(name, str(repo.path), "main")])
+		self.assertFalse(result.error)
+		self.assertGreater(result.entities, 10)
+		with patch.object(Indexer, "_run", side_effect=RuntimeError("parser broke")):
+			with self.assertRaises(IndexCheckFailed) as raised:
+				check([(name, str(repo.path), "main")])
+		self.assertIn("parser broke", str(raised.exception))
