@@ -36,6 +36,8 @@ class SymbolTable:
 		self.by_path: dict[str, list[EntityRow]] = defaultdict(list)
 		self.files: dict[str, EntityRow] = {}
 		self.modules: dict[str, EntityRow] = {}
+		# File name without extension -> path -> file row, in the order of `files`.
+		self.stems: dict[str, dict[str, EntityRow]] = defaultdict(dict)
 		self.children: dict[str, dict[str, EntityRow]] = defaultdict(dict)
 		self.bases: dict[str, list[str]] = defaultdict(list)
 		for row in rows:
@@ -64,6 +66,7 @@ class SymbolTable:
 		if row.kind == "file":
 			self.files[row.path] = row
 			self.modules[row.qualified_name] = row
+			self.stems[_stem(row.path)][row.path] = row
 			return
 		self.by_qualified[row.qualified_name].append(row)
 		self.by_name[row.entity_name].append(row)
@@ -122,12 +125,13 @@ class SymbolTable:
 				return self.modules[candidate]
 		tail = module.replace("::", "/").replace("\\", "/").replace(".", "/").rsplit("/", 1)[-1]
 		matches = [
-			row
-			for path, row in self.files.items()
-			if posixpath.splitext(posixpath.basename(path))[0] == tail
-			and family(row.language) == family(language)
+			row for row in self.stems.get(tail, {}).values() if family(row.language) == family(language)
 		]
 		return matches[0] if len(matches) == 1 else None
+
+
+def _stem(path: str) -> str:
+	return posixpath.splitext(posixpath.basename(path))[0]
 
 
 def _row(values: dict) -> EntityRow:
