@@ -24,6 +24,7 @@ FOCUS_FLOWS = 3
 FOCUS_DAYS = 90
 SPLIT_SHARE = 0.4
 MIN_FILES = 3
+FLOWS = "docs/flows/"
 REVERT = r"revert|rollback|roll back|hotfix|incident"
 ENTRY_PATH = re.compile(r"route|api|handler|controller|view|webhook", re.I)
 AREA_PROMPT = """Write one knowledge base document about an area of a codebase, in markdown.
@@ -90,14 +91,22 @@ class KnowledgeBuilder:
 					path, "docs", area.title, self._area(area), area.files, area.title
 				)
 				written += 1
-			flows = self._flows([a.prefix for a in areas], FOCUS_FLOWS) if scoped else self._flows()
+			# With `only`, skip the costly documents that are not asked for: flows walk the call
+			# graph, the index reads every edge, and reverts read the git log.
+			flows = []
+			if only is None or any(path.startswith(FLOWS) for path in only):
+				flows = self._flows([a.prefix for a in areas], FOCUS_FLOWS) if scoped else self._flows()
 			for name, tree, files_in in flows:
-				path = f"docs/flows/{_slug(name)}.md"
+				path = f"{FLOWS}{_slug(name)}.md"
 				if only is None or path in only:
 					self._save(path, "docs", f"Flow: {name}", tree, files_in, "flows")
 					written += 1
-			self._save("index.md", "index", "Overview", self._index(areas, bodies, scoped), [], "")
-			self._save("docs/reverts.md", "reverts", "Reverts and incidents", self._reverts(), [], "")
+			if only is None or "index.md" in only or written:
+				self._save("index.md", "index", "Overview", self._index(areas, bodies, scoped), [], "")
+				written += 1
+			if only is None or "docs/reverts.md" in only:
+				self._save("docs/reverts.md", "reverts", "Reverts and incidents", self._reverts(), [], "")
+				written += 1
 			if only is None:
 				for name in frappe.get_all(
 					"Knowledge Base Document",
@@ -109,7 +118,7 @@ class KnowledgeBuilder:
 				"Code Repository", self.repository, {"kb_status": "Ready", "kb_version": self.version}
 			)
 			db.commit()
-			return written + 2
+			return written
 		except Exception:
 			db.rollback()
 			frappe.db.set_value("Code Repository", self.repository, "kb_status", "Failed")

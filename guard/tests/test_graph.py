@@ -382,3 +382,13 @@ class TestScopedKnowledgeBase(IntegrationTestCase):
 			"Knowledge Base Document", {"repository": repository, "path": "index.md"}, "content"
 		)
 		self.assertIn("covers only the 1 areas", str(overview))
+
+		# A stale area rebuilds that document and the overview, but not the flows or reverts.
+		with (
+			patch.object(builder.KnowledgeBuilder, "_flows") as flows,
+			patch.object(builder.KnowledgeBuilder, "_reverts") as reverts,
+		):
+			written = builder.KnowledgeBuilder(repository).build(only={"docs/stock.md"})
+		self.assertEqual(written, 2)
+		flows.assert_not_called()
+		reverts.assert_not_called()
