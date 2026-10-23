@@ -6,11 +6,10 @@ it once, and the reviews that failed during the outage run again when the gatewa
 
 import time
 
-import frappe
 from frappe.utils import now_datetime
 
 from guard.review.jobs import retry_review
-from guard.utils import cache, db
+from guard.utils import cache, db, notify
 
 THRESHOLD = 3  # outages in a row that open the breaker
 PROBE_AFTER = 600  # seconds the breaker stays open before a review tries the gateway again
@@ -69,23 +68,8 @@ def rerun_failed(since: str) -> list[str]:
 
 
 def _notify_admins(reason: str) -> None:
-	from frappe.desk.doctype.notification_log.notification_log import enqueue_create_notification
-	from frappe.utils.user import get_users_with_role
-
-	users = get_users_with_role("Guard Admin") or get_users_with_role("System Manager")
-	if not users:
-		return
-	enqueue_create_notification(
-		users,
-		{
-			"type": "Alert",
-			"subject": "Guard paused reviews: the AI gateway is down",
-			"email_content": (
-				"Reviews wait until the gateway answers again, then the ones that failed run again.\n\n"
-				f"Last error: {frappe.utils.escape_html(reason[:500])}"
-			),
-			"document_type": "Guard Settings",
-			"document_name": "Guard Settings",
-			"from_user": "Administrator",
-		},
+	notify.admins(
+		"Guard paused reviews: the AI gateway is down",
+		"Reviews wait until the gateway answers again, then the ones that failed run again.\n\n"
+		f"Last error: {reason[:500]}",
 	)

@@ -171,6 +171,42 @@ class TestPipeline(PullRequestCase):
 		self.assertNotIn(created[0], [*failed, str(done)])
 		self.assertEqual(self.row(created[0])["status"], "Completed")
 
+	def test_health_status_and_failure_alert(self):
+		from frappe.utils import now_datetime
+
+		from guard.api import health
+		from guard.utils import cache
+
+		cache.delete("guard:notified:failure-rate")
+		for _ in range(health.ALERT_MIN + 1):
+			frappe.get_doc(
+				{
+					"doctype": "Code Review",
+					"pull_request": self.pr,
+					"repository": self.repository,
+					"source": "pull_request",
+					"status": "Failed",
+					"trigger": "open",
+					"error": "LLMError: Gateway answered 404",
+					"completed_at": now_datetime(),
+				}
+			).insert(ignore_permissions=True)
+		data = health.status()
+		self.assertEqual([q["queue"] for q in data["queues"]], ["short", "default", "long"])
+		self.assertGreaterEqual(data["reviews"].get("Failed", 0), health.ALERT_MIN + 1)
+		self.assertIn("LLMError: Gateway answered 404", [f["cause"] for f in data["failures"]])
+		self.assertGreater(data["failure_rate"]["rate"], health.ALERT_RATE)
+
+		target = "frappe.desk.doctype.notification_log.notification_log.enqueue_create_notification"
+		with (
+			patch(target) as send,
+			patch("frappe.utils.user.get_users_with_role", return_value=["ops@example.com"]),
+		):
+			health.check_failure_rate()
+			health.check_failure_rate()  # within the hour: no second notification
+		send.assert_called_once()
+		self.assertIn("reviews failed in the last hour", send.call_args.args[1]["subject"])
+
 	def test_breaker_pauses_reviews_and_reruns_them(self):
 		from frappe.utils import now_datetime
 
