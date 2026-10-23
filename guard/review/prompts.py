@@ -76,6 +76,9 @@ STRICTNESS = {
 }
 
 TASK = """Review this pull request. Use the tools when you need more context.
+Each turn is slow, and turns are few: when you need several reads, searches or callers, ask
+for all of them in one turn. Tool output from older turns is cut short, so report a finding
+as soon as you are sure of it.
 Report findings with `report_finding`, then call `submit_review`."""
 
 FORCE_SUBMIT = "You have used your turns. Report any issue you found with `report_finding` now, and call `submit_review` with your verdict."

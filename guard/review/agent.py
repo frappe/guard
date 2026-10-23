@@ -27,7 +27,14 @@ def _mentions_issues(arguments: dict[str, Any]) -> bool:
 
 
 READ_LIMIT = 600
+# Below the 8000 characters that a tool result keeps, so the line range in the header is true.
+READ_CHARS = 7500
 SEARCH_LIMIT = 8
+# Every turn sends the whole conversation again. Tool output older than this many turns is cut
+# to its start: the model has read it, and can ask again.
+KEEP_TURNS = 4
+TRIM_AT = 600
+TRIMMED = "\n[Older tool output cut short. Call the tool again if you need it.]"
 
 
 @dataclass
@@ -169,6 +176,7 @@ class Agent:
 		self.messages: list[Message] = [Message("system", self.system, cache=True)]
 		self.reported: set[str] = set()
 		self.nudged = False
+		self.tool_turns: list[list[int]] = []  # the message indexes of each turn's tool output
 
 	def run_loop(self, task: str) -> AgentResult:
 		from guard.llm.client import LLMClient
@@ -185,11 +193,24 @@ class Agent:
 			self.messages.append(result.as_message())
 			if not result.tool_calls:
 				break
+			indexes = []
 			for call in result.tool_calls:
+				indexes.append(len(self.messages))
 				self.messages.append(self._dispatch(call.name, call.arguments, call.id))
+			self.tool_turns.append(indexes)
+			self._trim()
 		if not self.run.verdict.submitted and client.online:
 			self._close(client, specs)
 		return AgentResult(self.run.findings, self.run.verdict, turns)
+
+	def _trim(self) -> None:
+		"""Cut the long tool output of the turn that just left the last `KEEP_TURNS`."""
+		if len(self.tool_turns) <= KEEP_TURNS:
+			return
+		for index in self.tool_turns[-KEEP_TURNS - 1]:
+			message = self.messages[index]
+			if len(message.content) > TRIM_AT:
+				message.content = message.content[:TRIM_AT] + TRIMMED
 
 	def _close(self, client, specs: list[ToolSpec]) -> None:
 		"""Out of turns: one call to report what is left, then one forced verdict. No nudge here."""
@@ -263,11 +284,21 @@ def _read(run: ReviewRun, path: str, args: dict[str, Any]) -> str:
 		return f"error: {path} not found"
 	lines = text.splitlines()
 	start = int(args.get("start_line") or 1)
-	end = int(args.get("end_line") or min(start + READ_LIMIT - 1, len(lines)))
-	start, end = max(start, 1), max(end, start)
-	chunk = lines[start - 1 : end]
-	head = f"{path} lines {start}-{end} of {len(lines)}"
-	return head + "\n" + "\n".join(f"{n:5} {line}" for n, line in enumerate(chunk, start))
+	end = int(args.get("end_line") or start + READ_LIMIT - 1)
+	start, end = max(start, 1), min(max(end, start), len(lines))
+	out: list[str] = []
+	size = 0
+	for number in range(start, end + 1):
+		row = f"{number:5} {lines[number - 1]}"
+		if out and size + len(row) > READ_CHARS:
+			break
+		out.append(row)
+		size += len(row) + 1
+	last = start + len(out) - 1
+	head = f"{path} lines {start}-{last} of {len(lines)}"
+	if last < end:
+		head += f". The output is full: read from line {last + 1} for more"
+	return head + "\n" + "\n".join(out)
 
 
 def _search(graph: CodeGraph, query: str) -> str:
