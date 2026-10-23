@@ -73,6 +73,32 @@ class TestPipeline(PullRequestCase):
 		self.assertEqual((row["status"], row["stage"]), ("Queued", "waiting 60s for the code graph index"))
 		self.assertEqual(retries, [(60, 1)])
 
+	def test_dead_review_job_fails_the_review(self):
+		from frappe.utils import now_datetime
+
+		from guard.review.jobs import fail_dead_reviews
+
+		# What a worker restart leaves: Running, and no job in the queue.
+		dead = frappe.get_doc(
+			{
+				"doctype": "Code Review",
+				"pull_request": self.pr,
+				"repository": self.repository,
+				"source": "pull_request",
+				"status": "Running",
+				"trigger": "open",
+				"head_sha": self.head,
+				"started_at": now_datetime(),
+			}
+		).insert(ignore_permissions=True)
+		with patch("guard.review.jobs.is_job_enqueued", return_value=True):
+			fail_dead_reviews()
+		self.assertEqual(db.value("Code Review", str(dead.name), "status"), "Running")
+		fail_dead_reviews()
+		self.assertEqual(db.value("Code Review", str(dead.name), "status"), "Failed")
+		self.assertEqual(self.adapter.named("status"), ["error"])
+		self.assertIn("confused", self.adapter.named("react"))
+
 	def test_rereview_edits_summary_and_dedupes(self):
 		finding = {
 			"path": "app/models.py",

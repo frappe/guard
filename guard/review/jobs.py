@@ -1,11 +1,13 @@
 """Create and queue Code Reviews, and the work that runs after one."""
 
 import frappe
-from frappe.utils import add_to_date, now_datetime
+from frappe.utils import add_to_date, now_datetime, time_diff_in_seconds
+from frappe.utils.background_jobs import is_job_enqueued
 
 from guard.utils import db
 
 QUEUE_BY_TIER = {"apex": "long"}
+DEAD_AFTER = 600  # seconds past the job timeout
 
 
 def create_review(
@@ -56,14 +58,42 @@ def enqueue_review(review: str, delay: int = 0, attempt: int = 0, tier: str = ""
 	frappe.enqueue(
 		"guard.review.pipeline.run_review",
 		queue=QUEUE_BY_TIER.get(tier, "default"),
-		timeout=7200 if tier == "apex" else 1800,
-		job_id=f"guard-review-{review}-{attempt}",
+		timeout=job_timeout(tier),
+		job_id=job_id(review, attempt),
 		deduplicate=True,
 		enqueue_after_commit=True,
 		now=bool(frappe.flags.in_test),
 		review=review,
 		attempt=attempt,
 	)
+
+
+def job_timeout(tier: str) -> int:
+	return 7200 if tier == "apex" else 1800
+
+
+def job_id(review: str, attempt: int) -> str:
+	return f"guard-review-{review}-{attempt}"
+
+
+def fail_dead_reviews() -> None:
+	"""Every 5 minutes: fail a running review whose job stopped, for example in a restart.
+
+	Else it stays Running, and its pull request shows "Guard is reviewing" for ever.
+	"""
+	from guard.review.pipeline import ReviewPipeline
+
+	rows = frappe.get_all(
+		"Code Review", filters={"status": "Running"}, fields=["name", "attempt", "tier", "started_at"]
+	)
+	for row in rows:
+		alive = is_job_enqueued(job_id(row.name, row.attempt or 0))
+		age = time_diff_in_seconds(now_datetime(), row.started_at) if row.started_at else 0
+		if alive and age < job_timeout(row.tier or "") + DEAD_AFTER:
+			continue
+		pipeline = ReviewPipeline(row.name)
+		pipeline.fail("The review job stopped before the review finished, for example in a restart.")
+		pipeline.acknowledge()
 
 
 def resume_waiting() -> None:

@@ -30,7 +30,7 @@ after_migrate = "guard.install.after_migrate"
 scheduler_events = {
 	"cron": {
 		"* * * * *": ["guard.review.jobs.resume_waiting"],
-		"*/5 * * * *": ["guard.webhooks.polling.poll"],
+		"*/5 * * * *": ["guard.webhooks.polling.poll", "guard.review.jobs.fail_dead_reviews"],
 		"*/15 * * * *": ["guard.learning.addressed.poll_reactions"],
 		"0 */6 * * *": ["guard.knowledge.builder.sync_stale"],
 	},
