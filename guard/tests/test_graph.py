@@ -176,6 +176,42 @@ class TestGraph(IntegrationTestCase):
 		frappe.db.set_value("Repository Index", self.index, "sha", None)
 		self.assertEqual(len(self.parsed_paths()), selected)
 
+	def test_moving_a_called_function_repairs_its_callers(self):
+		self.repo.commit(
+			{
+				"app/models.py": MODELS.replace("def get_user(user_id):\n    return User()\n", ""),
+				"app/users.py": "def get_user(user_id):\n    return None\n",
+			},
+			"move get_user",
+		)
+		Indexer(self.index).run()
+		self.assertEqual(db.value("Repository Index", self.index, "status"), "completed")
+		self.assertEqual([e.path for e in self.graph.definitions("get_user")], ["app/users.py"])
+		self.assertFalse(
+			db.rows(
+				"""SELECT g.name FROM `tabCode Edge` g LEFT JOIN `tabCode Entity` t ON t.name = g.target_entity
+				WHERE g.`index` = %s AND g.target_entity != '' AND t.name IS NULL""",
+				(self.index,),
+			)
+		)
+
+	def test_failed_fetch_keeps_the_sha(self):
+		sha = self.repo.head()
+		with patch.object(GitStore, "fetch_branches", side_effect=GitError("cannot lock ref")):
+			with self.assertRaises(GitError):
+				Indexer(self.index).run()
+		row = db.values("Repository Index", self.index, ("status", "sha")) or {}
+		self.assertEqual((row["status"], row["sha"]), ("failed", sha))
+		self.repo.commit({"app/models.py": MODELS + "\n\ndef extra():\n    pass\n"}, "extra")
+		self.assertEqual(self.parsed_paths(), ["app/models.py"])
+
+	def test_failed_write_clears_the_sha(self):
+		self.repo.commit({"app/models.py": MODELS + "\n\ndef extra():\n    pass\n"}, "extra")
+		with patch.object(Indexer, "_chunks", side_effect=RuntimeError("embedder broke")):
+			with self.assertRaises(RuntimeError):
+				Indexer(self.index).run()
+		self.assertIsNone(db.value("Repository Index", self.index, "sha"))
+
 	def test_one_run_at_a_time(self):
 		with index_lock(self.index) as acquired:
 			self.assertTrue(acquired)

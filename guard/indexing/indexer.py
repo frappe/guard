@@ -27,8 +27,10 @@ if TYPE_CHECKING:
 BATCH = 300
 LOCK_TTL = 7200  # the timeout of the index job
 FAILED_FOR = 3600  # seconds a review skips an index that failed
-# A run sets these. When a new run finds one, the run before it died and left the rows half done.
+# A run sets these. When a new run finds one, the run before it died.
 RUNNING = ("cloning", "processing")
+# Only a run that died in this one can have left the rows half done.
+WRITING = "processing"
 # The qualified name of code has the module path in it. These kinds have none, so two files
 # can hold the same one: three services can each serve GET /health. Their names use the path.
 PATH_IN_NAME = ("file", "route", "doctype", "field")
@@ -121,6 +123,7 @@ class Indexer:
 		self.repository = self.doc.repository
 		self.full = full
 		self.previous: str | None = None  # the sha of the last complete run
+		self.writing = False  # set when the run starts to change rows
 		self.now = now_datetime()
 
 	def run(self) -> None:
@@ -132,8 +135,10 @@ class Indexer:
 				self._run()
 			except Exception as error:
 				db.rollback()
-				# Without a sha, the next run indexes every file again.
-				self._set(status="failed", sha=None, error=str(error)[:5000])
+				# Without a sha, the next run indexes every file again. A run that failed before it
+				# wrote, for example in the fetch, left the rows of the last complete run as they were.
+				sha = None if self.writing else self.previous
+				self._set(status="failed", sha=sha, error=str(error)[:5000])
 				frappe.db.set_value("Code Repository", self.repository, "index_status", "Failed")
 				db.commit()
 				# Reviews skip the index for an hour, rather than fail the same way one by one.
@@ -143,8 +148,9 @@ class Indexer:
 
 	def _run(self) -> None:
 		# Read it before the status changes below.
-		self.previous = None if self.doc.status in RUNNING else self.doc.sha
-		self._set(status="cloning", started_at=now_datetime(), error=None)
+		self.previous = None if self.doc.status == WRITING else self.doc.sha
+		# Clear the sha of half done rows now, in case this run dies in "cloning" too.
+		self._set(status="cloning", sha=self.previous, started_at=now_datetime(), error=None)
 		store = store_for(self.repository)
 		store.fetch_branches(self.doc.branch)
 		sha = store.rev_parse(f"refs/heads/{self.doc.branch}")
@@ -153,6 +159,7 @@ class Indexer:
 		selected = selector.select(store.ls_tree(sha))
 		changed, removed = self._changes(store, sha, selected)
 		self._set(num_files=len(selected), files_processed=0)
+		self.writing = True
 		removed_names = self._delete_paths(changed | removed)
 		table = SymbolTable.load(self.index)
 		parsed = self._parse(
@@ -326,14 +333,16 @@ class Indexer:
 		)
 		for batch in _batches(fresh_names, 500):
 			candidates += db.rows(
-				"""SELECT name, target_name, kind FROM `tabCode Edge`
-				WHERE `index` = %s AND (target_entity IS NULL OR target_entity = '') AND target_name IN %s""",
+				"""SELECT g.name, g.target_name, g.kind, s.language FROM `tabCode Edge` g
+				LEFT JOIN `tabCode Entity` s ON s.name = g.source_entity
+				WHERE g.`index` = %s AND (g.target_entity IS NULL OR g.target_entity = '')
+				AND g.target_name IN %s""",
 				(self.index, tuple(batch)),
 			)
-		for name, target_name, kind in candidates:
+		for name, target_name, kind, language in candidates:
 			db.execute(
 				"UPDATE `tabCode Edge` SET target_entity = %s WHERE name = %s",
-				(resolver.resolve_name(target_name, kind), name),
+				(resolver.resolve_name(target_name, kind, language), name),
 			)
 
 	def _controller_edges(self, paths: set[str], changed: set[str], table: SymbolTable) -> None:
