@@ -10,7 +10,6 @@
   "pythonVersion": "3.14",
   "reportMissingModuleSource": false,
   "exclude": [
-    "guard/_scratch",
-    "guard/integrations/flow.py"
+    "guard/_scratch"
   ]
 }

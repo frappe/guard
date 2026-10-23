@@ -40,7 +40,7 @@ Ideas past the baseline in [01-features.md](01-features.md). Each idea has a sta
 
 | # | Idea | Status |
 | - | - | - |
-| F1 | **Flow integration.** When the Flow app is installed, Guard registers its graph and knowledge tools (`search_code`, `find_definition`, `get_callers`, `get_callees`, `read_file`, `search_knowledge_base`, `list_findings`) through the `flow_tools` hook, and a "Guard" agent through `flow_agents`. Flow sessions then give codebase chat with transcripts and approvals. The review pipeline does not run on Flow: it needs a bounded synchronous loop inside an RQ job, a forced final tool call, and offline tests. | v1 |
+| F1 | **Flow integration.** When the Flow app is installed, Guard registers its graph and knowledge tools (`search_code`, `find_definition`, `get_callers`, `get_callees`, `read_file`, `search_knowledge_base`, `list_findings`) through the `flow_tools` hook, and a "Guard" agent through `flow_agents`. Flow sessions then give codebase chat with transcripts and approvals. The review pipeline does not run on Flow: it needs a bounded synchronous loop inside an RQ job, a forced final tool call, and offline tests. | Removed. Frappe now runs these hooks on every install, and Guard has its own codebase chat. |
 
 ## People
 

@@ -52,18 +52,3 @@ default_log_clearing_doctypes = {
 	"Chat Session": 180,
 	"Webhook Delivery": 30,
 }
-
-# Read only by the Flow app, when it is installed.
-flow_tools = [
-	f"guard.integrations.flow.{name}"
-	for name in (
-		"guard_search_code",
-		"guard_find_definition",
-		"guard_get_callers",
-		"guard_get_callees",
-		"guard_read_file",
-		"guard_search_knowledge_base",
-		"guard_list_findings",
-	)
-]
-flow_agents = ["guard.integrations.flow.agents"]

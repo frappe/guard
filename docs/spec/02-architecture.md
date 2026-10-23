@@ -116,7 +116,7 @@ guard/
   graph/                queries.py, overlay.py (pull request graph, blast radius, impact diagram)
   indexing/             indexer.py, parser.py, languages.py, symbols.py, resolver.py, frappe_plugin.py,
                         chunker.py, selection.py, vectors.py, jobs.py
-  integrations/         tickets.py (Jira, Confluence, Linear), flow.py (Flow tools)
+  integrations/         tickets.py (Jira, Confluence, Linear)
   knowledge/            builder.py, store.py
   learning/             feedback.py, memory_writer.py, memories.py, addressed.py, suppression.py,
                         suggestions.py, approve.py
