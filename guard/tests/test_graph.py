@@ -1,4 +1,5 @@
 import json
+from unittest.mock import patch
 
 import frappe
 from frappe.tests import IntegrationTestCase
@@ -7,7 +8,8 @@ from guard.git.diff import parse_diff
 from guard.git.repository import store_for
 from guard.graph.overlay import PullRequestGraph
 from guard.graph.queries import CodeGraph
-from guard.indexing.indexer import Indexer
+from guard.indexing import indexer
+from guard.indexing.indexer import IndexBusy, Indexer, index_lock
 from guard.indexing.jobs import index_for
 from guard.tests.utils import TempRepo, make_repository
 from guard.utils import db
@@ -142,6 +144,43 @@ class TestGraph(IntegrationTestCase):
 		callers = [c.path for c in self.graph.callers(self.one("get_user"))]
 		self.assertIn("app/service.py", callers)
 		self.assertIn("app/models.py", callers)
+
+	def parsed_paths(self) -> list[str]:
+		"""Run the indexer and return the paths it parsed."""
+		parsed = []
+
+		def parse(path, source):
+			parsed.append(path)
+			return real(path, source)
+
+		real = indexer.parse_file
+		with patch("guard.indexing.indexer.parse_file", side_effect=parse):
+			Indexer(self.index).run()
+		return parsed
+
+	def test_push_parses_only_changed_files(self):
+		self.repo.commit({"app/models.py": MODELS + "\n\ndef extra():\n    pass\n"}, "extra")
+		# What a push does before the job runs.
+		frappe.db.set_value("Repository Index", self.index, "status", "submitted")
+		self.assertEqual(self.parsed_paths(), ["app/models.py"])
+		self.assertTrue(self.graph.definitions("extra"))
+
+	def test_run_after_a_dead_run_parses_everything(self):
+		# A worker restart leaves the status of the run it killed.
+		frappe.db.set_value("Repository Index", self.index, "status", "processing")
+		selected = db.value("Repository Index", self.index, "num_files")
+		self.assertEqual(len(self.parsed_paths()), selected)
+		frappe.db.set_value("Repository Index", self.index, "status", "failed")
+		frappe.db.set_value("Repository Index", self.index, "sha", None)
+		self.assertEqual(len(self.parsed_paths()), selected)
+
+	def test_one_run_at_a_time(self):
+		with index_lock(self.index) as acquired:
+			self.assertTrue(acquired)
+			with self.assertRaises(IndexBusy):
+				Indexer(self.index).run()
+		self.assertEqual(db.value("Repository Index", self.index, "status"), "completed")
+		self.assertEqual(self.parsed_paths(), [])
 
 	def test_overlay_contract_change(self):
 		base = self.repo.head()

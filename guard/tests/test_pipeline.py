@@ -51,6 +51,28 @@ class TestPipeline(PullRequestCase):
 		self.assertEqual(self.adapter.named("status"), ["pending", "failure"])
 		self.assertIn("+1", self.adapter.named("react"))
 
+	def test_review_waits_while_the_index_is_busy(self):
+		from guard.indexing.indexer import index_lock
+		from guard.indexing.jobs import index_for
+		from guard.review import jobs
+
+		real, retries = jobs.enqueue_review, []
+
+		def enqueue(review, delay=0, attempt=0, tier=""):
+			if attempt:
+				retries.append((delay, attempt))
+				return
+			real(review, delay=delay, attempt=attempt, tier=tier)
+
+		with (
+			index_lock(index_for(self.repository)),
+			patch("guard.review.jobs.enqueue_review", side_effect=enqueue),
+		):
+			name = self.review([])
+		row = db.values("Code Review", str(name), ("status", "stage")) or {}
+		self.assertEqual((row["status"], row["stage"]), ("Queued", "waiting 60s for the code graph index"))
+		self.assertEqual(retries, [(60, 1)])
+
 	def test_rereview_edits_summary_and_dedupes(self):
 		finding = {
 			"path": "app/models.py",

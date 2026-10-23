@@ -3,6 +3,7 @@
 import hashlib
 from collections import Counter
 from collections.abc import Iterable
+from contextlib import AbstractContextManager
 from typing import TYPE_CHECKING, cast
 
 import frappe
@@ -18,12 +19,15 @@ from guard.indexing.selection import FileSelector, is_text
 from guard.indexing.symbols import EntityRow, SymbolTable
 from guard.indexing.vectors import VectorRow, VectorStore
 from guard.llm.embeddings import Embedder
-from guard.utils import db
+from guard.utils import cache, db
 
 if TYPE_CHECKING:
 	from guard.guard.doctype.repository_index.repository_index import RepositoryIndex
 
 BATCH = 300
+LOCK_TTL = 7200  # the timeout of the index job
+# A run sets these. When a new run finds one, the run before it died and left the rows half done.
+RUNNING = ("cloning", "processing")
 ENTITY_COLUMNS = (
 	"name",
 	"creation",
@@ -84,25 +88,42 @@ def short_hash(*parts: object) -> str:
 	return hashlib.blake2b("|".join(str(p) for p in parts).encode(), digest_size=10).hexdigest()
 
 
+class IndexBusy(Exception):
+	"""Another job is indexing the same branch now."""
+
+
+def index_lock(index: str) -> AbstractContextManager[bool]:
+	"""Held while a run writes the index, so two runs never write the same rows."""
+	return cache.exclusive(f"guard:index:{index}", LOCK_TTL)
+
+
 class Indexer:
 	def __init__(self, index: str, full: bool = False):
 		self.doc = cast("RepositoryIndex", frappe.get_doc("Repository Index", index))
 		self.index = str(self.doc.name)
 		self.repository = self.doc.repository
 		self.full = full
+		self.previous: str | None = None  # the sha of the last complete run
 		self.now = now_datetime()
 
 	def run(self) -> None:
-		try:
-			self._run()
-		except Exception as error:
-			db.rollback()
-			self._set(status="failed", error=str(error)[:5000])
-			frappe.db.set_value("Code Repository", self.repository, "index_status", "Failed")
-			db.commit()
-			raise
+		with index_lock(self.index) as acquired:
+			if not acquired:
+				raise IndexBusy(self.index)
+			self.doc.reload()
+			try:
+				self._run()
+			except Exception as error:
+				db.rollback()
+				# Without a sha, the next run indexes every file again.
+				self._set(status="failed", sha=None, error=str(error)[:5000])
+				frappe.db.set_value("Code Repository", self.repository, "index_status", "Failed")
+				db.commit()
+				raise
 
 	def _run(self) -> None:
+		# Read it before the status changes below.
+		self.previous = None if self.doc.status in RUNNING else self.doc.sha
 		self._set(status="cloning", started_at=now_datetime(), error=None)
 		store = store_for(self.repository)
 		store.fetch()
@@ -127,7 +148,7 @@ class Indexer:
 	def _changes(
 		self, store: GitStore, sha: str, selected: dict[str, TreeEntry]
 	) -> tuple[set[str], set[str]]:
-		previous = self.doc.sha if self.doc.status == "completed" else None
+		previous = self.previous
 		incremental = (
 			not self.full
 			and previous

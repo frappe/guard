@@ -15,6 +15,7 @@ from guard.git.store import GitStore
 from guard.graph.overlay import PullRequestGraph
 from guard.graph.queries import CodeGraph
 from guard.indexing import frappe_plugin
+from guard.indexing.indexer import IndexBusy
 from guard.indexing.jobs import ensure_fresh
 from guard.integrations import tickets
 from guard.learning import suppression
@@ -71,20 +72,26 @@ class ReviewPipeline:
 		except Cancelled:
 			self.review.db_set({"status": "Cancelled", "completed_at": now_datetime()})
 		except GatewayBusy as busy:
-			delay = max(busy.retry_after, RETRY_DELAYS[min(attempt, len(RETRY_DELAYS) - 1)])
-			if attempt >= len(RETRY_DELAYS):
-				self.fail(f"AI gateway busy: {busy}")
-				return
-			self.review.db_set({"status": "Queued", "stage": f"waiting {delay}s for the AI gateway"})
-			db.commit()
-			from guard.review.jobs import enqueue_review
-
-			enqueue_review(str(self.review.name), delay=delay, attempt=attempt + 1)
+			self.retry(attempt, busy.retry_after, "the AI gateway", f"AI gateway busy: {busy}")
+		except IndexBusy:
+			# Do not index the branch a second time, in parallel.
+			self.retry(attempt, 0, "the code graph index", "The code graph index stayed busy.")
 		except Exception as error:
 			db.rollback()
 			self.fail(redact(f"{type(error).__name__}: {error}"))
 			if frappe.flags.in_test:
 				raise
+
+	def retry(self, attempt: int, after: int, waiting_for: str, failure: str) -> None:
+		delay = max(after, RETRY_DELAYS[min(attempt, len(RETRY_DELAYS) - 1)])
+		if attempt >= len(RETRY_DELAYS):
+			self.fail(failure)
+			return
+		self.review.db_set({"status": "Queued", "stage": f"waiting {delay}s for {waiting_for}"})
+		db.commit()
+		from guard.review.jobs import enqueue_review
+
+		enqueue_review(str(self.review.name), delay=delay, attempt=attempt + 1)
 
 	# ---------------------------------------------------------------- stages
 

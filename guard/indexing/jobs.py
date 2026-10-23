@@ -2,7 +2,7 @@
 
 import frappe
 
-from guard.indexing.indexer import Indexer
+from guard.indexing.indexer import RUNNING, IndexBusy, Indexer
 from guard.indexing.vectors import VectorRow, VectorStore
 from guard.llm.embeddings import Embedder
 from guard.utils import db
@@ -21,7 +21,9 @@ def index_for(repository: str, branch: str | None = None) -> str:
 
 def enqueue_index(repository: str, branch: str | None = None, full: bool = False, now: bool = False) -> str:
 	index = index_for(repository, branch)
-	frappe.db.set_value("Repository Index", index, "status", "submitted")
+	# Keep a running status. It is a run in progress, or one that died and needs a full run.
+	if db.value("Repository Index", index, "status") not in RUNNING:
+		frappe.db.set_value("Repository Index", index, "status", "submitted")
 	if branch is None or branch == db.value("Code Repository", repository, "default_branch"):
 		frappe.db.set_value("Code Repository", repository, "index_status", "Queued")
 	frappe.enqueue(
@@ -45,11 +47,18 @@ def run_index(index: str, full: bool = False) -> None:
 	):
 		frappe.db.set_value("Code Repository", repository, "index_status", "Indexing")
 		db.commit()
-	Indexer(index, full=full).run()
+	try:
+		Indexer(index, full=full).run()
+	except IndexBusy:
+		# Another job is indexing the branch now. The next push indexes it again.
+		return
 
 
 def ensure_fresh(repository: str, sha: str | None = None) -> str:
-	"""Make the default index cover `sha` (or the branch head). Run inline."""
+	"""Make the default index cover `sha` (or the branch head). Run inline.
+
+	Raise IndexBusy when another job is indexing it now.
+	"""
 	index = index_for(repository)
 	row = db.values("Repository Index", index, ("status", "sha"))
 	if row and row["status"] == "completed" and (sha is None or row["sha"] == sha):
