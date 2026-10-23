@@ -35,7 +35,7 @@ from guard.review import (
 )
 from guard.review.agent import Agent, run_together
 from guard.review.findings import FindingFilter, score_cap
-from guard.review.publish import Publisher
+from guard.review.publish import Publisher, set_status
 from guard.review.run import ReviewRun, Verdict
 from guard.review.task import compose
 from guard.utils import db
@@ -623,9 +623,10 @@ class ReviewPipeline:
 		if not adapter:
 			return
 		full_name = str(db.value("Code Repository", str(pr.repository), "full_name"))
-		adapter.add_reaction(full_name, int(pr.number), "pr", "", "confused")
+		# The status first: a failed reaction must not leave the check in progress.
 		if self.review.head_sha:
-			adapter.set_status(full_name, self.review.head_sha, "error", "Guard could not finish the review")
+			set_status(adapter, full_name, self.review.head_sha, "error", "Guard could not finish the review")
+		adapter.add_reaction(full_name, int(pr.number), "pr", "", "confused")
 
 
 def other_review_runs(pull_request: str, head_sha: str, review: str) -> bool:
