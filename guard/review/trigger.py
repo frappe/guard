@@ -40,7 +40,7 @@ def consider(
 	store = store_for(repository)
 	adapter = adapter_for_repository(repository)
 	number = int(pr.number or 0)
-	store.fetch()
+	store.fetch_branches(str(pr.base_branch or ""))
 	head = store.fetch_pull(adapter.pull_ref(number), number) if adapter else str(pr.head_sha)
 	merge_base = store.merge_base(store.rev_parse(f"refs/heads/{pr.get('base_branch')}"), head)
 	files = parse_diff(store.diff(merge_base, head))

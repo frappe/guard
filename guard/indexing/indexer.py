@@ -126,7 +126,7 @@ class Indexer:
 		self.previous = None if self.doc.status in RUNNING else self.doc.sha
 		self._set(status="cloning", started_at=now_datetime(), error=None)
 		store = store_for(self.repository)
-		store.fetch()
+		store.fetch_branches(self.doc.branch)
 		sha = store.rev_parse(f"refs/heads/{self.doc.branch}")
 		self._set(status="processing")
 		selector = FileSelector(store, sha)

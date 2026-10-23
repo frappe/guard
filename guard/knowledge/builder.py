@@ -383,6 +383,6 @@ def on_push(repository: str, before: str | None, after: str | None) -> None:
 	if not before or not after or set(before) == {"0"}:
 		return
 	store = store_for(repository)
-	store.fetch()
+	store.fetch_branches(str(db.value("Code Repository", repository, "default_branch") or ""))
 	if store.has_commit(before) and store.has_commit(after):
 		mark_stale(repository, [path for _, path, _ in store.name_status(before, after)])

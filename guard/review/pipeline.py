@@ -194,7 +194,7 @@ class ReviewPipeline:
 		full_name = str(db.value("Code Repository", repository, "full_name"))
 		adapter = adapter_for_repository(repository)
 		store = store_for(repository)
-		store.fetch()
+		store.fetch_branches(pr.base_branch or "")
 		if adapter and adapter.pull_ref(number):
 			head = store.fetch_pull(adapter.pull_ref(number), number)
 		else:

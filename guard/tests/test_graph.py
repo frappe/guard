@@ -6,6 +6,7 @@ from frappe.tests import IntegrationTestCase
 
 from guard.git.diff import parse_diff
 from guard.git.repository import store_for
+from guard.git.store import GitError
 from guard.graph.overlay import PullRequestGraph
 from guard.graph.queries import CodeGraph
 from guard.indexing import indexer
@@ -211,3 +212,18 @@ class TestGraph(IntegrationTestCase):
 		radius = overlay.blast_radius(list(changed.values()))
 		self.assertEqual(radius.not_updated, 1)
 		self.assertIn("app/tests/test_service.py", radius.tests)
+
+
+class TestGitStore(IntegrationTestCase):
+	def test_fetch_branches_skips_other_branches(self):
+		repo = TempRepo({"a.py": "x = 1\n"})
+		self.addCleanup(repo.cleanup)
+		repo.branch_off("hotfix")
+		repo.commit({"b.py": "y = 2\n"}, "hotfix")
+		store = store_for(make_repository(repo, full_name=f"acme/{frappe.generate_hash(length=6)}"))
+		store.fetch_branches("main")
+		self.assertTrue(store.rev_parse("refs/heads/main"))
+		with self.assertRaises(GitError):
+			store.rev_parse("refs/heads/hotfix")
+		store.fetch_branches()
+		self.assertEqual(store.rev_parse("refs/heads/hotfix"), repo.head())

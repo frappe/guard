@@ -30,7 +30,7 @@ def run_for(pull_request: str) -> ReviewRun:
 	number = int(pr.number)
 	head = pr.head_sha or ""
 	if not head or not store.has_commit(head):
-		store.fetch()
+		store.fetch_branches(pr.base_branch or "")
 		head = store.fetch_pull(adapter.pull_ref(number), number) if adapter else head
 	merge_base = store.merge_base(store.rev_parse(f"refs/heads/{pr.base_branch}"), head)
 	files = parse_diff(store.diff(merge_base, head))

@@ -56,6 +56,15 @@ class GitStore:
 		specs = refspecs or ("+refs/heads/*:refs/heads/*",)
 		self._git("fetch", "--quiet", "--prune", "--no-tags", "origin", *specs, auth=True)
 
+	def fetch_branches(self, *branches: str) -> None:
+		"""Fetch only these branches, or every branch when none is given.
+
+		A big repository has hundreds of branches, and most of them change every hour.
+		A review needs only its base branch.
+		"""
+		names = [b for b in dict.fromkeys(branches) if b]
+		self.fetch(*(f"+refs/heads/{name}:refs/heads/{name}" for name in names))
+
 	def fetch_pull(self, pull_ref: str, number: int) -> str:
 		"""Fetch a pull request head into `refs/guard/pr/<n>` and return its sha."""
 		ref = f"refs/guard/pr/{number}"
