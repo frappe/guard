@@ -617,7 +617,9 @@ class TestPipeline(PullRequestCase):
 		self.assertEqual(review["posted_count"], 1)
 		# A missing test is a P2 rule break: fix it before merging, so 4.
 		self.assertEqual(review["confidence_score"], 4)
-		self.assertIn("Code changes without tests", self.adapter.named("create_review")[0][0].body)
+		body = self.adapter.named("create_review")[0][0].body
+		self.assertIn("Code changes without tests", body)
+		self.assertIn("**Project rule:** [CLAUDE.md line 1](https://github.test/", body)
 
 	def test_verifier_keeps_p0_for_a_proven_break(self):
 		finding = {

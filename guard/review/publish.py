@@ -6,6 +6,7 @@ from guard.learning import memories
 from guard.providers.base import InlineComment, PostedComment, ProviderAdapter, ProviderError
 from guard.review import links, render
 from guard.review.findings import Finding
+from guard.review.rule_files import RULE_PREFIX
 from guard.review.run import ReviewRun
 from guard.utils import cache, db
 
@@ -101,10 +102,25 @@ class Publisher:
 		comment = self.gh.post_comment(self.repo, self.number, body)
 		self.run.pr.db_set("summary_comment_id", comment.id)
 
+	def _rule_link(self, rule_id: str) -> str:
+		"""`[CLAUDE.md line 50](url)` for `project:CLAUDE.md:50`, at the reviewed commit."""
+		path, _, line = rule_id.removeprefix(RULE_PREFIX).rpartition(":")
+		label = f"{path} line {line}"
+		if not line.isdigit():
+			return f"`{rule_id.removeprefix(RULE_PREFIX)}`"
+		try:
+			url = self.gh.file_url(self.repo, self.run.head_sha, path, int(line))
+		except NotImplementedError:
+			return f"`{label}`"
+		return f"[{label}]({url})"
+
 	def _inline(self, findings: list[Finding], names: dict[int, str]) -> dict[int, str]:
 		if not findings:
 			return {}
 		fix = bool(self.run.settings.get("fix_with_ai", True))
+		for finding in findings:
+			if finding.is_project_rule:
+				finding.extra["rule_link"] = self._rule_link(str(finding.rule_id))
 		comments = [_comment(f, names[id(f)], fix) for f in findings]
 		urls: dict[int, str] = {}
 		try:

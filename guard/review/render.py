@@ -75,6 +75,8 @@ def inline(finding: Finding, name: str, fix_with_ai: bool = True) -> str:
 	]
 	if finding.question:
 		lines += ["", f"**Question:** {sanitize(finding.question)}"]
+	if rule := finding.extra.get("rule_link"):
+		lines += ["", f"**Project rule:** {rule}"]
 	if finding.sandbox_log:
 		lines += [
 			"",
