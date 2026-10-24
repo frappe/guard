@@ -163,17 +163,27 @@ def _headline(run: ReviewRun, posted: list[Finding]) -> str:
 	parts = [f"**Guard** · Confidence **{run.verdict.confidence_score}/5**{_tier(run)}"]
 	if run.verdict.risk_level:
 		parts.append(f"risk **{run.verdict.risk_level}**")
-	parts.append(_finding_counts(posted))
+	parts.append(_finding_counts(posted, run.earlier_open))
 	blast = run.blast.sentence() if run.blast else ""
 	headline = " · ".join(parts)
 	return f"{headline}\n\n{blast}" if blast else headline
 
 
-def _finding_counts(posted: list[Finding]) -> str:
-	if not posted:
-		return "no findings"
-	counts = [f"{n} {sev}" for sev in ("P0", "P1", "P2") if (n := sum(f.severity == sev for f in posted))]
-	return f"{len(posted)} finding{'s' if len(posted) > 1 else ''} ({', '.join(counts)})"
+def _finding_counts(posted: list[Finding], earlier: list[dict] | None = None) -> str:
+	"""The new findings, and the open ones of earlier reviews: the status check counts both."""
+	suffix = "new " if earlier else ""
+	text = _counted([f.severity for f in posted], f"{suffix}finding") or f"no {suffix}findings"
+	if earlier:
+		text += " · " + _counted([row["severity"] for row in earlier], "open from earlier reviews")
+	return text
+
+
+def _counted(severities: list[str], noun: str) -> str:
+	if not severities:
+		return ""
+	counts = [f"{n} {sev}" for sev in ("P0", "P1", "P2") if (n := severities.count(sev))]
+	plural = "s" if len(severities) > 1 and noun.endswith("finding") else ""
+	return f"{len(severities)} {noun}{plural} ({', '.join(counts)})"
 
 
 def _score_text(run: ReviewRun) -> str:

@@ -84,6 +84,8 @@ class ReviewRun:
 	fresh_lines: dict[str, set[int]] | None = None
 	usage: Usage = field(default_factory=Usage)
 	findings: list[Finding] = field(default_factory=list)
+	# Open findings of earlier reviews that still apply at this head: rows of Review Finding.
+	earlier_open: list[dict[str, Any]] = field(default_factory=list)
 	verdict: Verdict = field(default_factory=Verdict)
 	context_used: list[dict[str, str]] = field(default_factory=list)
 	notes: list[str] = field(default_factory=list)  # problems to show in the summary

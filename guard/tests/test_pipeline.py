@@ -479,6 +479,28 @@ class TestPipeline(PullRequestCase):
 		)
 		self.assertEqual(len([r for r in requests if r.purpose == "verdict"]), 1)
 
+	def test_fact_check_sees_earlier_findings_that_still_apply(self):
+		earlier = dict(PROBLEM, severity="P1", title="Saving old bundles breaks")
+		self.review(
+			[[("report_finding", earlier), ("submit_review", {"summary": "s", "confidence_score": 3})]]
+		)
+		clean = {"summary": "s", "confidence_score": 5, "confidence_reason": "Ready to merge."}
+		checked = '{"score": 3, "reason": "An earlier P1 still applies: saving old bundles breaks."}'
+		requests = self.online_review(
+			[[("submit_review", clean)]], {"stale": '{"state": "applies"}', "verdict": checked}, manual=True
+		)
+		[check] = [r for r in requests if r.purpose == "verdict"]
+		self.assertIn("open from an earlier review: it still applies", check.messages[-1].content)
+		self.assertIn("Saving old bundles breaks", check.messages[-1].content)
+		latest = frappe.get_all(
+			"Code Review",
+			filters={"pull_request": self.pr},
+			fields=["confidence_score", "confidence_reason"],
+			order_by="creation desc",
+		)[0]
+		self.assertEqual(latest.confidence_score, 3)
+		self.assertEqual(latest.confidence_reason, "An earlier P1 still applies: saving old bundles breaks.")
+
 	def running_review(self, stage: str, attempt: int = 0) -> str:
 		from frappe.utils import now_datetime
 
@@ -633,7 +655,13 @@ class TestPipeline(PullRequestCase):
 		clean = {"summary": "s", "confidence_score": 5, "risk_level": "low"}
 		with use_responder(scripted([[("submit_review", clean)]])):
 			second = trigger.consider(self.pr, "open", manual=True, requested_by="ada")
-		self.assertEqual(self.row(second)["confidence_score"], 5)
+		# erpnext #62149: the earlier P1 still applies, so the score and the summary count it,
+		# as the status check does.
+		self.assertEqual(self.row(second)["confidence_score"], 3)
+		summary = self.adapter.comments[self.adapter.named("update_comment")[-1]]
+		self.assertIn("Confidence **3/5**", summary)
+		self.assertIn("no new findings · 1 open from earlier reviews (1 P1)", summary)
+		self.assertEqual(self.adapter.named("status")[-1], "failure")
 		self.assertFalse(self.adapter.named("approve"))
 
 	def test_mention_answers_question(self):

@@ -164,7 +164,9 @@ Every dropped finding stays as a Review Finding with status Suppressed or Dismis
 
 ## Stage 8: Score
 
-The agent gives a score. Guard then applies caps:
+First, Guard checks each open finding of earlier reviews at the new head. A finding that is fixed or no longer applies is closed. The ones that still apply stay open, and they count below like posted findings: the status check counts them too.
+
+The agent gives a score. Guard then applies caps, over the posted findings and the earlier ones that still apply:
 
 | Condition | Maximum score |
 | - | - |
@@ -176,11 +178,14 @@ The agent gives a score. Guard then applies caps:
 
 The final score is the lower of the agent score and the cap.
 
-The agent gives its score and reason before its findings are checked. When that score is lower than the cap, or when any finding was dropped, a fact check runs before the cap. The check gets the score, its reason, and each finding with what happened to it:
+The agent gives its score and reason before its findings are checked, and it does not see the earlier findings. When that score is lower than the cap, when any finding was dropped, or when earlier findings still apply, a fact check runs before the cap. The check gets the score, its reason, and each finding with what happened to it:
 
 - **Posted.**
 - **Refuted** by the verifier. A refuted finding is no evidence.
 - **Held back** by the filter or by suppression, for example as minor or as already posted. Nothing showed that it is wrong, so it still counts.
+- **Open from an earlier review**, and it still applies. It is on the pull request, so it counts like a posted finding.
+
+The summary headline counts both: for example "no new findings · 2 open from earlier reviews (1 P1, 1 P2)".
 
 The check answers the score that this evidence supports, and a new reason that names only what the evidence backs. Without a model, the agent score and reason stay.
 

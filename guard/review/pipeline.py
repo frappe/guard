@@ -198,17 +198,18 @@ class ReviewPipeline:
 		finding_filter = FindingFilter(run.files, run.settings, existing, run.fresh_lines)
 		finding_filter.run(run.findings)
 		suppression.suppress(run.findings, run.repository)
+		# Before the score: the earlier findings that still apply count, as on the status check.
+		stale.close_stale(run, finding_filter.reraised)
 		# Only the model's verdict: the graph verdict below does not rest on findings.
 		verify.check_verdict(run)
 		if not run.verdict.submitted:
 			run.verdict = graph_verdict(run)
-		run.verdict.confidence_score = min(run.verdict.confidence_score, score_cap(run.findings))
+		earlier = [row["severity"] for row in run.earlier_open]
+		run.verdict.confidence_score = min(run.verdict.confidence_score, score_cap(run.findings, earlier))
 		self.stage("publish")
 		names = publisher.save_findings()
 		number = self.review_number()
 		publisher.publish(names, number)
-		# Close stale findings first: the status check counts the open ones.
-		stale.close_stale(run, finding_filter.reraised)
 		publisher.finish()
 		self.stage("after")
 		suppression.remember(names, run.findings, run.repository)

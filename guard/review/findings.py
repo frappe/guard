@@ -232,16 +232,17 @@ def _float(value: Any, default: float) -> float:
 		return default
 
 
-def score_cap(findings: list[Finding]) -> int:
-	"""The highest confidence score the posted findings allow."""
-	posted = [f for f in findings if f.kept]
-	p0 = sum(1 for f in posted if f.severity == "P0")
+def score_cap(findings: list[Finding], earlier: list[str] | None = None) -> int:
+	"""The highest confidence score that the open findings allow: the posted ones, and the
+	severities of `earlier`, the open findings of earlier reviews that still apply."""
+	severities = [f.severity for f in findings if f.kept] + list(earlier or [])
+	p0 = severities.count("P0")
 	if p0 >= 2:
 		return 1
 	if p0 == 1:
 		return 2
-	if any(f.severity == "P1" for f in posted):
+	if "P1" in severities:
 		return 3
-	if posted:
+	if severities:
 		return 4
 	return 5

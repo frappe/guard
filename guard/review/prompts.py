@@ -101,6 +101,9 @@ score, its reason, and each finding with what happened to it:
 - refuted: the check showed that it is wrong. It is no evidence.
 - held back: it is not posted, but nothing showed that it is wrong. For example a minor point,
   a line that this review did not change, or an issue that an earlier review posted.
+- open from an earlier review: an earlier review posted it, and it still applies to this
+  code. It is on the pull request, so it counts like a posted finding. The reviewer did not
+  see it.
 Decide the score that the evidence supports, on the same scale:
 5: ready to merge, with at most P2 points left. 4: small fixes. 3: issues to fix first.
 2: significant bugs. 0-1: critical problems.

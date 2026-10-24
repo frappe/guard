@@ -50,14 +50,16 @@ def check_verdict(run: ReviewRun) -> None:
 	The reviewer scores from what it suspects, before its findings are checked. When the check
 	refutes some, the score can rest on issues that are wrong. When findings are dropped, the
 	reason can name issues that the pull request never sees. A finding that is held back, for
-	example as minor, still counts: nothing showed that it is wrong. Without a model the score
-	and reason stay as they are.
+	example as minor, still counts: nothing showed that it is wrong. The reviewer does not see
+	the open findings of earlier reviews, so the check counts the ones that still apply. Without
+	a model the score and reason stay as they are.
 	"""
 	verdict = run.verdict
 	if not verdict.submitted:
 		return
 	dropped = any(not f.kept for f in run.findings)
-	if verdict.confidence_score >= score_cap(run.findings) and not dropped:
+	cap = score_cap(run.findings, [row["severity"] for row in run.earlier_open])
+	if verdict.confidence_score >= cap and not dropped and not run.earlier_open:
 		return
 	client = LLMClient(tier=run.tier, purpose="verdict", usage=run.usage)
 	if not client.online:
@@ -69,6 +71,22 @@ def check_verdict(run: ReviewRun) -> None:
 	parts += [_checked(run, index, finding) for index, finding in enumerate(run.findings)]
 	if not run.findings:
 		parts.append("The reviewer reported no findings.")
+	for offset, row in enumerate(run.earlier_open, len(run.findings)):
+		line = row["start_line"] or 1  # an Int column
+		earlier = Finding(
+			str(row["path"]),
+			line,
+			line,
+			str(row["severity"]),
+			"logic",
+			str(row["title"]),
+			str(row["body"] or ""),
+		)
+		parts.append(
+			_item(run, offset, earlier)
+			+ "\n"
+			+ data(f"what happened to finding {offset}", "open from an earlier review: it still applies")
+		)
 	answer = client.complete_json(VERDICT, "\n\n".join(parts), default={})
 	score = answer.get("score") if isinstance(answer, dict) else None
 	if not isinstance(score, int) or isinstance(score, bool) or not 0 <= score <= 5:
