@@ -341,8 +341,7 @@ class ReviewPipeline:
 			self.review.db_set(
 				{"status": "Skipped", "error": "no reviewable files", "completed_at": now_datetime()}
 			)
-			# An earlier attempt may have started the check before it was sent back to the queue.
-			self.close_checks("Guard skipped this review: it has no files to review.")
+			self.skip_check(run, "it has no files to review")
 			return None
 		return run
 
@@ -390,7 +389,7 @@ class ReviewPipeline:
 		self.review.db_set(
 			{"status": "Skipped", "error": "monthly credit cap reached", "completed_at": now_datetime()}
 		)
-		self.close_checks("Guard skipped this review: the monthly credit cap is reached.")
+		self.skip_check(run, "the monthly credit cap is reached")
 		if run.adapter and run.pr is not None:
 			run.adapter.post_comment(
 				run.full_name,
@@ -579,6 +578,16 @@ class ReviewPipeline:
 			)
 			or 1
 		)
+
+	def skip_check(self, run: ReviewRun, reason: str) -> None:
+		"""Mark the check skipped, so nobody waits for a review. This also ends a check that an earlier
+		attempt started before it was sent back to the queue.
+
+		Not while another review of the commit runs: the check is shared, and that review ends it.
+		"""
+		if other_review_runs(str(self.review.pull_request), run.head_sha, str(self.review.name)):
+			return
+		Publisher(run).skip(reason)
 
 	def close_checks(self, description: str) -> None:
 		"""Complete the checks that this review left in progress on its commit.
