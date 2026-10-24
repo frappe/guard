@@ -93,6 +93,8 @@ repository asks for it, so do not judge the rule itself.
 issue is often in another file than the line it is on.
 An "earlier verdict" is what you decided about a similar finding in an earlier review of
 this pull request. Keep to it unless the code shown now is different.
+"confidence" is how likely the claim is true, from 0 to 1. How much it matters is the
+severity, not the confidence: a true but minor point is a P2 with high confidence.
 Set "evidence" to "library" when the finding is true only if a library or framework
 behaves in a way that the code shown does not prove: its signature, what it raises, what it
 returns. Set it to "code" when the code shown proves the finding.

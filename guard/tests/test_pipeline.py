@@ -547,7 +547,7 @@ class TestPipeline(PullRequestCase):
 			{
 				"severity": "P2",
 				"status": "Dismissed",
-				"status_reason": "low-confidence P2 at strictness 2",
+				"status_reason": "rests on library behavior that the code does not show",
 				"confidence": 0.5,
 			},
 		)

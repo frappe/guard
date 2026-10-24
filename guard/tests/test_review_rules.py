@@ -106,6 +106,17 @@ class TestRuleFilter(UnitTestCase):
 		FindingFilter(parse_diff(DIFF), {"strictness": 1}).run([nit])
 		self.assertTrue(nit.kept)
 
+	def test_a_confirmed_p2_is_not_dropped_for_its_confidence(self):
+		# pilot#663: the verifier confirmed "no provider picker" at 0.55, and strictness 2 dropped it.
+		confirmed, unchecked = finding(line=1), finding(line=2)
+		confirmed.title = "Storage step has no provider picker"
+		for item in (confirmed, unchecked):
+			item.confidence = 0.55
+		confirmed.verified = True
+		FindingFilter(parse_diff(DIFF), {"strictness": 2}).run([confirmed, unchecked])
+		self.assertTrue(confirmed.kept)
+		self.assertEqual(unchecked.status_reason, "low-confidence P2 at strictness 2")
+
 	def test_one_comment_for_an_issue_on_many_lines(self):
 		# pilot#690 got one P1 three times, and suite#881 one check 108 times.
 		repeats = [finding("P1", line=n) for n in (1, 2, 3)]

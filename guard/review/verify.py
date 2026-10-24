@@ -58,6 +58,7 @@ def verify(run: ReviewRun) -> None:
 			# wrong: they posted P1s about boto3 and frappe.log_error that were not true.
 			finding.severity = "P2"
 			finding.confidence = min(finding.confidence, LIBRARY_CONFIDENCE)
+			finding.extra["evidence"] = "library"
 
 
 def check_verdict(run: ReviewRun) -> None:

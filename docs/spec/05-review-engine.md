@@ -160,7 +160,7 @@ In this order:
 1. **Anchor.** Move each finding to a line inside the diff on the head side. If the line is not in the diff, mark it `outside_diff`.
 2. **Comment types.** Drop types that the merged config does not allow.
 3. **Project rules.** Raise a P2 that breaks a mandatory project rule to P1.
-4. **Strictness.** 1 keeps all. 2 drops P2 with confidence below 0.6. 3 keeps only P0 and P1.
+4. **Strictness.** 1 keeps all. 2 drops a P2 with confidence below 0.6 that no verifier confirmed, and a P2 that rests on library behavior. A P2 that the verifier confirmed is kept: it is correct and worth posting. 3 keeps only P0 and P1.
 5. **Re-review.** On a later review, drop a P2 unless it touches a line added since the last reviewed commit.
 6. **Dedupe in the review.** Same path, overlapping lines and similar title: keep the higher severity.
 7. **Dedupe across reviews.** Skip a finding whose fingerprint or vector matches (cosine 0.88 or more) an open finding on the same pull request.
