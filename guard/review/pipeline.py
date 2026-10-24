@@ -22,7 +22,17 @@ from guard.learning import suppression
 from guard.llm import breaker
 from guard.llm.types import GatewayBusy, GatewayDown
 from guard.providers import adapter_for_repository
-from guard.review import checks, context, crossrepo, prompts, rule_files, sandbox, stale, verify
+from guard.review import (
+	checks,
+	context,
+	crossrepo,
+	prompts,
+	rule_checks,
+	rule_files,
+	sandbox,
+	stale,
+	verify,
+)
 from guard.review.agent import Agent
 from guard.review.findings import FindingFilter, score_cap
 from guard.review.publish import Publisher
@@ -179,11 +189,11 @@ class ReviewPipeline:
 		run.findings += checks.secret_findings(run.files)
 		run.findings += crossrepo.missing_targets(run.files, run.head, others, index)
 		run.findings += crossrepo.break_findings(run.changed)
+		rules = rule_files.project_rules(run.rule_files)
 		run.findings += checks.missing_test_findings(
-			run.files,
-			[f.path for f in run.all_files if f.status != "deleted"],
-			rule_files.project_rules(run.rule_files),
+			run.files, [f.path for f in run.all_files if f.status != "deleted"], rules
 		)
+		run.findings += rule_checks.findings(run.files, run.head, run.base, rules)
 		if run.frappe_app:
 			run.findings += checks.frappe_findings(run.files)
 		run.sandbox = sandbox.Sandbox(run) if sandbox.wanted(run) else None
