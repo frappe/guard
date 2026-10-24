@@ -85,16 +85,31 @@ class FileDiff:
 				return True
 		return False
 
-	def annotated(self) -> str:
-		"""The diff with head line numbers, for the model."""
+	def annotated(self, head: list[str] | None = None, pad: int = 0) -> str:
+		"""The diff with head line numbers, for the model.
+
+		With the `head` lines of the file, each hunk also shows up to `pad` more lines of context on
+		each side. A gap between two hunks that is shorter than that is shown whole, and once.
+		"""
 		out = [f"### {self.path} ({self.status})"]
+		shown = 0  # the last head line written
 		for hunk in self.hunks:
-			out.append(f"@@ {hunk.id} {hunk.header}".rstrip())
+			first = _first_new(hunk)
+			if head and pad:
+				if shown and first - shown - 1 > 2 * pad:
+					out += _context(head, shown + 1, shown + pad)
+					shown = first - pad - 1
+				out.append(f"@@ {hunk.id} {hunk.header}".rstrip())
+				out += _context(head, max(shown + 1, first - pad), first - 1)
+			else:
+				out.append(f"@@ {hunk.id} {hunk.header}".rstrip())
 			for line in hunk.lines:
 				number = line.new_no if line.kind != "-" else line.old_no
-				marker = {"+": "+", "-": "-", " ": " "}[line.kind]
 				label = f"{number:>5}" if line.kind != "-" else f"{'':>5}"
-				out.append(f"{label} {marker} {line.text}")
+				out.append(f"{label} {line.kind} {line.text}")
+			shown = max(shown, _last_new(hunk))
+		if head and pad and self.hunks:
+			out += _context(head, shown + 1, shown + pad)
 		return "\n".join(out)
 
 	def nearest_commentable(self, line: int) -> int | None:
@@ -102,6 +117,19 @@ class FileDiff:
 		if not lines:
 			return None
 		return min(lines, key=lambda candidate: abs(candidate - line))
+
+
+def _first_new(hunk: Hunk) -> int:
+	"""The first head line of the hunk. A hunk that only deletes starts after `new_start`."""
+	return next((line.new_no for line in hunk.lines if line.new_no), hunk.new_start + 1)
+
+
+def _last_new(hunk: Hunk) -> int:
+	return max((line.new_no for line in hunk.lines if line.new_no), default=hunk.new_start)
+
+
+def _context(head: list[str], start: int, end: int) -> list[str]:
+	return [f"{number:>5}   {head[number - 1]}" for number in range(max(start, 1), min(end, len(head)) + 1)]
 
 
 def parse_diff(text: str) -> list[FileDiff]:

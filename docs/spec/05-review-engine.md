@@ -58,12 +58,16 @@ If the base index is older than the merge base, Guard runs an incremental index 
 
 ## Stage 4: Context
 
-`guard.review.context.ContextBuilder` collects these items. Each item has a priority. Guard drops the lowest priority items until the pack fits the budget: 40,000 tokens for base, 80,000 for plus, 150,000 for apex.
+`guard.review.context.build` collects these items and `guard.review.task.compose` writes them into the first message. Each item has a priority. Guard drops the lowest priority items until the message fits the budget: 12,000 tokens for base, 20,000 for plus, 32,000 for apex. The agent sends the first message again on every turn, so the budget is small. The model reads more with its tools.
+
+The annotated diff shows up to 22 head lines around each hunk, past the 3 lines that git gives. When these lines take more than half of the budget, each hunk gets 10 lines, and then none. The changed files are not sent apart from the diff, so the model reads each line once.
+
+A caller shows the line of the call with 10 lines on each side, and the first line of the caller. A sibling shows its first 60 lines. Similar code from vector search goes in only when an embedding model is set: a hash embedding finds code that shares words, not code that follows the same pattern.
 
 | Priority | Item |
 | - | - |
 | 1 | Pull request title, description, labels, branch names, commit messages |
-| 1 | The annotated diff: each line has its head line number |
+| 1 | The annotated diff: each line has its head line number, with the lines around each hunk |
 | 1 | Rules and instructions from the dashboard and the config files that apply to the changed paths |
 | 2 | Changed entities: head body, base body, signature change |
 | 2 | Call sites at risk: callers not updated after a contract change |

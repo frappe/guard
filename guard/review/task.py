@@ -4,21 +4,21 @@ from guard.review import checks, rule_files
 from guard.review.context import BuiltContext, excerpt
 from guard.review.prompts import TASK, data
 from guard.review.run import ReviewRun
-from guard.review.spans import ContextSpan
 
 DIFF_LIMIT = 120_000
 # The agent sends this message again on every turn, so each token here costs one per turn.
 # The model reads more with its tools when it needs it.
 BUDGET_TOKENS = {"base": 12_000, "plus": 20_000, "apex": 32_000}
 CHARS_PER_TOKEN = 4
-# Lines of a changed file shown around each hunk. The diff itself has 3.
-HUNK_PAD = 25
+# Head lines shown around each hunk of the diff, past the 3 lines that git gives. A large diff
+# gets fewer: the lines around the hunks take at most half of the budget.
+HUNK_PADS = (22, 10)
+HUNK_PAD = HUNK_PADS[0]
 MAX_RULES = 80
 # Lower number = more important. Files beyond the budget are left out, least important first.
 PRIORITY = (
 	("project rule file", 1),
 	("custom instruction", 1),
-	("changed file", 1),
 	("caller of", 2),
 	("call site of", 2),
 	("impacted", 3),
@@ -60,31 +60,44 @@ def compose(run: ReviewRun, built: BuiltContext, extra: str = "") -> str:
 		)
 	for note in built.pack.notes[:12]:
 		parts.append(data("context", note))
-	diff = checks.mask_secrets("\n\n".join(f.annotated() for f in run.files))[:DIFF_LIMIT]
+	total = BUDGET_TOKENS.get(run.tier, BUDGET_TOKENS["base"]) * CHARS_PER_TOKEN
+	diff = checks.mask_secrets(annotated_diff(run, total // 2))[:DIFF_LIMIT]
 	used = sum(len(p) for p in parts) + len(diff) + len(extra)
-	budget = BUDGET_TOKENS.get(run.tier, BUDGET_TOKENS["base"]) * CHARS_PER_TOKEN - used
-	parts += context_files(built, budget, around_hunks(run))
+	budget = total - used
+	parts += context_files(built, budget)
 	parts.append("Annotated diff:\n" + data("diff", diff))
 	if extra:
 		parts.append(extra)
 	return "\n\n".join(p for p in parts if p)
 
 
-def context_files(
-	built: BuiltContext, budget_chars: int, around: dict[str, list[ContextSpan] | None]
-) -> list[str]:
-	"""Context files that fit the budget, best first: spans for files outside the diff, and the
-	lines around the hunks for the changed files in `around`. Other changed files are left out:
-	an added file is all in the diff, and a file of another diff part is not reviewed here."""
+def annotated_diff(run: ReviewRun, room: int = 0) -> str:
+	"""The diff of the files under review, each hunk with the head lines around it.
+
+	The lines around a hunk are in the diff and not in a context file of their own, so the model
+	reads them once. An added file is all in the diff. With `room`, the lines around the hunks add
+	at most that many characters, or none.
+	"""
+	heads = {
+		file.path: (run.head(file.path) or "").splitlines()
+		for file in run.files
+		if file.status not in ("added", "deleted")
+	}
+	plain = "\n\n".join(file.annotated() for file in run.files)
+	for pad in HUNK_PADS:
+		diff = "\n\n".join(file.annotated(heads.get(file.path), pad) for file in run.files)
+		if not room or len(diff) - len(plain) <= room:
+			return diff
+	return plain
+
+
+def context_files(built: BuiltContext, budget_chars: int) -> list[str]:
+	"""Context files that fit the budget, best first: the spans of each file."""
 	blocks = []
 	for file in built.pack.files:
-		if file.reason.startswith("changed file"):
-			spans = around.get(file.path)
-			if not spans:
-				continue
-		else:
-			spans = built.spans.get(file.path)
-		text = checks.mask_secrets(excerpt(file.content, spans))
+		text = checks.mask_secrets(excerpt(file.content, built.spans.get(file.path)))
+		if not text.strip():
+			continue
 		blocks.append((_priority(file.reason), data(f"{file.path} ({file.reason[:200]})", text)))
 	chosen, used = [], 0
 	for priority, block in sorted(blocks, key=lambda b: b[0]):
@@ -93,16 +106,6 @@ def context_files(
 		chosen.append(block)
 		used += len(block)
 	return chosen
-
-
-def around_hunks(run: ReviewRun) -> dict[str, list[ContextSpan] | None]:
-	"""Spans around the hunks of each changed file, or None for an added file."""
-	return {
-		f.path: None
-		if f.status == "added"
-		else [ContextSpan(max(h.new_start - HUNK_PAD, 1), h.new_end + HUNK_PAD, "changed") for h in f.hunks]
-		for f in run.files
-	}
 
 
 def _priority(reason: str) -> int:

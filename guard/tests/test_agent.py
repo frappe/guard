@@ -3,11 +3,13 @@ from typing import Any
 from frappe.tests import UnitTestCase
 
 from guard.git.diff import parse_diff
+from guard.graph.queries import Entity, Link
 from guard.llm.client import use_responder
-from guard.review import agent, task
+from guard.review import agent, context, task
 from guard.review.context import BuiltContext
 from guard.review.prompt import ContextFile, ContextPack
 from guard.review.run import ReviewRun
+from guard.review.spans import ContextSpan
 from guard.tests.fakes import scripted
 
 LONG = "\n".join(f"line_{n} = {'x' * 60}" for n in range(1, 1001))
@@ -66,18 +68,66 @@ class TestTrim(UnitTestCase):
 
 
 class TestChangedFiles(UnitTestCase):
-	def test_changed_files_show_their_hunks_only(self):
+	def test_the_diff_shows_the_lines_around_each_hunk_once(self):
 		run = run_on(LONG)
 		run.files = parse_diff(DIFF)
-		pack = ContextPack(
-			files=[
-				ContextFile("app/a.py", LONG, "changed file"),
-				ContextFile("app/new.py", "print(1)", "changed file"),
-				ContextFile("app/other_part.py", LONG, "changed file"),
-			]
+		diff = task.annotated_diff(run)
+		# The hunk covers head lines 500-501.
+		first, last = 500 - task.HUNK_PAD, 501 + task.HUNK_PAD
+		self.assertIn(f"{first:>5}   line_{first} =", diff)
+		self.assertNotIn(f"line_{first - 1} =", diff)
+		self.assertIn(f"{last:>5}   line_{last} =", diff)
+		self.assertNotIn(f"line_{last + 1} =", diff)
+		self.assertIn("    1 + print(1)", diff, "an added file is all in the diff")
+
+	def test_a_large_diff_gets_fewer_lines_around_its_hunks(self):
+		run = run_on(LONG)
+		run.files = parse_diff(DIFF)
+		plain = "\n\n".join(f.annotated() for f in run.files)
+		wide = task.annotated_diff(run)
+		narrow = task.annotated_diff(run, len(wide) - len(plain) - 1)
+		self.assertIn(f"line_{501 + task.HUNK_PADS[1]} =", narrow)
+		self.assertNotIn(f"line_{502 + task.HUNK_PADS[1]} =", narrow)
+		self.assertEqual(task.annotated_diff(run, 1), plain)
+
+	def test_close_hunks_share_their_context(self):
+		text = "\n".join(f"l{n}" for n in range(1, 101))
+		diff = """diff --git a/a.py b/a.py
+--- a/a.py
++++ b/a.py
+@@ -10 +10 @@
+-x
++l10
+@@ -30 +30 @@
+-y
++l30
+@@ -90 +90 @@
+-z
++l90
+"""
+		[file] = parse_diff(diff)
+		out = file.annotated(text.splitlines(), 5)
+		numbers = [int(line[:5]) for line in out.splitlines() if line[:5].strip().isdigit()]
+		self.assertEqual(numbers, sorted(set(numbers)), "no head line twice, in order")
+		self.assertEqual(numbers[:6], [5, 6, 7, 8, 9, 10])
+		self.assertIn(35, numbers)
+		self.assertNotIn(36, numbers)
+		self.assertIn(85, numbers)
+		self.assertEqual(numbers[-1], 95)
+
+	def test_context_files_show_their_spans_only(self):
+		pack = ContextPack(files=[ContextFile("app/b.py", LONG, "caller of f")])
+		built = BuiltContext(pack, {"app/b.py": [ContextSpan(400, 402, "call")]})
+		[block] = task.context_files(built, 10_000)
+		self.assertIn("line_401 ", block)
+		self.assertNotIn("line_399 ", block)
+
+	def test_a_caller_shows_its_first_line_and_the_call(self):
+		entity = Entity(
+			"e", "function", "caller", "m.caller", "app/b.py", None, 100, 400, "def caller()", "python"
 		)
-		[block] = task.context_files(BuiltContext(pack), 10_000, task.around_hunks(run))
-		self.assertIn("app/a.py", block)
-		self.assertIn("line_500", block)
-		self.assertNotIn("line_400 ", block)
-		self.assertLess(len(block), 6000)
+		call = Link(entity, "f", "f()", "app/b.py", 300, True)
+		spans = context._link_spans(call, "caller of f", whole=False)
+		self.assertEqual([(s.start, s.end) for s in spans], [(100, 100), (290, 310)])
+		similar = context._link_spans(Link(entity, "", "", "app/b.py", 100, True), "similar", whole=True)
+		self.assertEqual(similar[0].end, 100 + context.SIMILAR_LINES + 3)

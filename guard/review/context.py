@@ -9,6 +9,7 @@ from guard.graph.queries import ChunkHit, CodeGraph, Link
 from guard.integrations.tickets import Ticket
 from guard.knowledge import store as kb_store
 from guard.learning import memories
+from guard.llm.embeddings import Embedder
 from guard.review import crossrepo
 from guard.review.prompt import ContextFile, ContextPack, Question, context_file
 from guard.review.rule_files import MAX_CHARS as MAX_RULE_FILE_CHARS
@@ -17,12 +18,13 @@ from guard.review.spans import ContextSpan, symbol_span
 from guard.utils import db
 
 MAX_CONTEXT_FILES = 40
-MAX_FILE_LINES = 800
 BUDGET_BY_SIZE = {1: 1200, 3: 700, 6: 500, 12: 350, 24: 250, 40: 200}
 CALLER_PAD = 10
 # Similar code is a hint for the model, not evidence. A few files are enough.
 MAX_SIMILAR_FILES = 4
 SIMILAR_LINES = 60
+# A file whose spans go to the model is read whole, up to this many lines.
+MAX_READ_LINES = 20_000
 
 
 @dataclass
@@ -103,27 +105,22 @@ def build(
 			pack.files.append(f)
 	call_lines = _call_lines(changed)
 	for path, reasons in impacted_files(changed).items():
-		if path in paths:
+		# Only the lines around the calls go to the model: without them, the file says nothing.
+		if path in paths or not call_lines.get(path):
 			continue
-		f = context_file(read, path, f"impacted: {', '.join(reasons[:3])}", limit=MAX_FILE_LINES)
+		f = context_file(read, path, f"impacted: {', '.join(reasons[:3])}", limit=MAX_READ_LINES)
 		if f:
 			pack.files.append(f)
 			spans[path] = [
 				*spans.get(path, []),
-				*(
-					ContextSpan(max(n - CALLER_PAD, 1), n + CALLER_PAD, "call")
-					for n in call_lines.get(path, [])
-				),
+				*(ContextSpan(max(n - CALLER_PAD, 1), n + CALLER_PAD, "call") for n in call_lines[path]),
 			]
 
 	if graph:
-		_symbol_context(read, changed, graph, pack, spans, budget)
-
-	for path in paths:
-		if not any(f.path == path for f in pack.files):
-			f = context_file(read, path, "changed file", limit=min(MAX_FILE_LINES, budget + 200))
-			if f:
-				pack.files.append(f)
+		# A hash embedding finds code that shares words, which says little about patterns.
+		similar = Embedder().uses_model
+		_symbol_context(read, changed, graph, pack, spans, budget, similar)
+	# The changed files are not here: the diff shows the lines around each hunk.
 	pack.files = pack.files[:MAX_CONTEXT_FILES]
 	pack.notes = [n.text for n in sources]
 	return BuiltContext(pack, spans, sources)
@@ -171,6 +168,7 @@ def _symbol_context(
 	pack: ContextPack,
 	spans: dict[str, list[ContextSpan]],
 	budget: int,
+	similar: bool = True,
 ) -> None:
 	for entity in changed[:12]:
 		question_id = f"{entity.qualified_name}@{entity.path}"
@@ -202,8 +200,9 @@ def _symbol_context(
 					"verify",
 				)
 			)
-			_add_file(read, pack, spans, _link_to(sibling), budget, f"similar {entity.kind}")
-		_pattern_chunks(read, graph, entity, pack, spans, budget)
+			_add_file(read, pack, spans, _link_to(sibling), budget, f"similar {entity.kind}", whole=True)
+		if similar:
+			_pattern_chunks(read, graph, entity, pack, spans, budget)
 	for entity in changed[:8]:
 		for name in entity.callees[:6]:
 			if not graph.definitions(name):
@@ -235,7 +234,7 @@ def _pattern_chunks(
 		if not any(f.path == hit.path for f in pack.files):
 			if _similar_files(pack) >= MAX_SIMILAR_FILES:
 				continue
-			f = context_file(read, hit.path, f"similar code to {entity.name}", limit=budget // 2)
+			f = context_file(read, hit.path, f"similar code to {entity.name}", limit=MAX_READ_LINES)
 			if not f:
 				continue
 			pack.files.append(f)
@@ -248,22 +247,36 @@ def _similar_files(pack: ContextPack) -> int:
 
 
 def _add_file(
-	read: Reader, pack: ContextPack, spans: dict[str, list[ContextSpan]], link: Link, budget: int, reason: str
+	read: Reader,
+	pack: ContextPack,
+	spans: dict[str, list[ContextSpan]],
+	link: Link,
+	budget: int,
+	reason: str,
+	whole: bool = False,
 ) -> None:
+	"""Add the lines of `link` to the context: the start of the entity when `whole`, else the lines
+	around the call and the first line of the caller."""
 	if not link.path:
 		return
 	existing = next((f for f in pack.files if f.path == link.path), None)
 	if not existing:
-		f = context_file(read, link.path, reason, limit=budget)
+		# Only the spans are shown, so read all of the file: a call can be far down it.
+		f = context_file(read, link.path, reason, limit=MAX_READ_LINES)
 		if not f:
 			return
 		pack.files.append(f)
-	span = (
-		symbol_span(link.entity.start_line, link.entity.end_line)
-		if link.entity
-		else ContextSpan(max(link.line - CALLER_PAD, 1), link.line + CALLER_PAD, reason)
-	)
-	spans[link.path] = [*spans.get(link.path, []), span]
+	spans[link.path] = [*spans.get(link.path, []), *_link_spans(link, reason, whole)]
+
+
+def _link_spans(link: Link, reason: str, whole: bool) -> list[ContextSpan]:
+	entity = link.entity
+	if entity and whole:
+		return [symbol_span(entity.start_line, min(entity.end_line, entity.start_line + SIMILAR_LINES))]
+	around = ContextSpan(max(link.line - CALLER_PAD, 1), link.line + CALLER_PAD, reason)
+	if entity and entity.start_line < around.start:
+		return [ContextSpan(entity.start_line, entity.start_line, "caller"), around]
+	return [around]
 
 
 def _link_to(entity: Any) -> Link:
@@ -279,7 +292,7 @@ def excerpt(text: str, spans: list[ContextSpan] | None) -> str:
 	for span in spans:
 		keep.update(range(max(span.start, 1), min(span.end, len(lines)) + 1))
 	if not keep:
-		return text
+		return ""
 	out, previous = [], 0
 	for number in sorted(keep):
 		if number != previous + 1:
