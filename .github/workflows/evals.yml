@@ -3,7 +3,8 @@ name: Evals
 # Replay recorded pull requests through a full review when the review
 # prompts, rules or checks change. Needs an AI gateway: without the
 # GUARD_EVAL_* secrets, the run skips. Set the repository variable
-# EVAL_MIN_RECALL (0 to 1) to fail on low recall.
+# EVAL_MIN_RECALL (0 to 1) to fail on low recall. A manual run can pick
+# the model, to compare models on the same cases.
 on:
   pull_request:
     paths:
@@ -12,9 +13,14 @@ on:
       - "guard/evals/**"
       - "guard/config/**"
   workflow_dispatch:
+    inputs:
+      model:
+        description: "Model for every tier. Empty: the GUARD_EVAL_MODEL secret."
+        required: false
+        default: ""
 
 concurrency:
-  group: evals-${{ github.event.number || github.ref }}
+  group: evals-${{ github.event.number || github.ref }}-${{ inputs.model }}
   cancel-in-progress: true
 
 jobs:
@@ -111,6 +117,6 @@ jobs:
         env:
           GUARD_EVAL_GATEWAY_URL: ${{ secrets.GUARD_EVAL_GATEWAY_URL }}
           GUARD_EVAL_GATEWAY_KEY: ${{ secrets.GUARD_EVAL_GATEWAY_KEY }}
-          GUARD_EVAL_MODEL: ${{ secrets.GUARD_EVAL_MODEL }}
+          GUARD_EVAL_MODEL: ${{ inputs.model || secrets.GUARD_EVAL_MODEL }}
           GUARD_EVAL_DIALECT: ${{ vars.GUARD_EVAL_DIALECT }}
           EVAL_MIN_RECALL: ${{ vars.EVAL_MIN_RECALL }}
