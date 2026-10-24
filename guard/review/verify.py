@@ -45,15 +45,19 @@ def verify(run: ReviewRun) -> None:
 
 
 def check_verdict(run: ReviewRun) -> None:
-	"""Fact-check a score that is lower than the posted findings allow.
+	"""Fact-check the score and its reason, when they can rest on more than the posted findings.
 
 	The reviewer scores from what it suspects, before its findings are checked. When the check
-	refutes some, the score can rest on issues that are wrong. A finding that is held back, for
+	refutes some, the score can rest on issues that are wrong. When findings are dropped, the
+	reason can name issues that the pull request never sees. A finding that is held back, for
 	example as minor, still counts: nothing showed that it is wrong. Without a model the score
-	stays as it is.
+	and reason stay as they are.
 	"""
 	verdict = run.verdict
-	if not verdict.submitted or verdict.confidence_score >= score_cap(run.findings):
+	if not verdict.submitted:
+		return
+	dropped = any(not f.kept for f in run.findings)
+	if verdict.confidence_score >= score_cap(run.findings) and not dropped:
 		return
 	client = LLMClient(tier=run.tier, purpose="verdict", usage=run.usage)
 	if not client.online:

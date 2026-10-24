@@ -458,6 +458,27 @@ class TestPipeline(PullRequestCase):
 		# One that stopped too often fails, so it cannot loop for ever.
 		self.assertEqual(db.value("Code Review", worn, "status"), "Failed")
 
+	def test_reason_is_fact_checked_when_findings_were_dropped(self):
+		# erpnext #62149: one P1 posted, one refuted, and the reason said "several real gaps".
+		posted = dict(PROBLEM, severity="P1", title="Saving old bundles breaks")
+		refuted = dict(PROBLEM, severity="P1", start_line=6, title="Rows are skipped")
+		verdict = {"summary": "s", "confidence_score": 3, "confidence_reason": "Several real gaps remain."}
+		answers = {
+			"verify": '[{"index": 0, "valid": true}, {"index": 1, "valid": false, "reason": "no"}]',
+			"verdict": '{"score": 3, "reason": "One issue is left: saving old bundles breaks."}',
+		}
+		requests = self.online_review(
+			[[("report_finding", posted), ("report_finding", refuted), ("submit_review", verdict)]], answers
+		)
+		review = db.values(
+			"Code Review", {"pull_request": self.pr}, ("confidence_score", "confidence_reason")
+		)
+		self.assertEqual(
+			review,
+			{"confidence_score": 3, "confidence_reason": "One issue is left: saving old bundles breaks."},
+		)
+		self.assertEqual(len([r for r in requests if r.purpose == "verdict"]), 1)
+
 	def running_review(self, stage: str, attempt: int = 0) -> str:
 		from frappe.utils import now_datetime
 
