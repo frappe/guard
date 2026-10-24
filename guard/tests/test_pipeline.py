@@ -520,15 +520,17 @@ class TestPipeline(PullRequestCase):
 		from guard.review import jobs
 
 		self.review([[("submit_review", {"summary": "s", "confidence_score": 5})]])
+		# Other tests' repositories can have the same commit: look for this repository's one.
+		commit = (str(db.value("Code Repository", self.repository, "full_name")), self.head)
 		with patch("guard.providers.adapter_for_repository", return_value=self.adapter):
 			jobs.close_stuck_checks()
-			self.assertIn(self.head, self.adapter.closed_shas)
+			self.assertIn(commit, self.adapter.closed)
 			self.assertEqual(set(self.adapter.named("close_checks")), {jobs.STOPPED})
 			# Not while a review of the commit runs: that review ends its check.
 			self.running_review("review")
-			self.adapter.closed_shas.clear()
+			self.adapter.closed.clear()
 			jobs.close_stuck_checks()
-			self.assertNotIn(self.head, self.adapter.closed_shas)
+			self.assertNotIn(commit, self.adapter.closed)
 
 	def running_review(self, stage: str, attempt: int = 0) -> str:
 		from frappe.utils import now_datetime
