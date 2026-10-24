@@ -40,6 +40,9 @@ LIST_LIMIT = 200
 # to its start: the model has read it, and can ask again.
 KEEP_TURNS = 4
 TRIM_AT = 600
+# With a prompt cache, old tool output costs a few percent of its price, and a cut changes the
+# prefix, so the cache misses from there on. Cut only past this size (about 60k tokens).
+CACHED_HISTORY_CHARS = 240_000
 TRIMMED = "\n[Older tool output cut short. Call the tool again if you need it.]"
 
 
@@ -216,13 +219,15 @@ class Agent:
 		self.reported: set[str] = set()
 		self.nudged = False
 		self.tool_turns: list[list[int]] = []  # the message indexes of each turn's tool output
+		self.caching = False  # the gateway read part of a prompt from its cache
+		self.breakpoint: Message | None = None
 
 	def run_loop(self, task: str) -> AgentResult:
 		from guard.llm.client import LLMClient
 
 		client = LLMClient(tier=self.run.tier, purpose="review", usage=self.run.usage)
 		specs = tools(self.run)
-		self.messages.append(Message("user", task))
+		self.messages.append(Message("user", task, cache=True))
 		turns = 0
 		while turns < self.max_turns and not self.run.verdict.submitted:
 			turns += 1
@@ -230,6 +235,7 @@ class Agent:
 			if turns == self.max_turns - WARN_TURNS:
 				self.messages.append(Message("user", TURNS_LOW))
 			result = client.chat(self.messages, tools=specs)
+			self.caching = self.caching or result.usage.cached_tokens > 0
 			self.messages.append(result.as_message())
 			if not result.tool_calls:
 				break
@@ -239,18 +245,32 @@ class Agent:
 				self.messages.append(self._dispatch(call.name, call.arguments, call.id))
 			self.tool_turns.append(indexes)
 			self._trim()
+			self._move_breakpoint()
 		if not self.run.verdict.submitted and client.online:
 			self._close(client, specs)
 		return AgentResult(self.run.findings, self.run.verdict, turns)
 
 	def _trim(self) -> None:
-		"""Cut the long tool output of the turn that just left the last `KEEP_TURNS`."""
-		if len(self.tool_turns) <= KEEP_TURNS:
+		"""Cut the long tool output of the turns before the last `KEEP_TURNS`.
+
+		When the gateway caches, the output stays until the conversation is large. Then all of it is
+		cut at once, so the cache misses once and not on every turn.
+		"""
+		if self.caching and sum(len(m.content) for m in self.messages) < CACHED_HISTORY_CHARS:
 			return
-		for index in self.tool_turns[-KEEP_TURNS - 1]:
-			message = self.messages[index]
-			if len(message.content) > TRIM_AT:
-				message.content = message.content[:TRIM_AT] + TRIMMED
+		for indexes in self.tool_turns[:-KEEP_TURNS]:
+			for index in indexes:
+				message = self.messages[index]
+				if len(message.content) > TRIM_AT and not message.content.endswith(TRIMMED):
+					message.content = message.content[:TRIM_AT] + TRIMMED
+
+	def _move_breakpoint(self) -> None:
+		"""Mark the newest tool output for the cache, so that the next turn reads the conversation
+		up to here from the cache. Anthropic takes 4 marks: the system prompt, the task and this one."""
+		if self.breakpoint:
+			self.breakpoint.cache = False
+		self.breakpoint = self.messages[-1]
+		self.breakpoint.cache = True
 
 	def _close(self, client, specs: list[ToolSpec]) -> None:
 		"""Out of turns: one call to report what is left, then one forced verdict. No nudge here."""

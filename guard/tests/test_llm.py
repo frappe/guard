@@ -82,6 +82,10 @@ class TestDialects(UnitTestCase):
 	def test_anthropic_cache_control(self):
 		converted = _messages([Message("user", "big context", cache=True)])
 		self.assertEqual(converted[0]["content"][0]["cache_control"], {"type": "ephemeral"})
+		results = _messages(
+			[Message("tool", "a", tool_call_id="t1"), Message("tool", "b", tool_call_id="t2", cache=True)]
+		)
+		self.assertEqual(["cache_control" in block for block in results[0]["content"]], [False, True])
 
 	def test_anthropic_result(self):
 		result = anthropic_result(

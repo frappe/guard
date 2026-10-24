@@ -1,10 +1,12 @@
 from typing import Any, cast
+from unittest.mock import patch
 
 from frappe.tests import UnitTestCase
 
 from guard.git.diff import parse_diff
 from guard.graph.queries import CodeGraph, Entity, Link
-from guard.llm.client import use_responder
+from guard.llm.client import ChatRequest, use_responder
+from guard.llm.types import ChatResult
 from guard.review import agent, context, task
 from guard.review.context import BuiltContext
 from guard.review.prompt import ContextFile, ContextPack
@@ -141,6 +143,40 @@ class TestTrim(UnitTestCase):
 			self.assertTrue(content.endswith(agent.TRIMMED))
 		for content in outputs[cut:]:
 			self.assertNotIn(agent.TRIMMED, content)
+
+	def cached_review(self) -> agent.Agent:
+		turns = agent.KEEP_TURNS + 2
+		steps: list[list[tuple[str, dict[str, Any]]] | str] = [
+			[("read_file", {"path": "app/a.py", "start_line": 1 + 100 * n})] for n in range(turns)
+		]
+		plain = scripted(steps)
+
+		def respond(request: ChatRequest) -> ChatResult:
+			result = plain(request)
+			result.usage.cached_tokens = 50
+			return result
+
+		review = agent.Agent(run_on(LONG), "system", max_turns=turns + 1)
+		with use_responder(respond):
+			review.run_loop("task")
+		return review
+
+	def test_a_caching_gateway_keeps_the_prefix(self):
+		review = self.cached_review()
+		self.assertTrue(review.caching)
+		self.assertFalse(any(agent.TRIMMED in m.content for m in review.messages))
+		marked = [m.role for m in review.messages if m.cache]
+		self.assertEqual(marked, ["system", "user", "tool"], "one mark moves with the newest output")
+		self.assertIs(review.messages[-1], review.breakpoint)
+
+	def test_a_large_cached_conversation_is_cut_all_at_once(self):
+		with patch.object(agent, "CACHED_HISTORY_CHARS", 30_000):
+			review = self.cached_review()
+		outputs = [m.content for m in review.messages if m.role == "tool"]
+		cut = [agent.TRIMMED in content for content in outputs]
+		self.assertTrue(any(cut))
+		self.assertEqual(cut, sorted(cut, reverse=True), "older output first")
+		self.assertFalse(any(cut[-agent.KEEP_TURNS :]))
 
 
 class TestChangedFiles(UnitTestCase):

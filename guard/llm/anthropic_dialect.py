@@ -63,7 +63,13 @@ def _messages(messages: list[Message]) -> list[dict[str, Any]]:
 	out: list[dict[str, Any]] = []
 	for message in messages:
 		if message.role == "tool":
-			block = {"type": "tool_result", "tool_use_id": message.tool_call_id, "content": message.content}
+			block: dict[str, Any] = {
+				"type": "tool_result",
+				"tool_use_id": message.tool_call_id,
+				"content": message.content,
+			}
+			if message.cache:
+				block["cache_control"] = {"type": "ephemeral"}
 			if out and out[-1]["role"] == "user" and _is_tool_results(out[-1]):
 				out[-1]["content"].append(block)
 			else:

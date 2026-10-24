@@ -119,6 +119,10 @@ The graph tools are there only when the repository has an index. Thread answers 
 
 The agent stops at `submit_review` or at the turn limit of the tier. At the limit, Guard sends one more request that allows only `submit_review`.
 
+### Old tool output and the prompt cache
+
+Each turn sends the whole conversation again. When the gateway reads no part of a prompt from its cache, Guard cuts the tool output of the turns before the last 4 to its first 600 characters. When the gateway reports cached tokens, a cut changes the prefix and the cache misses from there on, so Guard keeps the output. It cuts all the old output at once only when the conversation passes 240,000 characters. On the Anthropic front, the system prompt, the task and the newest tool output carry a cache breakpoint. Code Review stores `cached_tokens` to show how much of the input the cache served.
+
 ### Tier strategies
 
 | Tier | Model | Turns | Strategy |
