@@ -8,16 +8,20 @@ from guard.review.run import Lister, Reader
 
 PER_DIRECTORY = ("CLAUDE.md", "AGENTS.md")
 ROOT_ONLY = (".cursorrules", ".github/copilot-instructions.md")
-MAX_CHARS = 6000
+MAX_CHARS = 6000  # of a rule file shown as context; its rules are read from all of it
+MAX_FILE_CHARS = 60000
 RULE_PREFIX = "project:"
 MANDATORY = re.compile(r"\b(always|must|never|do not|don't|mandatory|required)\b", re.I)
+# A list item. One that starts with a word is a rule; one that starts with a path or link is not.
+BULLET = re.compile(r"^(?:[-*+]|\d+[.)])\s+([A-Za-z].*)$")
+MIN_RULE_WORDS = 3
 ASKS_FOR_TESTS = re.compile(r"\b(add|update|write)\b[^.]*\btests?\b", re.I)
 FORBIDS = re.compile(r"\b(never|do not|don't)\b", re.I)
 
 
 @dataclass
 class ProjectRule:
-	"""A mandatory line of a project rule file. A finding that breaks it is at least P1."""
+	"""A rule of a project rule file: a list item, or a line that says always, must or never."""
 
 	path: str
 	line: int
@@ -64,12 +68,17 @@ def collect(paths: list[str], read: Reader, list_dir: Lister | None = None) -> l
 	for candidate in candidates:
 		text = read(candidate)
 		if text and text.strip():
-			found.append((candidate, text.strip()[:MAX_CHARS]))
+			found.append((candidate, text.strip()[:MAX_FILE_CHARS]))
 	return found
 
 
-def mandatory_rules(files: list[tuple[str, str]]) -> list[ProjectRule]:
-	"""Lines that say always, must, never or similar. Headings and code blocks are skipped."""
+def project_rules(files: list[tuple[str, str]]) -> list[ProjectRule]:
+	"""Every list item that starts with a word, and every line that says always, must, never or
+	similar. Headings and code blocks are skipped.
+
+	A rule file states its rules as list items, mostly without "must": "Keep cyclomatic
+	complexity <= 8" under a heading that calls the list mandatory.
+	"""
 	rules = []
 	for path, text in files:
 		in_code = False
@@ -78,7 +87,11 @@ def mandatory_rules(files: list[tuple[str, str]]) -> list[ProjectRule]:
 			if stripped.startswith("```"):
 				in_code = not in_code
 				continue
-			if in_code or stripped.startswith("#") or not MANDATORY.search(stripped):
+			if in_code or stripped.startswith("#"):
 				continue
-			rules.append(ProjectRule(path, number, stripped.lstrip("-* ").strip()))
+			bullet = BULLET.match(stripped)
+			if bullet and len(bullet.group(1).split()) >= MIN_RULE_WORDS:
+				rules.append(ProjectRule(path, number, bullet.group(1).strip()))
+			elif MANDATORY.search(stripped):
+				rules.append(ProjectRule(path, number, stripped.lstrip("-*+ ").strip()))
 	return rules

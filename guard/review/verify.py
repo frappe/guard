@@ -7,7 +7,7 @@ from typing import Any
 from guard.llm.client import LLMClient
 from guard.review.findings import SEVERITIES, Finding, score_cap, similar_titles
 from guard.review.prompts import VERDICT, VERIFIER, data
-from guard.review.rule_files import mandatory_rules
+from guard.review.rule_files import project_rules
 from guard.review.run import ReviewRun
 from guard.utils import db
 
@@ -26,7 +26,7 @@ def verify(run: ReviewRun) -> None:
 	client = LLMClient(tier=run.tier, purpose="verify", usage=run.usage)
 	if not client.online:
 		return
-	rules = {rule.id: rule.text for rule in mandatory_rules(run.rule_files)}
+	rules = {rule.id: rule.text for rule in project_rules(run.rule_files)}
 	earlier = _earlier_verdicts(run)
 	prompt = "\n\n".join(
 		_item(run, index, finding, rules.get(finding.rule_id or "", ""))
@@ -203,4 +203,4 @@ def _item(run: ReviewRun, index: int, finding: Finding, rule: str = "") -> str:
 	code = "\n".join(f"{n:5} {lines[n - 1]}" for n in range(start, end + 1)) if lines else ""
 	claim = f"[{index}] {finding.severity} {finding.comment_type} {finding.path}:{finding.start_line}-{finding.end_line}\n{finding.title}\n{finding.body}"
 	block = data(f"finding {index}", claim) + "\n" + data(f"code {finding.path}", code)
-	return block + "\n" + data(f"mandatory project rule {finding.rule_id}", rule) if rule else block
+	return block + "\n" + data(f"project rule {finding.rule_id}", rule) if rule else block

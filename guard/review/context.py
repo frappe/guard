@@ -11,6 +11,7 @@ from guard.knowledge import store as kb_store
 from guard.learning import memories
 from guard.review import crossrepo
 from guard.review.prompt import ContextFile, ContextPack, Question, context_file
+from guard.review.rule_files import MAX_CHARS as MAX_RULE_FILE_CHARS
 from guard.review.run import Reader
 from guard.review.spans import ContextSpan, symbol_span
 from guard.utils import db
@@ -77,7 +78,8 @@ def build(
 	for source, text in instructions(config)[:10]:
 		pack.files.append(ContextFile(f"instructions/{source}", text, "custom instruction"))
 	for path, text in (rule_files or [])[:6]:
-		pack.files.append(ContextFile(path, text, "project rule file"))
+		# The rules go to the reviewer as a checklist: the context needs only the start.
+		pack.files.append(ContextFile(path, text[:MAX_RULE_FILE_CHARS], "project rule file"))
 	for ticket in tickets or []:
 		sources.append(SourceNote("tickets", ticket.as_text()))
 	for memory in memories.for_paths(full_name, team, paths):

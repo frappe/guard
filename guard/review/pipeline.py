@@ -182,7 +182,7 @@ class ReviewPipeline:
 		run.findings += checks.missing_test_findings(
 			run.files,
 			[f.path for f in run.all_files if f.status != "deleted"],
-			rule_files.mandatory_rules(run.rule_files),
+			rule_files.project_rules(run.rule_files),
 		)
 		if run.frappe_app:
 			run.findings += checks.frappe_findings(run.files)

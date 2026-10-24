@@ -13,6 +13,7 @@ BUDGET_TOKENS = {"base": 12_000, "plus": 20_000, "apex": 32_000}
 CHARS_PER_TOKEN = 4
 # Lines of a changed file shown around each hunk. The diff itself has 3.
 HUNK_PAD = 25
+MAX_RULES = 80
 # Lower number = more important. Files beyond the budget are left out, least important first.
 PRIORITY = (
 	("project rule file", 1),
@@ -134,12 +135,14 @@ def _rules(run: ReviewRun) -> str:
 
 
 def _project_rules(run: ReviewRun) -> str:
-	rules = rule_files.mandatory_rules(run.rule_files)[:40]
+	"""The project rules that cover the changed files, as a checklist."""
+	rules = [r for r in rule_files.project_rules(run.rule_files) if any(r.covers(p) for p in run.paths)]
 	if not rules:
 		return ""
-	lines = "\n".join(f"- {rule.text} (rule_id: {rule.id})" for rule in rules)
-	return "Mandatory project rules. A finding that breaks one is at least P1:\n" + data(
-		"project rules", lines
+	lines = "\n".join(f"- {rule.text} (rule_id: {rule.id})" for rule in rules[:MAX_RULES])
+	return (
+		"Project rules. Check the change against each one, and report every break as a P2 "
+		"finding with its rule_id:\n" + data("project rules", lines)
 	)
 
 

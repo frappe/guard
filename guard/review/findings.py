@@ -102,7 +102,6 @@ class FindingFilter:
 		for finding in findings:
 			self.anchor(finding)
 		self.filter_types(findings)
-		self.raise_project_rules(findings)
 		self.filter_strictness(findings)
 		self.filter_rereview(findings)
 		self.dedupe(findings)
@@ -138,13 +137,15 @@ class FindingFilter:
 	def filter_types(self, findings: list[Finding]) -> None:
 		allowed = set(self.settings.get("comment_types") or COMMENT_TYPES)
 		for finding in findings:
-			if finding.kept and finding.comment_type not in allowed:
+			# The repository asks for its rules, whatever kind of comment a break is.
+			if finding.kept and finding.comment_type not in allowed and not finding.is_project_rule:
 				finding.drop("Dismissed", f"comment type `{finding.comment_type}` is off")
 
 	def filter_strictness(self, findings: list[Finding]) -> None:
 		"""At strictness 2, a P2 that no verifier confirmed needs confidence. One that the verifier
 		confirmed is correct and worth posting already: its confidence says nothing more. Before,
-		this dropped nearly every confirmed P2, because the verifier rated them 0.5 to 0.55."""
+		this dropped nearly every confirmed P2, because the verifier rated them 0.5 to 0.55.
+		A break of a project rule is a P2 that the repository asked for: it stays."""
 		strictness = int(self.settings.get("strictness") or 2)
 		for finding in findings:
 			if not finding.kept:
@@ -152,16 +153,12 @@ class FindingFilter:
 			if strictness == 3 and finding.severity == "P2":
 				finding.drop("Dismissed", "strictness 3 posts only P0 and P1")
 			elif strictness == 2 and finding.severity == "P2" and finding.confidence < 0.6:
+				if finding.is_project_rule:
+					continue
 				if finding.extra.get("evidence") == "library":
 					finding.drop("Dismissed", "rests on library behavior that the code does not show")
 				elif not finding.verified:
 					finding.drop("Dismissed", "low-confidence P2 at strictness 2")
-
-	def raise_project_rules(self, findings: list[Finding]) -> None:
-		"""A project rule is mandatory: breaking it is at least P1, whatever the model or verifier said."""
-		for finding in findings:
-			if finding.kept and finding.is_project_rule and finding.severity == "P2":
-				finding.severity = "P1"
 
 	def filter_rereview(self, findings: list[Finding]) -> None:
 		"""A re-review posts P2 only on lines added since the last review, so old lines bring no new nitpicks."""

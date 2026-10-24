@@ -148,7 +148,7 @@ def missing_test_findings(
 				diff.path,
 				added[0],
 				added[0],
-				"P1",
+				"P2",
 				"logic",
 				"Code changes without tests",
 				f"This pull request changes code but adds or updates no test. `{rule.path}` line {rule.line}: {rule.text}",

@@ -4,7 +4,7 @@ from guard.evals import run as evals
 from guard.git.diff import parse_diff
 from guard.review import checks, verify
 from guard.review.findings import Finding, FindingFilter
-from guard.review.rule_files import ProjectRule, collect, mandatory_rules
+from guard.review.rule_files import ProjectRule, collect, project_rules
 from guard.review.run import ReviewRun
 
 RULES = """# Agent Guide
@@ -36,11 +36,34 @@ def finding(severity="P2", line=2, rule_id=None):
 
 
 class TestProjectRules(UnitTestCase):
-	def test_mandatory_lines_get_ids(self):
-		rules = mandatory_rules([("CLAUDE.md", RULES)])
-		self.assertEqual([r.id for r in rules], ["project:CLAUDE.md:5", "project:CLAUDE.md:7"])
+	def test_rule_lines_get_ids(self):
+		rules = project_rules([("CLAUDE.md", RULES)])
+		self.assertEqual(
+			[r.id for r in rules], ["project:CLAUDE.md:5", "project:CLAUDE.md:6", "project:CLAUDE.md:7"]
+		)
 		self.assertEqual(rules[0].text, "Always add or update tests for behavior changes.")
-		self.assertEqual([r.is_test_rule for r in rules], [True, False])
+		self.assertEqual([r.is_test_rule for r in rules], [True, False, False])
+
+	def test_list_items_are_rules_without_must(self):
+		# pilot's CLAUDE.md: "These rules are mandatory", then items without must or never.
+		text = """## Code Taste
+
+These rules are mandatory for agents changing this repo:
+
+- Keep cyclomatic complexity <= 8
+- Name boolean-returning methods with `is_` or `has_`.
+- `pilot/core/server/__init__.py`: host-level operations.
+- Short item.
+"""
+		rules = project_rules([("CLAUDE.md", text)])
+		self.assertEqual(
+			[r.text for r in rules],
+			[
+				"These rules are mandatory for agents changing this repo:",
+				"Keep cyclomatic complexity <= 8",
+				"Name boolean-returning methods with `is_` or `has_`.",
+			],
+		)
 
 	def test_only_rules_that_ask_for_tests(self):
 		def asks(text):
@@ -68,10 +91,10 @@ class TestProjectRules(UnitTestCase):
 		self.assertFalse(checks.TEST_FILE.search("app/latest.py"))
 
 	def test_missing_tests(self):
-		rules = mandatory_rules([("CLAUDE.md", RULES)])
+		rules = project_rules([("CLAUDE.md", RULES)])
 		files = parse_diff(DIFF)
 		[missing] = checks.missing_test_findings(files, ["app/a.py"], rules)
-		self.assertEqual((missing.path, missing.start_line, missing.severity), ("app/a.py", 2, "P1"))
+		self.assertEqual((missing.path, missing.start_line, missing.severity), ("app/a.py", 2, "P2"))
 		self.assertEqual(missing.rule_id, "project:CLAUDE.md:5")
 		self.assertFalse(checks.missing_test_findings(files, ["app/a.py", "app/tests/test_a.py"], rules))
 		self.assertFalse(checks.missing_test_findings(files, ["app/a.py"], []))
@@ -88,12 +111,18 @@ class TestProjectRules(UnitTestCase):
 
 
 class TestRuleFilter(UnitTestCase):
-	def test_project_rule_is_at_least_p1(self):
-		rule = finding("P2", rule_id="project:CLAUDE.md:5")
-		other = finding("P2", rule_id="frappe-pack")
-		FindingFilter(parse_diff(DIFF), {"strictness": 3}).run([rule, other])
-		self.assertEqual((rule.severity, rule.kept), ("P1", True))
+	def test_a_project_rule_break_is_a_p2_that_stays(self):
+		# Like a rule comment of another reviewer: a P2 that caps the score at 4, posted whatever
+		# the model's confidence, and of any comment type. Strictness 3 posts no P2.
+		rule, other = finding("P2", rule_id="project:CLAUDE.md:5"), finding("P2", rule_id="frappe-pack")
+		for item in (rule, other):
+			item.confidence, item.comment_type = 0.4, "style"
+		FindingFilter(parse_diff(DIFF), {"strictness": 2, "comment_types": ["logic"]}).run([rule, other])
+		self.assertEqual((rule.severity, rule.kept), ("P2", True))
 		self.assertFalse(other.kept)
+		strict = finding("P2", rule_id="project:CLAUDE.md:5")
+		FindingFilter(parse_diff(DIFF), {"strictness": 3}).run([strict])
+		self.assertFalse(strict.kept)
 
 	def test_rereview_keeps_p2_only_on_new_lines(self):
 		new, old = finding(line=2), finding(line=1)
@@ -137,7 +166,7 @@ class TestVerifier(UnitTestCase):
 		run = ReviewRun(None, None, "", lambda path: "x = 1\n", lambda path: None, lambda path: [], "", "")
 		item = verify._item(run, 0, finding(rule_id="project:CLAUDE.md:5"), "Always add tests.")
 		self.assertIn("Always add tests.", item)
-		self.assertNotIn("mandatory project rule", verify._item(run, 0, finding()))
+		self.assertNotIn("project rule", verify._item(run, 0, finding()))
 
 	def test_the_verifier_sees_the_code_a_finding_cites(self):
 		# grove#73: the evidence was in an old patch, and the verifier saw only app code.
@@ -178,7 +207,7 @@ class TestEvalCases(UnitTestCase):
 		files = parse_diff(payload["diff"])
 		self.assertTrue(all(f.path in payload["files"] for f in files))
 		found = collect([f.path for f in files], payload["files"].get)
-		missing = checks.missing_test_findings(files, [f.path for f in files], mandatory_rules(found))
+		missing = checks.missing_test_findings(files, [f.path for f in files], project_rules(found))
 		expected = [e for e in case["expected"] if e["keywords"] == ["test"]]
 		self.assertTrue(evals.matches(expected[0], vars(missing[0])))
 

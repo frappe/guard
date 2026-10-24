@@ -49,7 +49,7 @@
 		},
 		{
 			"path": "admin/frontend/dashboard/src/composables/setup/useSetup.ts",
-			"severity": "P1",
+			"severity": "P2",
 			"keywords": [
 				"test"
 			],
