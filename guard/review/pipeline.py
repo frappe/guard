@@ -49,6 +49,8 @@ AREA_FILES = 8
 # Parts of an apex review. A larger pull request gets parts for its riskiest files, and the pass
 # across the parts reviews the rest: the cost stays bounded.
 MAX_AREAS = 6
+# Time kept after the agents for verification, stale checks and publishing.
+FINISH_SECONDS = 360
 MAX_REST_NAMES = 60
 RETRY_DELAYS = (60, 300, 900)
 SLOT_WAIT = 60  # seconds a review waits for a free slot before it looks again
@@ -379,8 +381,9 @@ class ReviewPipeline:
 		risk = str(get_effective(team).get("risk_definitions") or "")
 		system = prompts.system_prompt(int(run.settings.get("strictness") or 2), "", risk)
 		turns = guard_settings.max_turns(run.tier)
+		deadline = self.deadline(run.tier)
 		if run.tier != "apex" or len(run.files) <= AREA_FILES:
-			Agent(run, system, turns).run_loop(compose(run, built))
+			Agent(run, system, turns).run_loop(compose(run, built), deadline)
 			return
 		# Each part, and the pass across the parts, reviews less than the whole: half the turns.
 		turns = max(turns // 2, guard_settings.max_turns("base"))
@@ -398,7 +401,9 @@ class ReviewPipeline:
 				)
 			)
 		parts = [Agent(run, system, turns, final=False) for _ in areas]
-		results = run_together(parts, tasks, self.check_cancel)
+		# The pass across the parts needs time too: the parts may use two thirds of what is left.
+		areas_until = time.time() + (deadline - time.time()) * 2 / 3
+		results = run_together(parts, tasks, self.check_cancel, areas_until)
 		in_areas = {f.path for files in areas for f in files}
 		rest = [f for f in ranked if f.path not in in_areas]
 		# The files that no part reviewed come first, so the diff limit cuts the reviewed ones.
@@ -416,8 +421,24 @@ class ReviewPipeline:
 				f"- {f.path}" for f in rest[:MAX_REST_NAMES]
 			)
 		self.check_cancel()
-		Agent(run, system, turns).run_loop(compose(run, built, extra))
+		Agent(run, system, turns).run_loop(compose(run, built, extra), deadline)
 		run.files = all_files
+
+	def deadline(self, tier: str) -> float:
+		"""The time after which the agents must submit, so that the job ends before its timeout.
+
+		A job that the worker kills loses all of its work. The timeout is the one that the job got,
+		because a review queued before the gate picked its tier can have a shorter one.
+		"""
+		from rq import get_current_job
+
+		from guard.review.jobs import job_timeout
+
+		job = get_current_job()
+		seconds = job_timeout(tier)
+		if job is not None and job.timeout:
+			seconds = min(seconds, int(job.timeout))
+		return self.started + seconds - FINISH_SECONDS
 
 	def after(self, run: ReviewRun, number: int) -> None:
 		posted = [f for f in run.findings if f.kept]

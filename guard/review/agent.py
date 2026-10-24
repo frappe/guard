@@ -1,5 +1,6 @@
 """The review agent: a tool loop over the LLM client."""
 
+import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
@@ -231,8 +232,8 @@ class Agent:
 		self.caching = False  # the gateway read part of a prompt from its cache
 		self.breakpoint: Message | None = None
 
-	def run_loop(self, task: str) -> AgentResult:
-		[result] = run_together([self], [task])
+	def run_loop(self, task: str, deadline: float = 0) -> AgentResult:
+		[result] = run_together([self], [task], deadline=deadline)
 		return result
 
 	@property
@@ -332,13 +333,17 @@ class Agent:
 
 
 def run_together(
-	agents: list[Agent], tasks: list[str], check: Callable[[], None] | None = None
+	agents: list[Agent],
+	tasks: list[str],
+	check: Callable[[], None] | None = None,
+	deadline: float = 0,
 ) -> list[AgentResult]:
 	"""Run the agents of one run side by side, each on its task.
 
 	Each round sends one turn of every busy agent at once. The model calls run on threads, and the
 	tool calls run here, one after the other, because they read `frappe.db`. `check` runs before
-	each round, for example to stop a cancelled review.
+	each round, for example to stop a cancelled review. After `deadline` (a `time.time()`), no new
+	round starts, and each agent must submit what it has.
 	"""
 	from guard.llm.client import LLMClient
 
@@ -352,6 +357,8 @@ def run_together(
 	while busy := [a for a in agents if a.busy]:
 		if check:
 			check()
+		if deadline and time.time() > deadline:
+			break
 		results = client.chat_many([a.request() for a in busy], tools=specs)
 		for agent, result in zip(busy, results, strict=True):
 			agent.receive(result)

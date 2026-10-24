@@ -75,7 +75,8 @@ def enqueue_review(review: str, delay: int = 0, attempt: int = 0, tier: str = ""
 
 
 def job_timeout(tier: str) -> int:
-	return 7200 if tier == "apex" else 1800
+	"""Seconds a review job may run. A new review has no tier yet, and the gate can make it apex."""
+	return 1800 if tier in ("base", "plus") else 7200
 
 
 def job_id(review: str, attempt: int) -> str:

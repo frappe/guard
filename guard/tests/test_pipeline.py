@@ -1,7 +1,9 @@
+import time
+from types import SimpleNamespace
 from unittest.mock import PropertyMock, patch
 
 import frappe
-from frappe.tests import IntegrationTestCase
+from frappe.tests import IntegrationTestCase, UnitTestCase
 
 from guard.git.diff import parse_diff
 from guard.graph.overlay import ChangedEntity
@@ -9,8 +11,9 @@ from guard.graph.queries import Link
 from guard.llm.client import ChatRequest, LLMClient, use_responder
 from guard.llm.types import ChatResult, ToolCall, Usage
 from guard.providers.base import ProviderComment
+from guard.review import jobs, trigger
 from guard.review import pipeline as pipeline_module
-from guard.review import trigger
+from guard.review.agent import Agent
 from guard.review.context import BuiltContext
 from guard.review.pipeline import ReviewPipeline
 from guard.review.prompt import ContextPack
@@ -846,6 +849,7 @@ class TestApexAreas(IntegrationTestCase):
 
 		pipeline = ReviewPipeline.__new__(ReviewPipeline)
 		pipeline.check_cancel = lambda: None
+		pipeline.started = time.time()
 		with use_responder(respond):
 			pipeline.agent(run, BuiltContext(ContextPack()))
 		parts = [t for t in tasks if "diff part" in t]
@@ -860,3 +864,30 @@ class TestApexAreas(IntegrationTestCase):
 		self.assertIn("(score 5): part", across)
 		self.assertEqual(run.verdict.summary, "whole")
 		self.assertEqual(len(run.files), files)
+
+
+class TestDeadline(UnitTestCase):
+	def test_a_new_review_can_become_apex_so_it_gets_the_long_timeout(self):
+		self.assertEqual(jobs.job_timeout(""), jobs.job_timeout("apex"))
+		self.assertLess(jobs.job_timeout("plus"), jobs.job_timeout(""))
+
+	def test_the_job_timeout_bounds_the_deadline(self):
+		pipeline = ReviewPipeline.__new__(ReviewPipeline)
+		pipeline.started = 1000.0
+		job = SimpleNamespace(timeout=1800)
+		with patch("rq.get_current_job", return_value=job):
+			self.assertEqual(pipeline.deadline("apex"), 1000 + 1800 - pipeline_module.FINISH_SECONDS)
+		with patch("rq.get_current_job", return_value=None):
+			self.assertEqual(pipeline.deadline("apex"), 1000 + 7200 - pipeline_module.FINISH_SECONDS)
+
+	def test_no_turn_starts_after_the_deadline(self):
+		run = ReviewRun(None, None, "", lambda path: "a = 1", lambda path: None, lambda path: [], "", "")
+		calls: list[ChatRequest] = []
+
+		def respond(request: ChatRequest) -> ChatResult:
+			calls.append(request)
+			return ChatResult("", [ToolCall("t", "read_file", {"path": "a.py"})], Usage(10, 1))
+
+		with use_responder(respond):
+			result = Agent(run, "s", 8).run_loop("task", deadline=time.time() - 1)
+		self.assertEqual((result.turns, len(calls)), (0, 0))
