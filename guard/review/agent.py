@@ -1,5 +1,6 @@
 """The review agent: a tool loop over the LLM client."""
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
@@ -209,12 +210,20 @@ def tools(run: ReviewRun) -> list[ToolSpec]:
 
 
 class Agent:
-	"""One conversation with the reviewer model."""
+	"""One conversation with the reviewer model.
 
-	def __init__(self, run: ReviewRun, system: str, max_turns: int = 8):
+	The agent has its own verdict. A `final` agent writes it to the run: the verdict of an area
+	of an apex review is not the verdict of the pull request.
+	"""
+
+	def __init__(self, run: ReviewRun, system: str, max_turns: int = 8, final: bool = True):
 		self.run = run
 		self.system = system
 		self.max_turns = max_turns
+		self.final = final
+		self.verdict = Verdict()
+		self.turns = 0
+		self.done = False  # the model answered without a tool call
 		self.messages: list[Message] = [Message("system", self.system, cache=True)]
 		self.reported: set[str] = set()
 		self.nudged = False
@@ -223,32 +232,40 @@ class Agent:
 		self.breakpoint: Message | None = None
 
 	def run_loop(self, task: str) -> AgentResult:
-		from guard.llm.client import LLMClient
+		[result] = run_together([self], [task])
+		return result
 
-		client = LLMClient(tier=self.run.tier, purpose="review", usage=self.run.usage)
-		specs = tools(self.run)
-		self.messages.append(Message("user", task, cache=True))
-		turns = 0
-		while turns < self.max_turns and not self.run.verdict.submitted:
-			turns += 1
-			self.run.turns += 1
-			if turns == self.max_turns - WARN_TURNS:
-				self.messages.append(Message("user", TURNS_LOW))
-			result = client.chat(self.messages, tools=specs)
-			self.caching = self.caching or result.usage.cached_tokens > 0
-			self.messages.append(result.as_message())
-			if not result.tool_calls:
-				break
-			indexes = []
-			for call in result.tool_calls:
-				indexes.append(len(self.messages))
-				self.messages.append(self._dispatch(call.name, call.arguments, call.id))
-			self.tool_turns.append(indexes)
-			self._trim()
-			self._move_breakpoint()
-		if not self.run.verdict.submitted and client.online:
-			self._close(client, specs)
-		return AgentResult(self.run.findings, self.run.verdict, turns)
+	@property
+	def busy(self) -> bool:
+		return self.turns < self.max_turns and not self.verdict.submitted and not self.done
+
+	def request(self) -> list[Message]:
+		"""Start the next turn: the messages to send."""
+		self.turns += 1
+		self.run.turns += 1
+		if self.turns == self.max_turns - WARN_TURNS:
+			self.messages.append(Message("user", TURNS_LOW))
+		return self.messages
+
+	def receive(self, result: ChatResult) -> None:
+		"""End the turn: run the tool calls of the answer."""
+		self.caching = self.caching or result.usage.cached_tokens > 0
+		self.messages.append(result.as_message())
+		if not result.tool_calls:
+			self.done = True
+			return
+		indexes = []
+		for call in result.tool_calls:
+			indexes.append(len(self.messages))
+			self.messages.append(self._dispatch(call.name, call.arguments, call.id))
+		self.tool_turns.append(indexes)
+		self._trim()
+		self._move_breakpoint()
+
+	def result(self) -> AgentResult:
+		if self.final:
+			self.run.verdict = self.verdict
+		return AgentResult(self.run.findings, self.verdict, self.turns)
 
 	def _trim(self) -> None:
 		"""Cut the long tool output of the turns before the last `KEEP_TURNS`.
@@ -271,24 +288,6 @@ class Agent:
 			self.breakpoint.cache = False
 		self.breakpoint = self.messages[-1]
 		self.breakpoint.cache = True
-
-	def _close(self, client, specs: list[ToolSpec]) -> None:
-		"""Out of turns: one call to report what is left, then one forced verdict. No nudge here."""
-		self.nudged = True
-		final_tools = [s for s in specs if s.name in ("report_finding", "submit_review")]
-		self.messages.append(Message("user", FORCE_SUBMIT))
-		result = client.chat(self.messages, tools=final_tools, tool_choice="required")
-		self.messages.append(result.as_message())
-		for call in result.tool_calls:
-			self.messages.append(self._dispatch(call.name, call.arguments, call.id))
-		if not self.run.verdict.submitted:
-			verdict = client.chat(
-				self.messages,
-				tools=[s for s in specs if s.name == "submit_review"],
-				tool_choice="submit_review",
-			)
-			for call in verdict.tool_calls:
-				self._dispatch(call.name, call.arguments, call.id)
 
 	def _dispatch(self, name: str, args: dict[str, Any], call_id: str) -> Message:
 		try:
@@ -316,7 +315,7 @@ class Agent:
 				# Some models put every issue in the summary. Ask once for line findings.
 				self.nudged = True
 				return NUDGE
-			run.verdict = Verdict.from_arguments(args)
+			self.verdict = Verdict.from_arguments(args)
 			return "review submitted"
 		answer = read_tool(run, name, args)
 		if answer is not None:
@@ -330,6 +329,58 @@ class Agent:
 			)
 			return run.last_sandbox_output
 		return f"unknown tool {name}"
+
+
+def run_together(
+	agents: list[Agent], tasks: list[str], check: Callable[[], None] | None = None
+) -> list[AgentResult]:
+	"""Run the agents of one run side by side, each on its task.
+
+	Each round sends one turn of every busy agent at once. The model calls run on threads, and the
+	tool calls run here, one after the other, because they read `frappe.db`. `check` runs before
+	each round, for example to stop a cancelled review.
+	"""
+	from guard.llm.client import LLMClient
+
+	if not agents:
+		return []
+	run = agents[0].run
+	client = LLMClient(tier=run.tier, purpose="review", usage=run.usage)
+	specs = tools(run)
+	for agent, task in zip(agents, tasks, strict=True):
+		agent.messages.append(Message("user", task, cache=True))
+	while busy := [a for a in agents if a.busy]:
+		if check:
+			check()
+		results = client.chat_many([a.request() for a in busy], tools=specs)
+		for agent, result in zip(busy, results, strict=True):
+			agent.receive(result)
+	if client.online:
+		_close([a for a in agents if not a.verdict.submitted], client, specs)
+	return [agent.result() for agent in agents]
+
+
+def _close(agents: list[Agent], client: Any, specs: list[ToolSpec]) -> None:
+	"""Out of turns: one call to report what is left, then one forced verdict. No nudge here."""
+	if not agents:
+		return
+	final_tools = [s for s in specs if s.name in ("report_finding", "submit_review")]
+	for agent in agents:
+		agent.nudged = True
+		agent.messages.append(Message("user", FORCE_SUBMIT))
+	results = client.chat_many([a.messages for a in agents], tools=final_tools, tool_choice="required")
+	for agent, result in zip(agents, results, strict=True):
+		agent.messages.append(result.as_message())
+		for call in result.tool_calls:
+			agent.messages.append(agent._dispatch(call.name, call.arguments, call.id))
+	left = [a for a in agents if not a.verdict.submitted]
+	if not left:
+		return
+	submit = [s for s in specs if s.name == "submit_review"]
+	verdicts = client.chat_many([a.messages for a in left], tools=submit, tool_choice="submit_review")
+	for agent, verdict in zip(left, verdicts, strict=True):
+		for call in verdict.tool_calls:
+			agent._dispatch(call.name, call.arguments, call.id)
 
 
 def read_tool(run: ReviewRun, name: str, args: dict[str, Any]) -> str | None:

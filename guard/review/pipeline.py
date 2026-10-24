@@ -9,7 +9,7 @@ from frappe.utils import now_datetime
 from guard import settings as guard_settings
 from guard.config import gate
 from guard.config.resolver import ConfigResolver
-from guard.git.diff import parse_diff
+from guard.git.diff import FileDiff, parse_diff
 from guard.git.repository import store_for
 from guard.git.store import GitStore
 from guard.graph.overlay import PullRequestGraph
@@ -33,7 +33,7 @@ from guard.review import (
 	stale,
 	verify,
 )
-from guard.review.agent import Agent
+from guard.review.agent import Agent, run_together
 from guard.review.findings import FindingFilter, score_cap
 from guard.review.publish import Publisher
 from guard.review.run import ReviewRun, Verdict
@@ -46,6 +46,10 @@ if TYPE_CHECKING:
 	from guard.guard.doctype.pull_request.pull_request import PullRequest
 
 AREA_FILES = 8
+# Parts of an apex review. A larger pull request gets parts for its riskiest files, and the pass
+# across the parts reviews the rest: the cost stays bounded.
+MAX_AREAS = 6
+MAX_REST_NAMES = 60
 RETRY_DELAYS = (60, 300, 900)
 SLOT_WAIT = 60  # seconds a review waits for a free slot before it looks again
 GATEWAY_DOWN = "paused: the AI gateway is down"
@@ -381,21 +385,39 @@ class ReviewPipeline:
 		# Each part, and the pass across the parts, reviews less than the whole: half the turns.
 		turns = max(turns // 2, guard_settings.max_turns("base"))
 		all_files = run.files
-		for start in range(0, len(all_files), AREA_FILES):
-			self.check_cancel()
-			run.files = all_files[start : start + AREA_FILES]
-			Agent(run, system, turns).run_loop(
+		ranked = by_risk(run)
+		areas = [ranked[i : i + AREA_FILES] for i in range(0, len(ranked), AREA_FILES)][:MAX_AREAS]
+		tasks = []
+		for number, files in enumerate(areas, 1):
+			run.files = files
+			tasks.append(
 				compose(
 					run,
 					built,
-					f"Review only the files in this diff part ({start // AREA_FILES + 1}). Submit a verdict for this part.",
+					f"Review only the files in this diff part ({number}). Submit a verdict for this part.",
 				)
 			)
-		run.files = all_files
+		parts = [Agent(run, system, turns, final=False) for _ in areas]
+		results = run_together(parts, tasks, self.check_cancel)
+		in_areas = {f.path for files in areas for f in files}
+		rest = [f for f in ranked if f.path not in in_areas]
+		# The files that no part reviewed come first, so the diff limit cuts the reviewed ones.
+		run.files = rest + [f for f in ranked if f.path in in_areas]
 		reported = "\n".join(f"- {f.path}:{f.start_line} {f.title}" for f in run.findings)
-		Agent(run, system, turns).run_loop(
-			compose(run, built, prompts.CROSS_CUTTING + "\n\nAlready reported:\n" + reported)
+		verdicts = "\n".join(
+			f"- part {n} (score {r.verdict.confidence_score}): {r.verdict.summary[:600]}"
+			for n, r in enumerate(results, 1)
+			if r.verdict.submitted
 		)
+		extra = prompts.CROSS_CUTTING + "\n\nVerdicts of the parts:\n" + (verdicts or "- none")
+		extra += "\n\nAlready reported:\n" + (reported or "- none")
+		if rest:
+			extra += "\n\nNo part reviewed these files. Review them here:\n" + "\n".join(
+				f"- {f.path}" for f in rest[:MAX_REST_NAMES]
+			)
+		self.check_cancel()
+		Agent(run, system, turns).run_loop(compose(run, built, extra))
+		run.files = all_files
 
 	def after(self, run: ReviewRun, number: int) -> None:
 		posted = [f for f in run.findings if f.kept]
@@ -539,6 +561,21 @@ def other_review_runs(pull_request: str, head_sha: str, review: str) -> bool:
 			(pull_request, head_sha, review),
 		)
 	)
+
+
+def by_risk(run: ReviewRun) -> list[FileDiff]:
+	"""The files under review, the riskiest first: broken and stale callers, contract changes,
+	callers and changed entities from the graph, then the number of changed lines."""
+	score: dict[str, int] = {}
+	for entity in run.changed:
+		points = 1 + len(entity.callers) + 3 * len(entity.not_updated) + 5 * len(entity.broken)
+		score[entity.path] = score.get(entity.path, 0) + points + (3 if entity.contract_changed else 0)
+
+	def changed_lines(file: FileDiff) -> int:
+		return sum(1 for hunk in file.hunks for line in hunk.lines if line.kind in "+-")
+
+	# sorted() keeps the diff order when two files tie.
+	return sorted(run.files, key=lambda f: (-score.get(f.path, 0), -changed_lines(f)))
 
 
 def graph_verdict(run: ReviewRun) -> Verdict:

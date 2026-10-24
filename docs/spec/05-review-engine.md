@@ -129,7 +129,11 @@ Each turn sends the whole conversation again. When the gateway reads no part of 
 | - | - | - | - |
 | base | `base_model` | `max_turns_base` | One agent. |
 | plus | `plus_model` | `max_turns_plus` | One agent, then verification. |
-| apex | `apex_model` | `max_turns_apex` for each pass | One agent for each area (at most 8 files or 1,500 diff lines), then one cross-cutting agent that reads the area verdicts and the impact graph, then verification. |
+| apex | `apex_model` | Half of `max_turns_apex` for each pass, at least `max_turns_base` | One agent for each area of 8 files, at most 6 areas, then one cross-cutting agent that reads the area verdicts and the impact graph, then verification. |
+
+An apex review with more than 8 files sorts the files by risk. Broken callers, callers not updated, contract changes, callers and changed entities come first, then the number of changed lines. The 6 areas take the riskiest 48 files. The cross-cutting agent reviews the other files. Its diff starts with them, and its task lists them.
+
+The area agents run side by side. Each round sends one turn of every busy agent to the gateway at the same time, at most 4 at once. Guard runs the tool calls one after the other, because they read the database. Each agent has its own verdict. Only the verdict of the cross-cutting agent is the verdict of the review.
 
 ### System prompt rules
 

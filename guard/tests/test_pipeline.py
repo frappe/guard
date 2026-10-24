@@ -1,10 +1,20 @@
 from unittest.mock import PropertyMock, patch
 
 import frappe
+from frappe.tests import IntegrationTestCase
 
-from guard.llm.client import LLMClient, use_responder
+from guard.git.diff import parse_diff
+from guard.graph.overlay import ChangedEntity
+from guard.graph.queries import Link
+from guard.llm.client import ChatRequest, LLMClient, use_responder
+from guard.llm.types import ChatResult, ToolCall, Usage
 from guard.providers.base import ProviderComment
+from guard.review import pipeline as pipeline_module
 from guard.review import trigger
+from guard.review.context import BuiltContext
+from guard.review.pipeline import ReviewPipeline
+from guard.review.prompt import ContextPack
+from guard.review.run import ReviewRun
 from guard.tests.cases import AUTO_APPROVE, PullRequestCase
 from guard.tests.fakes import scripted
 from guard.utils import db
@@ -807,3 +817,46 @@ class TestPipeline(PullRequestCase):
 		):
 			polling.poll_repository(self.repository)
 		self.assertEqual(frappe.db.count("Code Review", {"pull_request": pr}), 1)
+
+
+class TestApexAreas(IntegrationTestCase):
+	def test_each_part_gets_its_own_turns_and_the_riskiest_files_come_first(self):
+		files = 60
+		diff = "".join(
+			f"diff --git a/app/f{n}.py b/app/f{n}.py\n--- a/app/f{n}.py\n+++ b/app/f{n}.py\n"
+			+ f"@@ -1 +1 @@\n-a = {n}\n+a = {n + 1}\n"
+			for n in range(files)
+		)
+		run = ReviewRun(None, None, "", lambda path: "a = 1", lambda path: None, lambda path: [], "", "")
+		run.tier = "apex"
+		run.files = parse_diff(diff)
+		caller = Link(None, "f", "f", "app/x.py", 3, True)
+		run.changed = [ChangedEntity("app/f59.py", "function", "f", "m.f", "modified", broken=[caller])]
+		tasks: list[str] = []
+
+		def respond(request: ChatRequest) -> ChatResult:
+			task = request.messages[1].content
+			tasks.append(task)
+			summary = "whole" if "Verdicts of the parts" in task else f"part {len(tasks)}"
+			return ChatResult(
+				"",
+				[ToolCall("t", "submit_review", {"summary": summary, "confidence_score": 5})],
+				Usage(10, 1),
+			)
+
+		pipeline = ReviewPipeline.__new__(ReviewPipeline)
+		pipeline.check_cancel = lambda: None
+		with use_responder(respond):
+			pipeline.agent(run, BuiltContext(ContextPack()))
+		parts = [t for t in tasks if "diff part" in t]
+		[across] = [t for t in tasks if "Verdicts of the parts" in t]
+		self.assertEqual(len(parts), pipeline_module.MAX_AREAS, "every part runs, not only the first")
+		self.assertIn("### app/f59.py", next(t for t in parts if "diff part (1)" in t))
+		# 6 parts of 8 files leave 12 files to the pass across the parts.
+		self.assertIn("No part reviewed these files", across)
+		self.assertEqual(
+			across.count("\n- app/f"), files - pipeline_module.MAX_AREAS * pipeline_module.AREA_FILES
+		)
+		self.assertIn("(score 5): part", across)
+		self.assertEqual(run.verdict.summary, "whole")
+		self.assertEqual(len(run.files), files)
