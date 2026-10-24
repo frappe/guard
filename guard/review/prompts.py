@@ -79,7 +79,8 @@ STRICTNESS = {
 
 TASK = """Review this pull request. Use the tools when you need more context.
 Each turn is slow, and turns are few: when you need several reads, searches or callers, ask
-for all of them in one turn. Tool output from older turns is cut short, so report a finding
+for all of them in one turn. `read_file` reads several ranges of a file in one call, and
+`get_callers` shows the line of each call, so you need not read it. Tool output from older turns is cut short, so report a finding
 as soon as you are sure of it.
 Report findings with `report_finding`, then call `submit_review`."""
 

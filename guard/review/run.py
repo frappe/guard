@@ -15,6 +15,8 @@ from guard.review.findings import Finding
 
 Reader = Callable[[str], str | None]
 Lister = Callable[[str], list[tuple[str, str]]]
+# (pattern, path glob) -> (path, line, text) of each match at the head.
+Grepper = Callable[[str, str | None], list[tuple[str, int, str]]]
 
 
 @dataclass
@@ -61,6 +63,7 @@ class ReviewRun:
 	list_dir: Lister
 	head_sha: str
 	base_sha: str
+	grep: Grepper | None = None
 	title: str = ""
 	description: str = ""
 	author: str = ""

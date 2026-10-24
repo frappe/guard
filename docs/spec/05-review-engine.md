@@ -93,19 +93,19 @@ Every item from code, comments, tickets or documents goes inside a fenced block 
 
 | Tool | Purpose |
 | - | - |
-| `read_file(path, start_line, end_line, ref)` | Read a file at `head` or `base`. |
-| `list_directory(path, ref)` | List a directory. |
-| `grep(pattern, path_glob, ref)` | `git grep` with a result cap. |
-| `search_code(query, repository)` | Hybrid search in the index. `repository` reaches cross-repo context. |
-| `find_definition(name)` | Definitions by name or qualified name. |
-| `get_callers(symbol)`, `get_callees(symbol)` | Graph edges. |
-| `get_impact(symbol)` | Callers to depth 2, grouped by file. |
-| `get_file_outline(path, ref)` | Entities in a file. |
-| `search_knowledge_base(query)`, `read_knowledge_base(path)` | Knowledge base. |
-| `lookup_ticket(key)` | Jira or Linear issue. |
+| `read_file(path, start_line, end_line, ranges, ref)` | Read a file at `head` or `base`. `ranges` reads up to 6 places of the file in one call. |
+| `list_directory(path)` | List a directory at the head. |
+| `grep(pattern, path_glob)` | `git grep` at the head, with a result cap. Only when the review has a repository. |
+| `search_code(query)` | Hybrid search in the index. |
+| `find_definition(name)` | Definitions by name or qualified name, with the signature. |
+| `get_callers(name)` | Callers, each with the text of the line of the call, at the base. |
+| `get_callees(name)` | What a function calls. |
+| `get_outline(path)` | Entities in a file. |
 | `run_in_sandbox(command)`, `write_sandbox_file(path, content)` | Runtime validation, when on. |
 | `report_finding(...)` | Add one finding. |
 | `submit_review(...)` | End the review with the verdict. |
+
+The graph tools are there only when the repository has an index. Thread answers use the same read tools.
 
 ### `report_finding` arguments
 

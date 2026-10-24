@@ -279,6 +279,7 @@ class ReviewPipeline:
 			list_dir=lambda path: store.list_dir(head, path),
 			head_sha=head,
 			base_sha=merge_base,
+			grep=lambda pattern, glob: store.grep(head, pattern, glob),
 			title=pr.title or "",
 			description=pr.description or "",
 			author=pr.author or "",

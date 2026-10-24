@@ -47,6 +47,7 @@ def run_for_repository(repository: str) -> ReviewRun:
 		list_dir=lambda path: store.list_dir(sha, path) if sha else [],
 		head_sha=sha,
 		base_sha=sha,
+		grep=(lambda pattern, glob: store.grep(sha, pattern, glob)) if sha else None,
 		title=f"Codebase {row.get('full_name')}",
 		base_branch=str(row.get("default_branch") or ""),
 		graph=CodeGraph(str(index)) if index else None,

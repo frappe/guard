@@ -1,9 +1,9 @@
-from typing import Any
+from typing import Any, cast
 
 from frappe.tests import UnitTestCase
 
 from guard.git.diff import parse_diff
-from guard.graph.queries import Entity, Link
+from guard.graph.queries import CodeGraph, Entity, Link
 from guard.llm.client import use_responder
 from guard.review import agent, context, task
 from guard.review.context import BuiltContext
@@ -46,6 +46,82 @@ class TestRead(UnitTestCase):
 		out = agent._read(run_on(LONG), "app/a.py", {"start_line": 10, "end_line": 12})
 		self.assertTrue(out.startswith("app/a.py lines 10-12 of 1000\n"))
 		self.assertNotIn("for more", out)
+
+	def test_one_call_reads_several_ranges_and_joins_overlaps(self):
+		ranges = [
+			{"start_line": 900, "end_line": 901},
+			{"start_line": 10, "end_line": 12},
+			{"start_line": 12, "end_line": 14},
+		]
+		out = agent._read(run_on(LONG), "app/a.py", {"ranges": ranges})
+		self.assertEqual(
+			[line for line in out.splitlines() if line.startswith("app/a.py")],
+			["app/a.py lines 10-14 of 1000", "app/a.py lines 900-901 of 1000"],
+		)
+
+	def test_read_at_the_base(self):
+		run = run_on(LONG)
+		run.base = lambda path: "old = 1"
+		out = agent.read_tool(run, "read_file", {"path": "app/a.py", "ref": "base"})
+		self.assertEqual(out, "app/a.py at the base lines 1-1 of 1\n    1 old = 1")
+
+
+class FakeGraph:
+	def __init__(self, target: Entity, links: list[Link]):
+		self.target, self.links = target, links
+
+	def entity(self, name: str) -> Entity | None:
+		return None
+
+	def definitions(self, name: str, limit: int = 20) -> list[Entity]:
+		return [self.target] if name == self.target.entity_name else []
+
+	def callers(self, entity: Entity, limit: int = 50) -> list[Link]:
+		return self.links
+
+	def callees(self, entity: Entity, limit: int = 100) -> list[Link]:
+		return [Link(None, "helper", "self.helper", entity.path, 3, False)]
+
+
+class TestGraphTools(UnitTestCase):
+	def setUp(self):
+		target = Entity("t", "function", "f", "m.f", "m.py", None, 1, 5, "def f(a, b)", "python")
+		caller = Entity("c", "function", "g", "app.a.g", "app/a.py", None, 400, 420, "def g()", "python")
+		self.review = run_on(LONG)
+		self.review.base = lambda path: LONG if path == "app/a.py" else None
+		self.review.files = parse_diff(DIFF)
+		self.review.graph = cast(
+			CodeGraph, FakeGraph(target, [Link(caller, "f", "f", "app/a.py", 410, True)])
+		)
+
+	def test_callers_show_the_line_of_each_call(self):
+		out = agent.read_tool(self.review, "get_callers", {"name": "f"}) or ""
+		self.assertIn("app/a.py:410 in app.a.g (the pull request changes this file)\n    line_410 = ", out)
+		self.assertEqual(
+			agent.read_tool(self.review, "get_callers", {"name": "nope"}), "no definition found for nope"
+		)
+
+	def test_definitions_and_callees(self):
+		self.assertIn(
+			"m.py:1-5 function m.f\n    def f(a, b)",
+			agent.read_tool(self.review, "find_definition", {"name": "f"}) or "",
+		)
+		self.assertEqual(
+			agent.read_tool(self.review, "get_callees", {"name": "f"}),
+			"    3 self.helper -> not in the index",
+		)
+
+	def test_grep_is_a_tool_only_with_a_repository(self):
+		self.assertNotIn("grep", [spec.name for spec in agent.tools(self.review)])
+		self.review.grep = lambda pattern, glob: [("app/a.py", 7, f"  {pattern} {glob}  ")]
+		self.assertIn("grep", [spec.name for spec in agent.tools(self.review)])
+		out = agent.read_tool(self.review, "grep", {"pattern": "def f", "path_glob": "*.py"})
+		self.assertEqual(out, "app/a.py:7: def f *.py")
+
+	def test_the_answerer_has_the_read_tools_only(self):
+		names = [spec.name for spec in agent.read_specs(self.review)]
+		self.assertIn("get_callees", names)
+		self.assertNotIn("report_finding", names)
 
 
 class TestTrim(UnitTestCase):

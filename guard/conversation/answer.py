@@ -3,7 +3,6 @@
 from dataclasses import dataclass, field
 from typing import Any
 
-from guard.graph.queries import CodeGraph
 from guard.llm.client import LLMClient
 from guard.llm.types import Message, ToolSpec, Usage
 from guard.review import agent as review_agent
@@ -25,7 +24,7 @@ class Answer:
 
 
 def read_tools(run: ReviewRun) -> list[ToolSpec]:
-	return [t for t in review_agent.tools(run) if t.name not in ("report_finding", "submit_review")]
+	return review_agent.read_specs(run)
 
 
 def answer(run: ReviewRun, question: str, thread: str = "", extra: str = "", tier: str = "base") -> Answer:
@@ -61,15 +60,7 @@ def answer(run: ReviewRun, question: str, thread: str = "", extra: str = "", tie
 
 def _tool(run: ReviewRun, name: str, args: dict[str, Any]) -> str:
 	try:
-		if name == "read_file":
-			return review_agent._read(run, str(args.get("path") or ""), args)
-		graph: CodeGraph | None = run.graph
-		if graph and name == "search_code":
-			return review_agent._search(graph, str(args.get("query") or ""))
-		if graph and name == "get_callers":
-			return review_agent._callers(graph, str(args.get("name") or ""))
-		if graph and name == "get_outline":
-			return review_agent._outline(graph, str(args.get("path") or ""))
+		answer = review_agent.read_tool(run, name, args)
 	except Exception as error:
 		return f"error: {error}"
-	return f"unknown tool {name}"
+	return f"unknown tool {name}" if answer is None else answer

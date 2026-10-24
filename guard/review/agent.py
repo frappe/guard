@@ -3,7 +3,7 @@
 from dataclasses import dataclass
 from typing import Any
 
-from guard.graph.queries import CodeGraph
+from guard.graph.queries import CodeGraph, Entity
 from guard.llm.types import ChatResult, Message, ToolSpec
 from guard.review.findings import Finding
 from guard.review.prompts import FORCE_SUBMIT, TASK
@@ -29,7 +29,13 @@ def _mentions_issues(arguments: dict[str, Any]) -> bool:
 READ_LIMIT = 600
 # Below the 8000 characters that a tool result keeps, so the line range in the header is true.
 READ_CHARS = 7500
+READ_RANGES = 6
 SEARCH_LIMIT = 8
+GREP_LIMIT = 40
+CALLERS_SHOWN = 15
+CALLEES_SHOWN = 40
+DEFINITIONS_SHOWN = 10
+LIST_LIMIT = 200
 # Every turn sends the whole conversation again. Tool output older than this many turns is cut
 # to its start: the model has read it, and can ask again.
 KEEP_TURNS = 4
@@ -44,21 +50,77 @@ class AgentResult:
 	turns: int
 
 
-def tools(run: ReviewRun) -> list[ToolSpec]:
+def read_specs(run: ReviewRun) -> list[ToolSpec]:
+	"""The tools that read code and the graph. They change nothing."""
+	line = {"type": "integer"}
+	name = {"type": "object", "properties": {"name": {"type": "string"}}, "required": ["name"]}
 	specs = [
 		ToolSpec(
 			"read_file",
-			"Read a file from the pull request branch. Optional line range.",
+			"Read lines of a file at the head of the pull request, or at the base. Give `ranges` to read "
+			+ f"up to {READ_RANGES} places of the file in one call.",
 			{
 				"type": "object",
 				"properties": {
 					"path": {"type": "string", "description": "Repository path"},
-					"start_line": {"type": "integer"},
-					"end_line": {"type": "integer"},
+					"start_line": line,
+					"end_line": line,
+					"ranges": {
+						"type": "array",
+						"items": {
+							"type": "object",
+							"properties": {"start_line": line, "end_line": line},
+							"required": ["start_line"],
+						},
+					},
+					"ref": {"type": "string", "enum": ["head", "base"], "description": "Default: head"},
 				},
 				"required": ["path"],
 			},
 		),
+		ToolSpec(
+			"list_directory",
+			"List the files and directories in a directory at the head.",
+			{"type": "object", "properties": {"path": {"type": "string"}}, "required": ["path"]},
+		),
+	]
+	if run.grep:
+		specs.append(
+			ToolSpec(
+				"grep",
+				"Find lines that match an extended regular expression at the head (git grep).",
+				{
+					"type": "object",
+					"properties": {
+						"pattern": {"type": "string"},
+						"path_glob": {"type": "string", "description": "For example '*.py' or 'app/**'"},
+					},
+					"required": ["pattern"],
+				},
+			)
+		)
+	if run.graph:
+		specs += [
+			ToolSpec(
+				"search_code",
+				"Search the indexed codebase by meaning or symbol name.",
+				{"type": "object", "properties": {"query": {"type": "string"}}, "required": ["query"]},
+			),
+			ToolSpec("find_definition", "Find where a symbol is defined, with its signature.", name),
+			ToolSpec("get_callers", "List the callers of a symbol, each with the line of the call.", name),
+			ToolSpec("get_callees", "List what a function or method calls.", name),
+			ToolSpec(
+				"get_outline",
+				"List the functions, classes and imports defined in a file.",
+				{"type": "object", "properties": {"path": {"type": "string"}}, "required": ["path"]},
+			),
+		]
+	return specs
+
+
+def tools(run: ReviewRun) -> list[ToolSpec]:
+	specs = [
+		*read_specs(run),
 		ToolSpec(
 			"report_finding",
 			"Report one review finding. Call again for each separate issue.",
@@ -123,29 +185,6 @@ def tools(run: ReviewRun) -> list[ToolSpec]:
 			},
 		),
 	]
-	graph = run.graph
-	if graph:
-		specs += [
-			ToolSpec(
-				"search_code",
-				"Search the indexed codebase by meaning or symbol name.",
-				{
-					"type": "object",
-					"properties": {"query": {"type": "string"}},
-					"required": ["query"],
-				},
-			),
-			ToolSpec(
-				"get_callers",
-				"List the callers of a symbol in the indexed codebase.",
-				{"type": "object", "properties": {"name": {"type": "string"}}, "required": ["name"]},
-			),
-			ToolSpec(
-				"get_outline",
-				"List the functions, classes and imports defined in a file.",
-				{"type": "object", "properties": {"path": {"type": "string"}}, "required": ["path"]},
-			),
-		]
 	if run.sandbox is not None:
 		specs += [
 			ToolSpec(
@@ -259,8 +298,9 @@ class Agent:
 				return NUDGE
 			run.verdict = Verdict.from_arguments(args)
 			return "review submitted"
-		if name == "read_file":
-			return _read(run, str(args.get("path") or ""), args)
+		answer = read_tool(run, name, args)
+		if answer is not None:
+			return answer
 		if run.sandbox is not None and name == "write_sandbox_file":
 			return run.sandbox.write(str(args.get("path") or ""), str(args.get("content") or ""))
 		if run.sandbox is not None and name == "run_in_sandbox":
@@ -269,37 +309,106 @@ class Agent:
 				f"$ {args.get('command')}\nexit {result['exit_code']}\n{result['output']}"
 			)
 			return run.last_sandbox_output
-		if run.graph:
-			if name == "search_code":
-				return _search(run.graph, str(args.get("query") or ""))
-			if name == "get_callers":
-				return _callers(run.graph, str(args.get("name") or ""))
-			if name == "get_outline":
-				return _outline(run.graph, str(args.get("path") or ""))
 		return f"unknown tool {name}"
 
 
+def read_tool(run: ReviewRun, name: str, args: dict[str, Any]) -> str | None:
+	"""The answer to a call of one of `read_specs`, or None for another tool."""
+	text = str(args.get("name") or args.get("query") or args.get("path") or "")
+	if name == "read_file":
+		return _read(run, text, args)
+	if name == "list_directory":
+		return _list(run, text)
+	if name == "grep" and run.grep:
+		return _grep(run, str(args.get("pattern") or ""), str(args.get("path_glob") or "") or None)
+	graph = run.graph
+	if not graph:
+		return None
+	if name == "search_code":
+		return _search(graph, text)
+	if name == "find_definition":
+		return _definitions(graph, text)
+	if name == "get_callers":
+		return _callers(run, graph, text)
+	if name == "get_callees":
+		return _callees(graph, text)
+	if name == "get_outline":
+		return _outline(graph, text)
+	return None
+
+
 def _read(run: ReviewRun, path: str, args: dict[str, Any]) -> str:
-	text = run.head(path)
+	base = args.get("ref") == "base"
+	text = run.base(path) if base else run.head(path)
 	if text is None:
-		return f"error: {path} not found"
+		return f"error: {path} not found at the {'base' if base else 'head'}"
 	lines = text.splitlines()
-	start = int(args.get("start_line") or 1)
-	end = int(args.get("end_line") or start + READ_LIMIT - 1)
-	start, end = max(start, 1), min(max(end, start), len(lines))
-	out: list[str] = []
-	size = 0
-	for number in range(start, end + 1):
-		row = f"{number:5} {lines[number - 1]}"
-		if out and size + len(row) > READ_CHARS:
+	name = f"{path} at the base" if base else path
+	blocks: list[str] = []
+	room = READ_CHARS
+	for start, end in _ranges(args):
+		start, end = max(start, 1), min(max(end, start), len(lines))
+		out: list[str] = []
+		for number in range(start, end + 1):
+			row = f"{number:5} {lines[number - 1]}"
+			if out and len(row) + 1 > room:
+				break
+			out.append(row)
+			room -= len(row) + 1
+		last = start + len(out) - 1
+		head = f"{name} lines {start}-{last} of {len(lines)}"
+		if last < end:
+			head += f". The output is full: read from line {last + 1} for more"
+		blocks.append(head + "\n" + "\n".join(out))
+		if last < end:
 			break
-		out.append(row)
-		size += len(row) + 1
-	last = start + len(out) - 1
-	head = f"{path} lines {start}-{last} of {len(lines)}"
-	if last < end:
-		head += f". The output is full: read from line {last + 1} for more"
-	return head + "\n" + "\n".join(out)
+	return "\n\n".join(blocks)
+
+
+def _ranges(call: dict[str, Any]) -> list[tuple[int, int]]:
+	"""The line ranges to read, in order, with overlaps joined."""
+	items = call.get("ranges")
+	items = items if isinstance(items, list) else []
+	pairs = [_range(item) for item in items[:READ_RANGES] if isinstance(item, dict)] or [_range(call)]
+	joined: list[tuple[int, int]] = []
+	for start, end in sorted(pairs):
+		if joined and start <= joined[-1][1] + 1:
+			joined[-1] = (joined[-1][0], max(joined[-1][1], end))
+		else:
+			joined.append((start, end))
+	return joined
+
+
+def _range(span: dict[str, Any]) -> tuple[int, int]:
+	start = _number(span.get("start_line"), 1)
+	return start, _number(span.get("end_line"), start + READ_LIMIT - 1)
+
+
+def _number(value: Any, default: int) -> int:
+	try:
+		return int(value) if value not in (None, "") else default
+	except TypeError, ValueError:
+		return default
+
+
+def _list(run: ReviewRun, path: str) -> str:
+	rows = sorted(run.list_dir(path.strip("/")))
+	if not rows:
+		return f"no entries in {path or '/'}"
+	out = [f"{name}{'/' if kind == 'tree' else ''}" for name, kind in rows[:LIST_LIMIT]]
+	if len(rows) > LIST_LIMIT:
+		out.append(f"... {len(rows) - LIST_LIMIT} more")
+	return "\n".join(out)
+
+
+def _grep(run: ReviewRun, pattern: str, path_glob: str | None) -> str:
+	if not pattern or not run.grep:
+		return "error: give a pattern"
+	hits = run.grep(pattern, path_glob)
+	out = [f"{path}:{line}: {text.strip()[:200]}" for path, line, text in hits[:GREP_LIMIT]]
+	if len(hits) > GREP_LIMIT:
+		out.append("... more matches: narrow the pattern or the path_glob")
+	return "\n".join(out) or "no matches"
 
 
 def _search(graph: CodeGraph, query: str) -> str:
@@ -320,16 +429,55 @@ def _search(graph: CodeGraph, query: str) -> str:
 	return "\n".join(lines) or "no results"
 
 
-def _callers(graph: CodeGraph, name: str) -> str:
-	entity = graph.entity(name) or next(iter(graph.definitions(name)), None)
-	if not entity:
-		return f"no definition found for {name}"
-	links = graph.callers(entity, limit=15)
+def _definitions(graph: CodeGraph, name: str) -> str:
+	rows = graph.definitions(name, limit=DEFINITIONS_SHOWN)
 	return (
 		"\n".join(
-			f"{link.path}:{link.line} {link.entity.label if link.entity else link.name}" for link in links
+			f"{e.path}:{e.start_line}-{e.end_line} {e.kind} {e.qualified_name}\n    {(e.signature or '')[:200]}"
+			for e in rows
 		)
-		or f"no callers of {name}"
+		or f"no definition found for {name}"
+	)
+
+
+def _symbol(graph: CodeGraph, name: str) -> Entity | None:
+	return graph.entity(name) or next(iter(graph.definitions(name)), None)
+
+
+def _callers(run: ReviewRun, graph: CodeGraph, name: str) -> str:
+	"""The callers of `name`, each with the line of the call, so the model need not read it."""
+	entity = _symbol(graph, name)
+	if not entity:
+		return f"no definition found for {name}"
+	links = graph.callers(entity, limit=CALLERS_SHOWN)
+	if not links:
+		return f"no callers of {name}"
+	# The index is of the base branch, so the line numbers are too.
+	changed = set(run.paths)
+	sources: dict[str, list[str]] = {}
+	out = [f"Callers of {entity.label}. Line numbers are at the base."]
+	for link in links:
+		if link.path not in sources:
+			sources[link.path] = (run.base(link.path) or run.head(link.path) or "").splitlines()
+		lines = sources[link.path]
+		call = lines[link.line - 1].strip()[:200] if 0 < link.line <= len(lines) else ""
+		caller = link.entity.qualified_name if link.entity else link.name
+		note = " (the pull request changes this file)" if link.path in changed else ""
+		out.append(f"{link.path}:{link.line} in {caller}{note}\n    {call}")
+	return "\n".join(out)
+
+
+def _callees(graph: CodeGraph, name: str) -> str:
+	entity = _symbol(graph, name)
+	if not entity:
+		return f"no definition found for {name}"
+	links = graph.callees(entity, limit=CALLEES_SHOWN)
+	return (
+		"\n".join(
+			f"{link.line:5} {link.text or link.name} -> {link.entity.label if link.entity else 'not in the index'}"
+			for link in links
+		)
+		or f"{name} calls nothing in the index"
 	)
 
 
