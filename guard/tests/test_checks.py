@@ -3,6 +3,7 @@ from unittest.mock import patch
 
 from frappe.tests import UnitTestCase
 
+from guard.providers.base import ProviderAdapter, ProviderError
 from guard.providers.github import GitHubAdapter
 from guard.tests.fakes import FakeDoc
 
@@ -67,3 +68,30 @@ class TestCheckRuns(UnitTestCase):
 			github.set_status("acme/app", "abc", "pending", "Guard is reviewing")
 		self.assertEqual([method for method, _, _ in github.sent], ["GET", "POST"])
 		remember.assert_called_once()
+
+
+class TestInstallationToken(UnitTestCase):
+	def adapter(self) -> GitHubAdapter:
+		github = GitHubAdapter(FakeDoc({"auth_mode": "App", "app_id": "7"}, name="gh"), team="t")
+		github._installation_token = lambda: "token"
+		return github
+
+	def test_a_refused_token_is_dropped_and_the_request_goes_again_once(self):
+		refused = ProviderError("POST /x: 401 Bad credentials", 401)
+		with (
+			patch.object(ProviderAdapter, "request", side_effect=[refused, {"ok": 1}]) as sent,
+			patch("guard.providers.github.db.value", return_value="42"),
+			patch("guard.providers.github.cache.delete") as delete,
+		):
+			self.assertEqual(self.adapter().request("POST", "/x"), {"ok": 1})
+		delete.assert_called_once_with("guard:github-token:gh:42")
+		self.assertEqual(sent.call_count, 2)
+
+	def test_other_errors_and_app_requests_go_once(self):
+		for error, auth in ((ProviderError("404", 404), True), (ProviderError("401", 401), False)):
+			with (
+				patch.object(ProviderAdapter, "request", side_effect=[error]) as sent,
+				self.assertRaises(ProviderError),
+			):
+				self.adapter().request("GET", "/x", auth=auth)
+			self.assertEqual(sent.call_count, 1)

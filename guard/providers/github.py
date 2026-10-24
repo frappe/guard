@@ -58,11 +58,26 @@ class GitHubAdapter(ProviderAdapter):
 		basic = base64.b64encode(f"x-access-token:{token}".encode()).decode()
 		return f"Authorization: Basic {basic}"
 
-	def _installation_token(self) -> str:
+	def request(self, method: str, path: str, auth: bool = True, **kwargs: Any) -> Any:
+		"""A request. When GitHub refuses the cached installation token, get a new one and try once
+		more: GitHub can revoke a token before it expires, and a long review then loses its work."""
+		try:
+			return super().request(method, path, auth, **kwargs)
+		except ProviderError as error:
+			if error.status != 401 or not auth or self._token or self.doc.get("auth_mode") != "App":
+				raise
+			cache.delete(self._token_key())
+			return super().request(method, path, auth, **kwargs)
+
+	def _token_key(self) -> str:
 		installation = db.value("Guard Team", self.team, "installation_id") if self.team else None
 		if not installation:
 			raise ProviderError("This team has no GitHub App installation")
-		key = f"guard:github-token:{self.doc.name}:{installation}"
+		return f"guard:github-token:{self.doc.name}:{installation}"
+
+	def _installation_token(self) -> str:
+		key = self._token_key()
+		installation = key.rsplit(":", 1)[1]
 		cached = cache.get(key)
 		if cached:
 			return str(cached)

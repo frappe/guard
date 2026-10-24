@@ -29,7 +29,7 @@ An adapter raises `UnsupportedAction` for an action that the provider does not h
 2. Events: pull request, pull request review, pull request review comment, issue comment, push, check run, installation, installation repositories.
 3. The webhook URL is `<site>/api/method/guard.webhooks.endpoint.github_webhook?provider=<Code Provider>`.
 4. The admin stores the app id, the slug, the private key and the webhook secret on the Code Provider.
-5. Guard signs a JWT with the private key and gets one installation token for each team. It caches each token for 50 minutes.
+5. Guard signs a JWT with the private key and gets one installation token for each team. It caches each token for 50 minutes. When GitHub answers 401 to a request with a cached token, Guard drops the token, gets a new one and sends the request once more.
 6. An installation event creates the Guard Team and its repositories. New repositories get `reviews_enabled` from `auto_enable_new_repositories`.
 
 ### Webhook endpoints
