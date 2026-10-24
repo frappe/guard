@@ -73,7 +73,7 @@ def consider(
 
 
 def owns_check(pull_request: str, head: str) -> bool:
-	"""A review of the commit ran or runs, or a queued review will review it.
+	"""A review of the commit set a result or runs, or a queued review will review it.
 
 	A skip must not replace the check of that review: GitHub counts a skipped check as passing. A queued
 	review fetches the newest head when it starts. A running review keeps its own commit.
@@ -81,7 +81,8 @@ def owns_check(pull_request: str, head: str) -> bool:
 	return bool(
 		db.scalar(
 			"""SELECT COUNT(*) FROM `tabCode Review` WHERE pull_request = %s
-			AND (head_sha = %s OR status = 'Queued')""",
+			AND ((head_sha = %s AND status IN ('Completed', 'Failed', 'Running'))
+				OR (status = 'Queued' AND cancel_requested = 0))""",
 			(pull_request, head),
 		)
 	)
