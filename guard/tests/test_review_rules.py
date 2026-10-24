@@ -106,6 +106,20 @@ class TestRuleFilter(UnitTestCase):
 		FindingFilter(parse_diff(DIFF), {"strictness": 1}).run([nit])
 		self.assertTrue(nit.kept)
 
+	def test_one_comment_for_an_issue_on_many_lines(self):
+		# pilot#690 got one P1 three times, and suite#881 one check 108 times.
+		repeats = [finding("P1", line=n) for n in (1, 2, 3)]
+		for other, path in zip(repeats[1:], ("app/b.py", "app/c.py"), strict=True):
+			other.path = path
+		lone = finding("P1", line=2)
+		lone.title = "Another issue"
+		FindingFilter(parse_diff(DIFF), {"strictness": 1}).run([*repeats, lone])
+		self.assertEqual([f.kept for f in repeats], [True, False, False])
+		self.assertIn("- `app/b.py:2`", repeats[0].body)
+		self.assertIn("- `app/c.py:3`", repeats[0].body)
+		self.assertEqual(repeats[1].status_reason, "same issue as app/a.py:1, listed in its comment")
+		self.assertTrue(lone.kept)
+
 
 class TestVerifier(UnitTestCase):
 	def test_project_rule_text_goes_to_the_verifier(self):

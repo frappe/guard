@@ -10,6 +10,7 @@ from guard.git.diff import FileDiff
 SEVERITIES = ("P0", "P1", "P2")
 COMMENT_TYPES = ("logic", "syntax", "style")
 CAPS = {1: 40, 2: 20, 3: 10}
+MAX_PLACES = 10  # other places that one grouped finding lists
 MARKS = {"P0": "🔴", "P1": "🟠", "P2": "🟡"}
 
 
@@ -105,6 +106,7 @@ class FindingFilter:
 		self.filter_strictness(findings)
 		self.filter_rereview(findings)
 		self.dedupe(findings)
+		self.group_repeats(findings)
 		self.dedupe_existing(findings)
 		self.cap(findings)
 		return findings
@@ -179,6 +181,28 @@ class FindingFilter:
 				):
 					finding.drop("Dismissed", "duplicate of another finding in this review")
 					break
+
+	def group_repeats(self, findings: list[Finding]) -> None:
+		"""One comment for an issue that a check finds on many lines, with the other places listed.
+
+		A check that runs line by line gave 108 "Permission check is bypassed" on one pull request,
+		and the comment limit then dropped the rest of the review.
+		"""
+		groups: dict[tuple[str, str], list[Finding]] = {}
+		for finding in sorted((f for f in findings if f.kept), key=lambda f: (f.path, f.start_line)):
+			groups.setdefault((finding.title.strip().lower(), finding.severity), []).append(finding)
+		for group in groups.values():
+			if len(group) < 2:
+				continue
+			first, rest = group[0], group[1:]
+			places = [f"- `{f.path}:{f.start_line}`" for f in rest[:MAX_PLACES]]
+			if len(rest) > MAX_PLACES:
+				places.append(f"- and {len(rest) - MAX_PLACES} more")
+			first.body = f"{first.body}\n\nThe same at:\n" + "\n".join(places)
+			for finding in rest:
+				finding.drop(
+					"Dismissed", f"same issue as {first.path}:{first.start_line}, listed in its comment"
+				)
 
 	def dedupe_existing(self, findings: list[Finding]) -> None:
 		for finding in findings:
