@@ -43,7 +43,7 @@ Commit it on the branch of the pull request. Guard reads the settings from the h
 
 All files are optional. If a directory has both `.guard/` and `guard.toml`, Guard reads `.guard/` and ignores `guard.toml`.
 
-Guard also reads `CLAUDE.md` and `AGENTS.md` in any directory, and `.cursorrules` and `.github/copilot-instructions.md` at the root. To stop this, set `include_rule_files = false`. Lines that say always, must or never are mandatory: breaking one is at least P1, and a rule that asks for tests flags code changes that touch no test file.
+Guard also reads `CLAUDE.md` and `AGENTS.md` in any directory, and `.cursorrules` and `.github/copilot-instructions.md` at the root. To stop this, set `include_rule_files = false`. Each list item, and each line that says always, must or never, is a rule. Guard checks the change against them and reports each break as a P2 that links to the rule: fix it before merging. It measures complexity, file-length and boolean-naming rules in code, and a rule that asks for tests flags code changes that touch no test file.
 
 ### Monorepos
 

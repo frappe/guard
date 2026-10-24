@@ -133,7 +133,7 @@ The system prompt tells the agent to:
 4. Compare new code with sibling implementations: validation, error handling, queries, permissions.
 5. Trace what each new value holds when its loader fails or returns nothing, and where it goes next.
 6. Check the code against linked tickets and say where it does not do what the ticket asks.
-7. Follow the rules and the mandatory project rules. Name the rule id when a finding comes from a rule.
+7. Follow the rules, and check the change against each project rule. Report a project rule break as P2 with the rule id.
 8. Keep the confidence reason to reported findings: a concern worth a lower score is worth a finding.
 9. Use the severity and comment type definitions exactly.
 10. Give a suggestion only when the fix is local to the flagged lines.
@@ -142,7 +142,7 @@ The system prompt tells the agent to:
 
 ## Stage 6: Verify
 
-For plus and apex, Guard sends each finding with its code and context to the tier model. The model answers `valid`, a corrected severity and a confidence. Guard drops findings that are not valid. Base reviews verify only P0 findings. A finding from a mandatory project rule goes to the verifier with the rule text.
+For plus and apex, Guard sends each finding with its code and context to the tier model. The model answers `valid`, a corrected severity and a confidence. Guard drops findings that are not valid. Base reviews verify only P0 findings. A finding from a project rule goes to the verifier with the rule text.
 
 With each finding the verifier also gets:
 
@@ -159,7 +159,7 @@ In this order:
 
 1. **Anchor.** Move each finding to a line inside the diff on the head side. If the line is not in the diff, mark it `outside_diff`.
 2. **Comment types.** Drop types that the merged config does not allow.
-3. **Project rules.** Raise a P2 that breaks a mandatory project rule to P1.
+3. **Project rules.** A P2 that breaks a project rule stays at strictness 2 whatever its confidence, and of any comment type.
 4. **Strictness.** 1 keeps all. 2 drops a P2 with confidence below 0.6 that no verifier confirmed, and a P2 that rests on library behavior. A P2 that the verifier confirmed is kept: it is correct and worth posting. 3 keeps only P0 and P1.
 5. **Re-review.** On a later review, drop a P2 unless it touches a line added since the last reviewed commit.
 6. **Dedupe in the review.** Same path, overlapping lines and similar title: keep the higher severity.

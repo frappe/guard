@@ -1301,6 +1301,14 @@
 	},
 	"expected": [
 		{
+			"path": "pilot/core/bench/creator.py",
+			"severity": "P2",
+			"keywords": [
+				"ports_in_use"
+			],
+			"why": "CLAUDE.md: name boolean-returning methods with is_ or has_; ports_in_use returns a boolean."
+		},
+		{
 			"path": "admin/backend/api/v1/sites/core.py",
 			"severity": "P2",
 			"keywords": [
