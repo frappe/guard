@@ -24,10 +24,6 @@ Guard reviews GitHub pull requests with an AI agent that reads the whole codebas
 
 Guard is a Frappe app. One site serves one company. Everyone uses Frappe Desk.
 
-### Motivation
-
-We used a hosted AI reviewer on our pull requests. It had hard limits on new repositories, and it added paid features without notice. We already had [Grove](https://github.com/frappe/grove) as an AI gateway and Frappe for the rest, so we built our own reviewer: self-hosted, with no limit on repositories, and with the rules of the team in the repository.
-
 ### What it does
 
 - Reviews pull requests on open, push or rebase, or when someone writes `@guard` in a comment.
