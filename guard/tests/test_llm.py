@@ -161,7 +161,6 @@ class TestGatewayErrors(UnitTestCase):
 			return post_json("https://gateway.test/v1", {}, {}, 5)
 
 	def test_lasting_5xx_is_gateway_down(self):
-
 		calls: list[int] = []
 		with self.assertRaises(GatewayDown) as raised:
 			self.post(502, calls)
