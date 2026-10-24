@@ -389,7 +389,7 @@ class ReviewPipeline:
 		self.review.db_set(
 			{"status": "Skipped", "error": "monthly credit cap reached", "completed_at": now_datetime()}
 		)
-		self.close_checks("Guard skipped this review: the monthly credit cap is reached.")
+		self.skip_check(run, "the monthly credit cap is reached")
 		if run.adapter and run.pr is not None:
 			run.adapter.post_comment(
 				run.full_name,

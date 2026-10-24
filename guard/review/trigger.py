@@ -64,12 +64,27 @@ def consider(
 	result = gate.check(facts, config, event, manual, rules)
 	if not result.allowed:
 		frappe.logger("guard").info(f"review skipped for {pull_request}: {result.reason}")
-		if adapter and config.settings.get("status_check", True):
+		if adapter and config.settings.get("status_check", True) and not owns_check(pull_request, head):
 			report_skip(adapter, str(repo.get("full_name")), head, result.reason)
 		return None
 	trigger = event if not manual else ("retrigger" if event == "retrigger" else "mention")
 	user = permissions.user_for_login(requested_by) if requested_by else None
 	return create_review(pull_request, trigger, requested_by, requested_tier, instructions, user)
+
+
+def owns_check(pull_request: str, head: str) -> bool:
+	"""A review of the commit ran or runs, or a queued review will review it.
+
+	A skip must not replace the check of that review: GitHub counts a skipped check as passing. A queued
+	review fetches the newest head when it starts. A running review keeps its own commit.
+	"""
+	return bool(
+		db.scalar(
+			"""SELECT COUNT(*) FROM `tabCode Review` WHERE pull_request = %s
+			AND (head_sha = %s OR status = 'Queued')""",
+			(pull_request, head),
+		)
+	)
 
 
 def push_kind(repository: str, before: str | None, after: str | None) -> str:
