@@ -144,6 +144,13 @@ The system prompt tells the agent to:
 
 For plus and apex, Guard sends each finding with its code and context to the tier model. The model answers `valid`, a corrected severity and a confidence. Guard drops findings that are not valid. Base reviews verify only P0 findings. A finding from a mandatory project rule goes to the verifier with the rule text.
 
+With each finding the verifier also gets:
+
+- the code at each place that the finding names as `path:line`, up to 4, when that place is not next to the finding. The evidence of an issue is often in another file;
+- what it decided about a similar finding in an earlier review of the pull request, so two reviews do not decide one claim both ways.
+
+The verifier says whether the code shown proves the finding (`evidence: code`), or whether the finding is true only if a library behaves in a way that the code does not show (`evidence: library`). A library-based finding becomes P2 with confidence 0.5 at most, so strictness 2 holds it back.
+
 The verifier cannot lower a P0 finding when the graph proves a break at it: the finding is on a changed entity, or on a call site, where a caller surely breaks. A caller surely breaks when the entity was deleted, or when the call does not fit the new signature.
 
 ## Stage 7: Filter

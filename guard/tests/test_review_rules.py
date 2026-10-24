@@ -128,6 +128,37 @@ class TestVerifier(UnitTestCase):
 		self.assertIn("Always add tests.", item)
 		self.assertNotIn("mandatory project rule", verify._item(run, 0, finding()))
 
+	def test_the_verifier_sees_the_code_a_finding_cites(self):
+		# grove#73: the evidence was in an old patch, and the verifier saw only app code.
+		patch = "\n".join(f"line {n}" for n in range(1, 60)).replace(
+			"line 45", 'frappe.db.exists("Central Team")'
+		)
+		files = {"app/a.py": "x = 1\n", "grove/patches/v1_0/move.py": patch}
+		run = ReviewRun(None, None, "", files.get, lambda path: None, lambda path: [], "", "")
+		claim = finding("P1")
+		claim.body = "`grove/patches/v1_0/move.py:45,50` still inserts the removed `Central Team` doctype."
+		cited = verify._cited(run, claim)
+		self.assertIn("cited code grove/patches/v1_0/move.py", cited)
+		self.assertIn('frappe.db.exists("Central Team")', cited)
+		# The lines around the finding itself are shown already.
+		claim.body = "See `app/a.py:2`."
+		self.assertEqual(verify._cited(run, claim), "")
+
+	def test_the_verifier_sees_its_earlier_verdict(self):
+		# pilot#687: one review dismissed a claim, and the next posted the same claim as a P1.
+		claim = finding("P1")
+		claim.title = "Failed backup leaves already-uploaded files in S3"
+		rows = [
+			{
+				"path": "app/a.py",
+				"title": "Failed backup leaves uploaded files in S3",
+				"status_reason": "verifier: every upload aborts first",
+			}
+		]
+		block = verify._earlier(claim, rows, 0)
+		self.assertIn("Dismissed then because: every upload aborts first", block)
+		self.assertEqual(verify._earlier(claim, [{**rows[0], "path": "app/b.py"}], 0), "")
+
 
 class TestEvalCases(UnitTestCase):
 	def test_pilot_678_flags_missing_tests_without_a_model(self):

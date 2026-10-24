@@ -532,6 +532,26 @@ class TestPipeline(PullRequestCase):
 			jobs.close_stuck_checks()
 			self.assertNotIn(commit, self.adapter.closed)
 
+	def test_a_claim_about_a_library_is_held_back(self):
+		# pilot#687 and cargo#110: P1s about boto3 and frappe.log_error that the code did not prove.
+		claim = dict(PROBLEM, severity="P1", title="upload_fileobj raises S3UploadFailedError")
+		answers = {"verify": '[{"index": 0, "valid": true, "confidence": 0.9, "evidence": "library"}]'}
+		self.online_review(
+			[[("report_finding", claim), ("submit_review", {"summary": "s", "confidence_score": 3})]], answers
+		)
+		row = db.values(
+			"Review Finding", {"pull_request": self.pr}, ("severity", "status", "status_reason", "confidence")
+		)
+		self.assertEqual(
+			row,
+			{
+				"severity": "P2",
+				"status": "Dismissed",
+				"status_reason": "low-confidence P2 at strictness 2",
+				"confidence": 0.5,
+			},
+		)
+
 	def running_review(self, stage: str, attempt: int = 0) -> str:
 		from frappe.utils import now_datetime
 

@@ -177,7 +177,7 @@ class FindingFilter:
 					other.kept
 					and other.path == finding.path
 					and _overlap(other, finding)
-					and _similar(other.title, finding.title)
+					and similar_titles(other.title, finding.title)
 				):
 					finding.drop("Dismissed", "duplicate of another finding in this review")
 					break
@@ -210,7 +210,8 @@ class FindingFilter:
 				continue
 			for row in self.existing:
 				if row.get("fingerprint") == finding.fingerprint or (
-					row.get("path") == finding.path and _similar(row.get("title") or "", finding.title, 0.6)
+					row.get("path") == finding.path
+					and similar_titles(row.get("title") or "", finding.title, 0.6)
 				):
 					finding.drop("Dismissed", "already reported on this pull request")
 					self.reraised.add(str(row.get("name")))
@@ -231,7 +232,7 @@ def _overlap(a: Finding, b: Finding) -> bool:
 	return a.start_line <= b.end_line + 2 and b.start_line <= a.end_line + 2
 
 
-def _similar(a: str, b: str, threshold: float = 0.5) -> bool:
+def similar_titles(a: str, b: str, threshold: float = 0.5) -> bool:
 	left, right = set(re.findall(r"[a-z0-9]+", a.lower())), set(re.findall(r"[a-z0-9]+", b.lower()))
 	if not left or not right:
 		return False
