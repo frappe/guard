@@ -20,7 +20,7 @@ from guard.indexing.jobs import ensure_fresh
 from guard.integrations import tickets
 from guard.learning import suppression
 from guard.llm import breaker
-from guard.llm.types import GatewayBusy, GatewayDown
+from guard.llm.types import GatewayBusy, GatewayDown, Usage
 from guard.providers import adapter_for_repository
 from guard.review import (
 	checks,
@@ -67,6 +67,7 @@ class ReviewPipeline:
 	def __init__(self, review: str):
 		self.review = cast("CodeReview", frappe.get_doc("Code Review", review))
 		self.started = time.time()
+		self.current: ReviewRun | None = None  # the run of this attempt, once prepared
 
 	@classmethod
 	def run(cls, review: str, attempt: int = 0) -> None:
@@ -115,6 +116,11 @@ class ReviewPipeline:
 			self.fail(redact(f"{type(error).__name__}: {error}"))
 			if frappe.flags.in_test:
 				raise
+		finally:
+			try:
+				self.save_usage()
+			except Exception as error:
+				frappe.log_error(redact(str(error)), "Guard review usage")
 
 	def slots_full(self) -> bool:
 		"""As many reviews run as `max_concurrent_reviews` allows.
@@ -163,6 +169,16 @@ class ReviewPipeline:
 		run = self.prepare()
 		if run is None:
 			return
+		# Earlier attempts of this review count too: their tokens were spent.
+		run.usage.add(
+			Usage(
+				int(self.review.input_tokens or 0),
+				int(self.review.output_tokens or 0),
+				int(self.review.cached_tokens or 0),
+			)
+		)
+		run.turns = int(self.review.agent_turns or 0)
+		self.current = run
 		publisher = Publisher(run)
 		self.stage("start")
 		publisher.start()
@@ -392,7 +408,7 @@ class ReviewPipeline:
 		turns = guard_settings.max_turns(run.tier)
 		deadline = self.deadline(run.tier)
 		if run.tier != "apex" or len(run.files) <= AREA_FILES:
-			Agent(run, system, turns).run_loop(compose(run, built), deadline)
+			Agent(run, system, turns).run_loop(compose(run, built), deadline, self.between_turns)
 			return
 		# Each part, and the pass across the parts, reviews less than the whole: half the turns.
 		turns = max(turns // 2, guard_settings.max_turns("base"))
@@ -412,7 +428,7 @@ class ReviewPipeline:
 		parts = [Agent(run, system, turns, final=False) for _ in areas]
 		# The pass across the parts needs time too: the parts may use two thirds of what is left.
 		areas_until = time.time() + (deadline - time.time()) * 2 / 3
-		results = run_together(parts, tasks, self.check_cancel, areas_until)
+		results = run_together(parts, tasks, self.between_turns, areas_until)
 		in_areas = {f.path for files in areas for f in files}
 		rest = [f for f in ranked if f.path not in in_areas]
 		# The files that no part reviewed come first, so the diff limit cuts the reviewed ones.
@@ -430,7 +446,7 @@ class ReviewPipeline:
 				f"- {f.path}" for f in rest[:MAX_REST_NAMES]
 			)
 		self.check_cancel()
-		Agent(run, system, turns).run_loop(compose(run, built, extra), deadline)
+		Agent(run, system, turns).run_loop(compose(run, built, extra), deadline, self.between_turns)
 		run.files = all_files
 
 	def deadline(self, tier: str) -> float:
@@ -509,6 +525,27 @@ class ReviewPipeline:
 	def stage(self, name: str) -> None:
 		self.check_cancel()
 		self.review.db_set("stage", name, update_modified=False)
+		db.commit()
+
+	def between_turns(self) -> None:
+		"""Before each agent turn: keep the usage so far, and stop when a newer review replaced this one."""
+		self.save_usage()
+		self.check_cancel()
+
+	def save_usage(self) -> None:
+		"""Write the tokens and turns used so far. A failed, cancelled or killed job also costs tokens."""
+		if self.current is None:
+			return
+		usage = self.current.usage
+		self.review.db_set(
+			{
+				"input_tokens": usage.input_tokens,
+				"output_tokens": usage.output_tokens,
+				"cached_tokens": usage.cached_tokens,
+				"agent_turns": self.current.turns,
+			},
+			update_modified=False,
+		)
 		db.commit()
 
 	def check_cancel(self) -> None:

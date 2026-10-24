@@ -155,7 +155,7 @@ The indexer writes these with bulk inserts. Names are content hashes, so a re-in
 | `diagram_type`, `diagram` | Select, Code | |
 | `important_files`, `context_used`, `changed_files`, `config_snapshot` | JSON | |
 | `files_reviewed`, `findings_count`, `posted_count`, `suppressed_count` | Int | |
-| `credits`, `input_tokens`, `output_tokens` | Int | `input_tokens` is the whole prompt of every call |
+| `credits`, `input_tokens`, `output_tokens` | Int | `input_tokens` is the whole prompt of every call. Token and turn counts add up over all attempts, also the ones that failed, were cancelled or were killed. Guard writes them before each agent turn. |
 | `cached_tokens` | Int | The part of `input_tokens` that the gateway read from its prompt cache |
 | `agent_turns` | Int | Model turns of the review agents |
 | `review_number` | Int | 1 for the first review of a pull request. |

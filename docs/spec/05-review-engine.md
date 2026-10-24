@@ -21,11 +21,12 @@ Before stage 1, Guard checks the monthly credit cap. If the review would pass th
 
 ### Cancellation
 
-A new push to a pull request cancels a queued or running review for an older head. The running job checks a cancel flag between stages. Only one review runs for each pull request at a time.
+A new push to a pull request cancels a queued or running review for an older head. The running job checks a cancel flag between stages and before each agent turn. Only one review runs for each pull request at a time.
 
 ### Failure
 
-- A gateway 402 or 429 puts the job back in the queue with a delay: 1, 5, then 15 minutes.
+- A gateway 402 or 429 puts the job back in the queue with a delay: 2, 10, 20, then 40 minutes. Rate limits can last an hour. Before that, the HTTP client waits for a short time, and calls that ran side by side go again one at a time, so the turns already done are kept.
+- A busy code graph index puts the job back with a delay of 1, 5, then 15 minutes.
 - Any other error ends the review as Failed. Guard adds 😕, sets the status to `error`, and stores the error on the Code Review.
 
 ## Stage 1: Prepare

@@ -232,8 +232,10 @@ class Agent:
 		self.caching = False  # the gateway read part of a prompt from its cache
 		self.breakpoint: Message | None = None
 
-	def run_loop(self, task: str, deadline: float = 0) -> AgentResult:
-		[result] = run_together([self], [task], deadline=deadline)
+	def run_loop(
+		self, task: str, deadline: float = 0, check: Callable[[], None] | None = None
+	) -> AgentResult:
+		[result] = run_together([self], [task], check, deadline)
 		return result
 
 	@property

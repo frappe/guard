@@ -1,5 +1,6 @@
 import time
 from types import SimpleNamespace
+from typing import Any
 from unittest.mock import PropertyMock, patch
 
 import frappe
@@ -95,6 +96,26 @@ class TestPipeline(PullRequestCase):
 		row = db.values("Code Review", str(name), ("status", "stage")) or {}
 		self.assertEqual((row["status"], row["stage"]), ("Queued", "waiting 60s for the code graph index"))
 		self.assertEqual(retries, [(60, 1)])
+
+	def test_a_failed_attempt_keeps_its_tokens_and_the_next_attempt_adds_to_them(self):
+		submit: list[list[tuple[str, dict[str, Any]]] | str] = [
+			[("submit_review", {"summary": "Fine.", "confidence_score": 5})]
+		]
+		with (
+			patch("guard.review.verify.verify", side_effect=RuntimeError("verifier broke")),
+			self.assertRaises(RuntimeError),
+		):
+			self.review(submit)
+		name = str(frappe.get_last_doc("Code Review", filters={"pull_request": self.pr}).name)
+		failed = db.values("Code Review", name, ("status", "input_tokens", "agent_turns")) or {}
+		self.assertEqual(failed["status"], "Failed")
+		self.assertEqual(failed["agent_turns"], 1)
+		self.assertGreaterEqual(failed["input_tokens"], 100)
+		with use_responder(scripted(submit)):
+			ReviewPipeline(name).attempt(1)
+		done = db.values("Code Review", name, ("status", "input_tokens", "agent_turns")) or {}
+		self.assertEqual((done["status"], done["agent_turns"]), ("Completed", 2))
+		self.assertGreaterEqual(done["input_tokens"], failed["input_tokens"] + 100)
 
 	def test_a_busy_gateway_gets_longer_waits_than_other_retries(self):
 		name = self.running_review("review", attempt=3)
@@ -860,6 +881,7 @@ class TestApexAreas(IntegrationTestCase):
 
 		pipeline = ReviewPipeline.__new__(ReviewPipeline)
 		pipeline.check_cancel = lambda: None
+		pipeline.current = None
 		pipeline.started = time.time()
 		with use_responder(respond):
 			pipeline.agent(run, BuiltContext(ContextPack()))
