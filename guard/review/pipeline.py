@@ -80,6 +80,7 @@ class ReviewPipeline:
 			self.execute()
 		except Cancelled:
 			self.review.db_set({"status": "Cancelled", "completed_at": now_datetime()})
+			self.close_checks("Guard stopped this review: a newer review replaced it.")
 		except GatewayDown as down:
 			breaker.record_failure(str(down))
 			if wait := breaker.wait_seconds():
@@ -298,6 +299,8 @@ class ReviewPipeline:
 			self.review.db_set(
 				{"status": "Skipped", "error": "no reviewable files", "completed_at": now_datetime()}
 			)
+			# An earlier attempt may have started the check before it was sent back to the queue.
+			self.close_checks("Guard skipped this review: it has no files to review.")
 			return None
 		return run
 
@@ -345,6 +348,7 @@ class ReviewPipeline:
 		self.review.db_set(
 			{"status": "Skipped", "error": "monthly credit cap reached", "completed_at": now_datetime()}
 		)
+		self.close_checks("Guard skipped this review: the monthly credit cap is reached.")
 		if run.adapter and run.pr is not None:
 			run.adapter.post_comment(
 				run.full_name,
@@ -474,6 +478,24 @@ class ReviewPipeline:
 			or 1
 		)
 
+	def close_checks(self, description: str) -> None:
+		"""Complete the checks that this review left in progress on its commit.
+
+		Not while another review of the commit runs: the check is shared, and that review ends it.
+		"""
+		if not (self.review.pull_request and self.review.head_sha):
+			return
+		if other_review_runs(str(self.review.pull_request), str(self.review.head_sha), str(self.review.name)):
+			return
+		try:
+			repository = str(db.value("Pull Request", str(self.review.pull_request), "repository"))
+			adapter = adapter_for_repository(repository)
+			if adapter:
+				full_name = str(db.value("Code Repository", repository, "full_name"))
+				adapter.close_open_checks(full_name, str(self.review.head_sha), description)
+		except Exception as error:
+			frappe.log_error(redact(str(error)), "Guard checks")
+
 	def fail(self, message: str) -> None:
 		self.review.db_set({"status": "Failed", "error": message[:5000], "completed_at": now_datetime()})
 		try:
@@ -493,6 +515,17 @@ class ReviewPipeline:
 		adapter.add_reaction(full_name, int(pr.number), "pr", "", "confused")
 		if self.review.head_sha:
 			adapter.set_status(full_name, self.review.head_sha, "error", "Guard could not finish the review")
+
+
+def other_review_runs(pull_request: str, head_sha: str, review: str) -> bool:
+	"""Another review of the commit is queued or running."""
+	return bool(
+		db.scalar(
+			"""SELECT COUNT(*) FROM `tabCode Review` WHERE pull_request = %s AND head_sha = %s
+			AND name != %s AND status IN ('Queued', 'Running')""",
+			(pull_request, head_sha, review),
+		)
+	)
 
 
 def graph_verdict(run: ReviewRun) -> Verdict:

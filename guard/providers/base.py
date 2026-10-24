@@ -216,6 +216,10 @@ class ProviderAdapter:
 		"""`state` is pending, success, failure or error."""
 		raise NotImplementedError
 
+	def close_open_checks(self, repo: str, sha: str, description: str) -> int:
+		"""Complete Guard's checks on `sha` that are still in progress. Return how many."""
+		return 0
+
 	def add_reaction(self, repo: str, number: int, target: str, target_id: str, content: str) -> str | None:
 		"""`target` is `pr` or `comment`. Return the reaction id when the provider gives one."""
 		return None

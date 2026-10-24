@@ -39,6 +39,7 @@ class FakeAdapter(ProviderAdapter):
 		self.calls: list[tuple[str, Any]] = []
 		self.comments: dict[str, str] = {}
 		self.reactions: dict[str, list[Reaction]] = {}
+		self.closed_shas: list[str] = []
 		self._next = 100
 
 	def _id(self) -> str:
@@ -99,6 +100,11 @@ class FakeAdapter(ProviderAdapter):
 
 	def set_status(self, repo: str, sha: str, state: str, description: str, url: str = "") -> None:
 		self.calls.append(("status", state))
+
+	def close_open_checks(self, repo: str, sha: str, description: str) -> int:
+		self.calls.append(("close_checks", description))
+		self.closed_shas.append(sha)
+		return 1
 
 	def add_reaction(self, repo: str, number: int, target: str, target_id: str, content: str) -> str | None:
 		self.calls.append(("react", content))

@@ -19,6 +19,7 @@ from guard.providers.base import (
 from guard.utils import cache, db
 
 TOKEN_TTL = 50 * 60
+CHECK_NAME = "Guard"
 REACTION_PATHS = {"pr": "issues/{number}", "issue": "issues/comments/{id}", "inline": "pulls/comments/{id}"}
 
 
@@ -256,11 +257,44 @@ class GitHubAdapter(ProviderAdapter):
 			payload["target_url"] = url
 		self.request("POST", f"/repos/{repo}/statuses/{sha}", json=payload)
 
+	def close_open_checks(self, repo: str, sha: str, description: str) -> int:
+		"""Complete Guard's check runs on `sha` that are still in progress, as neutral. Create none."""
+		if self.doc.get("auth_mode") != "App":
+			return 0
+		payload = {
+			"status": "completed",
+			"conclusion": "neutral",
+			"output": {"title": description[:200], "summary": description},
+		}
+		open_ids = self._open_check_runs(repo, sha)
+		for run_id in open_ids:
+			self.request("PATCH", f"/repos/{repo}/check-runs/{run_id}", json=payload)
+		return len(open_ids)
+
+	def _open_check_runs(self, repo: str, sha: str) -> list[str]:
+		"""Guard's check runs on `sha` that are in progress, newest first."""
+		data = (
+			self.request(
+				"GET",
+				f"/repos/{repo}/commits/{sha}/check-runs",
+				params={"check_name": CHECK_NAME, "filter": "all", "per_page": 100},
+			)
+			or {}
+		)
+		app_id = str(self.doc.get("app_id") or "")
+		runs = [
+			run
+			for run in data.get("check_runs") or []
+			if run.get("status") != "completed" and str((run.get("app") or {}).get("id") or "") == app_id
+		]
+		runs.sort(key=lambda run: run.get("started_at") or "", reverse=True)
+		return [str(run["id"]) for run in runs]
+
 	def _check_run(self, repo: str, sha: str, state: str, description: str, url: str) -> None:
 		key = f"guard:check-run:{repo}:{sha}"
 		run_id = cache.get(key)
 		payload: dict[str, Any] = {
-			"name": "Guard",
+			"name": CHECK_NAME,
 			"head_sha": sha,
 			"output": {"title": description[:200], "summary": description},
 		}
@@ -273,8 +307,14 @@ class GitHubAdapter(ProviderAdapter):
 			payload["conclusion"] = {"success": "success", "failure": "failure", "error": "neutral"}.get(
 				state, "neutral"
 			)
-		if run_id:
-			self.request("PATCH", f"/repos/{repo}/check-runs/{run_id}", json=payload)
+		# The cache can lose the id, for example when a deploy clears it. Then look for the run on
+		# GitHub: a second run on the commit would leave the first in progress for ever.
+		open_ids = [str(run_id)] if run_id else self._open_check_runs(repo, sha)
+		if open_ids:
+			for open_id in open_ids if state != "pending" else open_ids[:1]:
+				self.request("PATCH", f"/repos/{repo}/check-runs/{open_id}", json=payload)
+			if state == "pending":
+				cache.set(key, open_ids[0], 86400)
 			return
 		data = self.request("POST", f"/repos/{repo}/check-runs", json=payload)
 		cache.set(key, data["id"], 86400)

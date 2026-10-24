@@ -1,5 +1,7 @@
 """Create and queue Code Reviews, and the work that runs after one."""
 
+from typing import Any
+
 import frappe
 from frappe.utils import add_to_date, now_datetime, time_diff_in_seconds
 from frappe.utils.background_jobs import is_job_enqueued
@@ -143,6 +145,40 @@ def resume_waiting() -> None:
 	for row in rows:
 		frappe.db.set_value("Code Review", row.name, "retry_at", None)
 		enqueue_review(row.name, attempt=row.attempt or 0, tier=row.tier or "")
+
+
+STOPPED = "Guard stopped before it finished this review. Ask for a new review if you need one."
+
+
+def close_stuck_checks(days: int = 1) -> int:
+	"""Every hour: complete the checks that say "Guard is reviewing" on a commit no review runs on.
+
+	A killed job, or an id that the cache lost, leaves one. Return how many were closed.
+	"""
+	from guard.providers import adapter_for_repository
+
+	rows = db.dict_rows(
+		"""SELECT r.repository, c.full_name, r.head_sha FROM `tabCode Review` r
+		JOIN `tabCode Repository` c ON c.name = r.repository
+		WHERE r.source = 'pull_request' AND r.head_sha IS NOT NULL AND r.head_sha != '' AND r.creation > %s
+		GROUP BY r.repository, c.full_name, r.head_sha
+		HAVING SUM(r.status IN ('Queued', 'Running')) = 0""",
+		(add_to_date(now_datetime(), days=-days),),
+	)
+	adapters: dict[str, Any] = {}
+	closed = 0
+	for row in rows:
+		repository = str(row["repository"])
+		if repository not in adapters:
+			adapters[repository] = adapter_for_repository(repository)
+		adapter = adapters[repository]
+		if not adapter:
+			continue
+		try:
+			closed += adapter.close_open_checks(str(row["full_name"]), str(row["head_sha"]), STOPPED)
+		except Exception as error:
+			frappe.log_error(str(error)[:2000], "Guard checks")
+	return closed
 
 
 def after_review(review: str) -> None:

@@ -7,7 +7,7 @@ notifies admins when many reviews fail.
 from typing import Any
 
 import frappe
-from frappe.utils import add_to_date, now_datetime
+from frappe.utils import add_to_date, cint, now_datetime
 
 from guard.indexing.indexer import RUNNING
 from guard.llm import breaker
@@ -30,6 +30,16 @@ def status() -> dict[str, Any]:
 		"indexes": _indexes(),
 		"failure_rate": failure_rate(),
 	}
+
+
+@frappe.whitelist(methods=["POST"])
+def close_stuck_checks(days: int = 7) -> int:
+	"""Complete the checks of the last `days` days that say "Guard is reviewing" on a commit that
+	no review runs on. The hourly job does the same for the last day."""
+	frappe.only_for(["Guard Admin", "System Manager"])
+	from guard.review.jobs import close_stuck_checks as close
+
+	return close(min(max(cint(days), 1), 30))
 
 
 def failure_rate() -> dict[str, Any]:

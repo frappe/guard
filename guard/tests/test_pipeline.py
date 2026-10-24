@@ -501,6 +501,35 @@ class TestPipeline(PullRequestCase):
 		self.assertEqual(latest.confidence_score, 3)
 		self.assertEqual(latest.confidence_reason, "An earlier P1 still applies: saving old bundles breaks.")
 
+	def test_cancelled_review_closes_its_check(self):
+		# A newer review cancels this one while the model runs. Its check said "Guard is reviewing".
+		def cancel_then_submit(request):
+			frame = frappe.get_all("Code Review", filters={"pull_request": self.pr}, pluck="name")
+			frappe.db.set_value("Code Review", frame[0], "cancel_requested", 1)
+			return respond(request)
+
+		respond = scripted([[("submit_review", {"summary": "s", "confidence_score": 5})]])
+		with use_responder(cancel_then_submit):
+			name = trigger.consider(self.pr, "open")
+		self.assertEqual(self.row(name)["status"], "Cancelled")
+		self.assertEqual(
+			self.adapter.named("close_checks"), ["Guard stopped this review: a newer review replaced it."]
+		)
+
+	def test_hourly_job_closes_checks_of_finished_commits_only(self):
+		from guard.review import jobs
+
+		self.review([[("submit_review", {"summary": "s", "confidence_score": 5})]])
+		with patch("guard.providers.adapter_for_repository", return_value=self.adapter):
+			jobs.close_stuck_checks()
+			self.assertIn(self.head, self.adapter.closed_shas)
+			self.assertEqual(set(self.adapter.named("close_checks")), {jobs.STOPPED})
+			# Not while a review of the commit runs: that review ends its check.
+			self.running_review("review")
+			self.adapter.closed_shas.clear()
+			jobs.close_stuck_checks()
+			self.assertNotIn(self.head, self.adapter.closed_shas)
+
 	def running_review(self, stage: str, attempt: int = 0) -> str:
 		from frappe.utils import now_datetime
 
