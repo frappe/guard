@@ -1,14 +1,16 @@
+import threading
 from unittest.mock import patch
 
+import frappe
 from frappe.tests import UnitTestCase
 
 from guard.llm.anthropic_dialect import _messages
 from guard.llm.anthropic_dialect import _result as anthropic_result
-from guard.llm.client import parse_json
+from guard.llm.client import PARALLEL_CALLS, ChatRequest, LLMClient, parse_json, use_responder
 from guard.llm.embeddings import hash_embedding, tokens
 from guard.llm.offline import OfflineDialect
 from guard.llm.openai_dialect import _result as openai_result
-from guard.llm.types import Message, ToolCall, ToolSpec
+from guard.llm.types import ChatResult, LLMError, Message, ToolCall, ToolSpec, Usage
 
 SUBMIT = ToolSpec(
 	"submit_review",
@@ -176,3 +178,29 @@ class TestGatewayErrors(UnitTestCase):
 			self.post(400, calls)
 		self.assertNotIsInstance(raised.exception, GatewayDown)
 		self.assertEqual(calls, [400])
+
+
+class TestChatMany(UnitTestCase):
+	def test_calls_run_together_answer_in_order_and_count_on_the_caller(self):
+		# Each call waits for all the others, so the test passes only when they run at the same time.
+		together = threading.Barrier(PARALLEL_CALLS, timeout=10)
+
+		def respond(request: ChatRequest) -> ChatResult:
+			# frappe.local reaches the thread: the flags, the config and the cache.
+			self.assertTrue(frappe.flags.in_test)
+			text = request.messages[-1].content
+			if text == "bad":
+				raise LLMError("no")
+			if text != "alone":
+				together.wait()
+			return ChatResult(text, [], Usage(10, 1, 4))
+
+		client = LLMClient(purpose="test")
+		with use_responder(respond):
+			results = client.chat_many([[Message("user", str(n))] for n in range(PARALLEL_CALLS)])
+			self.assertEqual([r.content for r in results], [str(n) for n in range(PARALLEL_CALLS)])
+			self.assertEqual(client.usage.input_tokens, 10 * PARALLEL_CALLS)
+			self.assertEqual(client.usage.cached_tokens, 4 * PARALLEL_CALLS)
+			with self.assertRaises(LLMError):
+				client.chat_many([[Message("user", "bad")], [Message("user", "alone")]])
+		self.assertEqual(client.usage.input_tokens, 10 * PARALLEL_CALLS + 10, "the call that answered counts")

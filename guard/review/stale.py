@@ -32,15 +32,12 @@ def close_stale(run: ReviewRun, reraised: set[str]) -> None:
 
 	The ones that stay open go to `run.earlier_open`: the score and the summary count them.
 	"""
-	client = LLMClient.fast(purpose="stale")
-	# Many findings share the head they were raised on, so diff each head once.
-	diffs: dict[str, str] = {}
+	client = LLMClient.fast(purpose="stale", usage=run.usage)
+	rows = _earlier_open(run)
+	states = _states(run, [row for row in rows if row["name"] not in reraised], client)
 	run.earlier_open = []
-	for row in _earlier_open(run):
-		if row["name"] in reraised:
-			run.earlier_open.append(row)
-			continue
-		state = _state(run, row, client, diffs)
+	for row in rows:
+		state = states.get(row["name"], "applies")
 		if state == "fixed":
 			feedback.mark_addressed(row["name"], run.head_sha, "the code at the new head fixes it")
 		elif state in ("gone", "invalid"):
@@ -62,42 +59,65 @@ def resolve(run: ReviewRun, thread_id: str | None) -> None:
 		frappe.log_error(str(error), "Guard resolve thread")
 
 
-def _state(run: ReviewRun, row: dict[str, Any], client: LLMClient, diffs: dict[str, str]) -> str:
-	source = run.head(row["path"])
-	start = int(row["start_line"] or 0)
-	if source is None or len(source.splitlines()) < start:
-		return "gone"
-	if not client.online:
-		return "applies"
-	answer = client.complete_json(
-		JUDGE,
-		data("comment", f"{row['title']}\n{row['body']}")
-		+ data("changes since the comment", _changes_since(run, row, diffs))
-		+ data("current code", _around(source, start)),
-		default={},
+def _states(run: ReviewRun, rows: list[dict[str, Any]], client: LLMClient) -> dict[str, str]:
+	"""The state of each finding by name. The fast model judges them all at once.
+
+	A finding with no change since its review still applies: the model would read the same code.
+	"""
+	states: dict[str, str] = {}
+	heads = _heads({str(row["code_review"]) for row in rows})
+	# Many findings share the head they were raised on, so diff each head once.
+	diffs: dict[str, str | None] = {}
+	asked: list[tuple[str, str]] = []
+	for row in rows:
+		source = run.head(row["path"])
+		start = int(row["start_line"] or 0)
+		if source is None or len(source.splitlines()) < start:
+			states[row["name"]] = "gone"
+			continue
+		old = heads.get(str(row["code_review"]), "")
+		if old not in diffs:
+			diffs[old] = _diff(run, old)
+		changes = diffs[old]
+		if not client.online or changes == "":
+			states[row["name"]] = "applies"
+			continue
+		prompt = (
+			data("comment", f"{row['title']}\n{row['body']}")
+			+ data("changes since the comment", changes or "(not known)")
+			+ data("current code", _around(source, start))
+		)
+		asked.append((row["name"], prompt))
+	answers = client.complete_json_many(JUDGE, [prompt for _, prompt in asked], default={})
+	for (name, _), answer in zip(asked, answers, strict=True):
+		states[name] = str(answer.get("state")) if isinstance(answer, dict) else "applies"
+	return states
+
+
+def _heads(reviews: set[str]) -> dict[str, str]:
+	if not reviews:
+		return {}
+	rows = db.rows(
+		"SELECT name, head_sha FROM `tabCode Review` WHERE name IN %s",
+		(tuple(reviews),),
 	)
-	return str(answer.get("state")) if isinstance(answer, dict) else "applies"
+	return {str(name): str(sha or "") for name, sha in rows}
 
 
-def _changes_since(run: ReviewRun, row: dict[str, Any], diffs: dict[str, str]) -> str:
-	"""The diff from the reviewed head to the new head, for all files: a fix can be in a test or a callee.
-	`diffs` holds the diff of each old head already read in this run."""
-	old = str(db.value("Code Review", row["code_review"], "head_sha") or "")
-	if old not in diffs:
-		diffs[old] = _diff(run, old)
-	return diffs[old]
-
-
-def _diff(run: ReviewRun, old: str) -> str:
-	if not old or old == run.head_sha or not run.repository:
+def _diff(run: ReviewRun, old: str) -> str | None:
+	"""The diff from the reviewed head to the new head, for all files: a fix can be in a test or a
+	callee. "" when nothing changed, None when Guard cannot tell."""
+	if old and old == run.head_sha:
 		return ""
+	if not old or not run.repository:
+		return None
 	try:
 		store = store_for(run.repository)
 		if not store.has_commit(old):
-			return ""
+			return None
 		return store.diff(old, run.head_sha)[:DIFF_CHARS]
 	except GitError:
-		return ""
+		return None
 
 
 def _around(source: str, line: int) -> str:

@@ -369,16 +369,44 @@ class TestPipeline(PullRequestCase):
 		self.review(
 			[[("report_finding", finding), ("submit_review", {"summary": "s", "confidence_score": 3})]]
 		)
-		with (
-			patch("guard.review.stale._state", return_value="fixed"),
-			use_responder(scripted([[("submit_review", {"summary": "s", "confidence_score": 5})]])),
-		):
-			trigger.consider(self.pr, "open", manual=True, requested_by="ada")
+		models = (self.repo.path / "app/models.py").read_text() + "\n\nFIXED = 1\n"
+		self.repo.commit({"app/models.py": models}, "fix callers")
+		frappe.db.set_value("Pull Request", self.pr, "head_sha", self.repo.head())
+		requests = self.online_review(
+			[[("submit_review", {"summary": "s", "confidence_score": 5})]],
+			{"stale": '{"state": "fixed"}'},
+			manual=True,
+		)
 		self.assertEqual(
 			frappe.get_all("Review Finding", filters={"pull_request": self.pr}, pluck="status"), ["Addressed"]
 		)
 		self.assertEqual(len(self.adapter.named("resolve")), 1)
 		self.assertEqual(self.adapter.named("status")[-1], "success")
+		[stale] = [r for r in requests if r.purpose == "stale"]
+		self.assertIn("FIXED = 1", stale.messages[-1].content, "the model reads the changes since")
+
+	def test_rereview_of_the_same_head_asks_no_stale_model(self):
+		finding = {
+			"path": "app/models.py",
+			"start_line": 5,
+			"severity": "P1",
+			"comment_type": "logic",
+			"title": "Callers are not updated",
+			"body": "x",
+			"confidence": 0.9,
+		}
+		self.review(
+			[[("report_finding", finding), ("submit_review", {"summary": "s", "confidence_score": 3})]]
+		)
+		requests = self.online_review(
+			[[("submit_review", {"summary": "s", "confidence_score": 5})]],
+			{"stale": '{"state": "fixed"}'},
+			manual=True,
+		)
+		self.assertFalse([r for r in requests if r.purpose == "stale"])
+		self.assertEqual(
+			frappe.get_all("Review Finding", filters={"pull_request": self.pr}, pluck="status"), ["Open"]
+		)
 
 	def test_rereview_drops_new_p2(self):
 		self.review([[("submit_review", {"summary": "s", "confidence_score": 5})]])

@@ -1,8 +1,10 @@
 """The one LLM interface that the rest of Guard uses."""
 
+import contextvars
 import json
 import re
 from collections.abc import Callable, Iterator
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import Any, Protocol
@@ -25,6 +27,9 @@ class ChatRequest:
 
 Responder = Callable[[ChatRequest], ChatResult]
 _responder: Responder | None = None
+# Model calls of one job in flight at once. A review holds one of `max_concurrent_reviews`
+# slots, so the gateway sees at most this many calls for each slot.
+PARALLEL_CALLS = 4
 
 
 class Dialect(Protocol):
@@ -79,16 +84,61 @@ class LLMClient:
 		max_tokens: int = 4096,
 		temperature: float = 0.1,
 	) -> ChatResult:
+		return self._record([self._call(messages, tools, tool_choice, max_tokens, temperature)])[0]
+
+	def chat_many(
+		self,
+		conversations: list[list[Message]],
+		tools: list[ToolSpec] | None = None,
+		tool_choice: str | None = None,
+		max_tokens: int = 4096,
+		temperature: float = 0.1,
+	) -> list[ChatResult]:
+		"""Send several conversations at once, and answer in the same order.
+
+		Only the gateway calls run on threads. The breaker and the token count stay on this thread,
+		because they can reach `frappe.db`, which is not thread-safe. When a call fails, the others
+		still finish and count, and then the first error is raised.
+		"""
+
+		def call(messages: list[Message]) -> ChatResult | Exception:
+			try:
+				return self._call(messages, tools, tool_choice, max_tokens, temperature)
+			except Exception as error:
+				return error
+
+		if len(conversations) <= 1:
+			return [self.chat(m, tools, tool_choice, max_tokens, temperature) for m in conversations]
+		with ThreadPoolExecutor(min(PARALLEL_CALLS, len(conversations))) as pool:
+			# A copy of the context gives each thread `frappe.local`: the site config, flags and cache.
+			futures = [pool.submit(contextvars.copy_context().run, call, m) for m in conversations]
+			outcomes = [future.result() for future in futures]
+		results = self._record([o for o in outcomes if isinstance(o, ChatResult)])
+		error = next((o for o in outcomes if isinstance(o, Exception)), None)
+		if error:
+			raise error
+		return results
+
+	def _call(
+		self,
+		messages: list[Message],
+		tools: list[ToolSpec] | None,
+		tool_choice: str | None,
+		max_tokens: int,
+		temperature: float,
+	) -> ChatResult:
 		if _responder:
-			result = _responder(ChatRequest(self.model, messages, tools, tool_choice, self.purpose))
-		else:
-			result = self.dialect.chat(self.model, messages, tools, tool_choice, max_tokens, temperature)
-		if self.online:
+			return _responder(ChatRequest(self.model, messages, tools, tool_choice, self.purpose))
+		return self.dialect.chat(self.model, messages, tools, tool_choice, max_tokens, temperature)
+
+	def _record(self, results: list[ChatResult]) -> list[ChatResult]:
+		if results and self.online:
 			from guard.llm import breaker
 
 			breaker.record_success()
-		self.usage.add(result.usage)
-		return result
+		for result in results:
+			self.usage.add(result.usage)
+		return results
 
 	def complete(self, system: str, prompt: str, max_tokens: int = 2048) -> str:
 		messages = [Message("system", system), Message("user", prompt)]
@@ -99,6 +149,18 @@ class LLMClient:
 		text = self.complete(system + "\n\nAnswer with JSON only.", prompt, max_tokens)
 		value = parse_json(text)
 		return default if value is None else value
+
+	def complete_json_many(
+		self, system: str, prompts: list[str], default: Any, max_tokens: int = 4096
+	) -> list[Any]:
+		"""`complete_json` for several prompts at once, with the same system prompt."""
+		system = system + "\n\nAnswer with JSON only."
+		results = self.chat_many(
+			[[Message("system", system), Message("user", prompt)] for prompt in prompts],
+			max_tokens=max_tokens,
+		)
+		values = [parse_json(result.content) for result in results]
+		return [default if value is None else value for value in values]
 
 	def _dialect(self) -> Dialect:
 		config = self.config

@@ -34,10 +34,11 @@ Guard checks each open finding of earlier reviews on the pull request.
 
 1. If the new review reported the same issue again, the finding stays open.
 2. If the file or the lines are gone at the new head, the finding becomes Outdated.
-3. Otherwise, the fast model reads the finding, the diff since the finding's review and the current code, and answers `applies`, `fixed` or `invalid`.
+3. If the head did not change since the finding's review, the finding stays open. The model would read the same code.
+4. Otherwise, the fast model reads the finding, the diff since the finding's review and the current code, and answers `applies`, `fixed` or `invalid`. Guard sends these checks at the same time, up to 4 at once. Their tokens count in the review.
    - `fixed`: the finding becomes Addressed.
    - `invalid`: the finding becomes Outdated.
-4. Guard resolves the provider thread of each finding that it closes.
+5. Guard resolves the provider thread of each finding that it closes.
 
 On GitHub, resolving a thread needs the App permission **Contents: Read & write**.
 
