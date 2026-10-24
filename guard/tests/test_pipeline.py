@@ -760,6 +760,10 @@ class TestPipeline(PullRequestCase):
 		frappe.db.set_value("Code Review", older, "status", "Queued")
 		self.assertIsNone(trigger.consider(self.pr, "open"))
 		self.assertEqual(self.adapter.named("status"), ["skipped"])
+		# Not when the queued review is cancelled: it will not review the commit.
+		frappe.db.set_value("Code Review", older, "cancel_requested", 1)
+		self.assertIsNone(trigger.consider(self.pr, "open"))
+		self.assertEqual(self.adapter.named("status"), ["skipped", "skipped"])
 
 	def test_credit_cap_marks_the_check_skipped(self):
 		cap = db.single_int("Guard Settings", "monthly_credit_cap", 0)
