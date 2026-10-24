@@ -13,10 +13,12 @@ class CodeReview(Document):
 	if TYPE_CHECKING:
 		from frappe.types import DF
 
+		agent_turns: DF.Int
 		attempt: DF.Int
 		base_sha: DF.Data | None
 		body: DF.LongText | None
 		branch: DF.Data | None
+		cached_tokens: DF.Int
 		cancel_requested: DF.Check
 		changed_files: DF.JSON | None
 		cli_payload: DF.JSON | None

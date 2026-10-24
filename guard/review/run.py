@@ -83,6 +83,7 @@ class ReviewRun:
 	# Head lines added since the last reviewed commit. None on a first review.
 	fresh_lines: dict[str, set[int]] | None = None
 	usage: Usage = field(default_factory=Usage)
+	turns: int = 0  # model turns of all review agents
 	findings: list[Finding] = field(default_factory=list)
 	# Open findings of earlier reviews that still apply at this head: rows of Review Finding.
 	earlier_open: list[dict[str, Any]] = field(default_factory=list)

@@ -90,11 +90,14 @@ def _result(data: dict[str, Any], model: str) -> ChatResult:
 		elif block.get("type") == "tool_use":
 			calls.append(ToolCall(block.get("id") or "", block.get("name") or "", block.get("input") or {}))
 	usage = data.get("usage") or {}
-	cached = (usage.get("cache_read_input_tokens") or 0) + (usage.get("cache_creation_input_tokens") or 0)
+	# Anthropic counts the cached and the newly cached parts apart from `input_tokens`. Add them, so
+	# that the input is the whole prompt, as on the OpenAI front.
+	cached = usage.get("cache_read_input_tokens") or 0
+	prompt = (usage.get("input_tokens") or 0) + cached + (usage.get("cache_creation_input_tokens") or 0)
 	return ChatResult(
 		content="".join(text),
 		tool_calls=calls,
-		usage=Usage(usage.get("input_tokens") or 0, usage.get("output_tokens") or 0, cached),
+		usage=Usage(prompt, usage.get("output_tokens") or 0, cached),
 		stop_reason=data.get("stop_reason") or "",
 		model=data.get("model") or model,
 	)

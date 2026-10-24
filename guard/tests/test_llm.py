@@ -90,13 +90,19 @@ class TestDialects(UnitTestCase):
 					{"type": "text", "text": "ok"},
 					{"type": "tool_use", "id": "x", "name": "grep", "input": {"pattern": "a"}},
 				],
-				"usage": {"input_tokens": 10, "output_tokens": 5, "cache_read_input_tokens": 7},
+				"usage": {
+					"input_tokens": 10,
+					"output_tokens": 5,
+					"cache_read_input_tokens": 7,
+					"cache_creation_input_tokens": 3,
+				},
 			},
 			"m",
 		)
 		self.assertEqual(result.content, "ok")
 		self.assertEqual(result.tool_calls[0].arguments, {"pattern": "a"})
 		self.assertEqual(result.usage.cached_tokens, 7)
+		self.assertEqual(result.usage.input_tokens, 20, "the whole prompt, as on the OpenAI front")
 
 	def test_openai_result(self):
 		result = openai_result(
@@ -112,12 +118,17 @@ class TestDialects(UnitTestCase):
 						"finish_reason": "tool_calls",
 					}
 				],
-				"usage": {"prompt_tokens": 3, "completion_tokens": 4},
+				"usage": {
+					"prompt_tokens": 3,
+					"completion_tokens": 4,
+					"prompt_tokens_details": {"cached_tokens": 2},
+				},
 			},
 			"m",
 		)
 		self.assertEqual(result.tool_calls[0].arguments, {"pattern": "x"})
 		self.assertEqual(result.usage.output_tokens, 4)
+		self.assertEqual((result.usage.input_tokens, result.usage.cached_tokens), (3, 2))
 
 
 class TestParseJsonOuter(UnitTestCase):

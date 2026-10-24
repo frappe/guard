@@ -30,6 +30,8 @@ class Message:
 
 @dataclass
 class Usage:
+	"""Token counts. `input_tokens` is the whole prompt; `cached_tokens` is the part of it read from the cache."""
+
 	input_tokens: int = 0
 	output_tokens: int = 0
 	cached_tokens: int = 0

@@ -44,6 +44,8 @@
   "credits",
   "input_tokens",
   "output_tokens",
+  "cached_tokens",
+  "agent_turns",
   "timing_section",
   "started_at",
   "completed_at",
@@ -311,6 +313,18 @@
    "label": "Output Tokens"
   },
   {
+   "description": "Input tokens that the gateway read from its prompt cache",
+   "fieldname": "cached_tokens",
+   "fieldtype": "Int",
+   "label": "Cached Tokens"
+  },
+  {
+   "description": "Model turns of the review agents",
+   "fieldname": "agent_turns",
+   "fieldtype": "Int",
+   "label": "Agent Turns"
+  },
+  {
    "fieldname": "timing_section",
    "fieldtype": "Section Break",
    "idx": 39,
@@ -419,7 +433,7 @@
  ],
  "index_web_pages_for_search": 0,
  "links": [],
- "modified": "2026-10-20 10:00:00.000000",
+ "modified": "2026-10-25 00:36:38.963246",
  "modified_by": "Administrator",
  "module": "Guard",
  "name": "Code Review",

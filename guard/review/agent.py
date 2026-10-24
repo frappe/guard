@@ -187,6 +187,7 @@ class Agent:
 		turns = 0
 		while turns < self.max_turns and not self.run.verdict.submitted:
 			turns += 1
+			self.run.turns += 1
 			if turns == self.max_turns - WARN_TURNS:
 				self.messages.append(Message("user", TURNS_LOW))
 			result = client.chat(self.messages, tools=specs)

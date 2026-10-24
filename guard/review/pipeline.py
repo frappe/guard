@@ -420,6 +420,8 @@ class ReviewPipeline:
 				"credits": guard_settings.CREDITS.get(run.tier, 1),
 				"input_tokens": run.usage.input_tokens,
 				"output_tokens": run.usage.output_tokens,
+				"cached_tokens": run.usage.cached_tokens,
+				"agent_turns": run.turns,
 				"review_number": number,
 			}
 		)

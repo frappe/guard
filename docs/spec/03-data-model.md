@@ -155,7 +155,9 @@ The indexer writes these with bulk inserts. Names are content hashes, so a re-in
 | `diagram_type`, `diagram` | Select, Code | |
 | `important_files`, `context_used`, `changed_files`, `config_snapshot` | JSON | |
 | `files_reviewed`, `findings_count`, `posted_count`, `suppressed_count` | Int | |
-| `credits`, `input_tokens`, `output_tokens` | Int | |
+| `credits`, `input_tokens`, `output_tokens` | Int | `input_tokens` is the whole prompt of every call |
+| `cached_tokens` | Int | The part of `input_tokens` that the gateway read from its prompt cache |
+| `agent_turns` | Int | Model turns of the review agents |
 | `review_number` | Int | 1 for the first review of a pull request. |
 | `started_at`, `completed_at`, `error`, `body` | mixed | `body` is the rendered summary comment. |
 | `stage`, `cancel_requested`, `attempt`, `retry_at` | mixed | Progress, cancellation, and the retry time after a busy gateway. A job every minute queues reviews whose `retry_at` has passed. |
