@@ -10,6 +10,7 @@ counts, plus `context.repos` and Repository Clusters.
   repository, check that the target exists there.
 """
 
+import re
 from collections.abc import Callable
 from dataclasses import dataclass
 from functools import cached_property
@@ -29,6 +30,9 @@ FUNCTION_KINDS = ("function", "method", "class")
 # A route family segment must be specific enough to say "this call is meant for that repository".
 GENERIC_SEGMENTS = {"api", "v1", "v2", "v3", "method", "resource", "*"}
 MIN_FAMILY_LENGTH = 4
+# Files whose strings can call a method of another repository. A JSON contract or a doc can hold
+# names like `admin.invites.get` that only look like Python paths.
+CALLER_LANGUAGES = {"python", "javascript", "typescript", "tsx", "vue"}
 
 
 @dataclass
@@ -62,6 +66,61 @@ class OtherRepository:
 				(self.index, qualified_name),
 			)
 		)
+
+	def has_module(self, prefix: str) -> bool:
+		"""A module or package of the repository is `prefix`, or is inside it."""
+		return bool(
+			db.scalar(
+				"""SELECT COUNT(*) FROM `tabCode Entity` WHERE `index` = %s AND kind = 'file'
+				AND (qualified_name = %s OR qualified_name LIKE %s)""",
+				(self.index, prefix, f"{prefix}.%"),
+			)
+		)
+
+	@cached_property
+	def newer_head(self) -> str | None:
+		"""The head of the default branch when it moved past the index, else None.
+
+		The other repository can merge the method a minute before this review: the index then
+		says that it does not exist. Read once, and only when a finding depends on it.
+		"""
+		from guard.git.repository import store_for
+		from guard.git.store import GitError
+
+		branch = str(db.value("Code Repository", self.repository, "default_branch") or "")
+		indexed = str(db.value("Repository Index", self.index, "sha") or "")
+		if not branch:
+			return None
+		try:
+			store = store_for(self.repository)
+			store.fetch_branches(branch)
+			head = store.rev_parse(f"refs/heads/{branch}")
+		except GitError:
+			return None
+		if head == indexed:
+			return None
+		from guard.indexing.jobs import enqueue_index
+
+		enqueue_index(self.repository)
+		return head
+
+	def defines_at_head(self, qualified_name: str) -> bool:
+		"""The newer head defines the Python path: its module exists and has the name."""
+		from guard.git.repository import store_for
+
+		head = self.newer_head
+		if not head:
+			return False
+		store = store_for(self.repository)
+		parts = qualified_name.split(".")
+		for cut in range(len(parts), 0, -1):
+			module, rest = "/".join(parts[:cut]), parts[cut:]
+			for path in (f"{module}.py", f"{module}/__init__.py"):
+				text = store.show(head, path)
+				if text is None:
+					continue
+				return not rest or bool(_definition(rest[0]).search(text))
+		return False
 
 
 def linked(repository: str | None, provider: str | None, configured: list[str]) -> list[OtherRepository]:
@@ -298,10 +357,13 @@ def missing_targets(
 		if not added:
 			continue
 		lines: list[str] = str(head(diff.path) or "").splitlines()
-		for number in sorted(added):
-			if 0 < number <= len(lines):
-				findings += _missing_methods(diff.path, number, lines[number - 1], others, own_packages)
-		for call in routes.client_calls(lines, set()):
+		if languages.detect(diff.path) in CALLER_LANGUAGES:
+			for number in sorted(added):
+				if 0 < number <= len(lines):
+					findings += _missing_methods(diff.path, number, lines[number - 1], others, own_packages)
+		# A line that defines a route is not a call to one.
+		defined = {route.line for route in routes.definitions(lines)}
+		for call in routes.client_calls(lines, defined):
 			if call.covers(added):
 				findings += _missing_route(diff.path, call, others, own_index)
 	return findings
@@ -326,6 +388,12 @@ def _missing_methods(
 			continue
 		owner = next((o for o in others if package in o.packages), None)
 		if owner is None or owner.defines(name) or _is_module(owner, name):
+			continue
+		# `admin.invites.get` is no Python path of a repository that has an `admin` package but no
+		# `admin.invites`: the string names something else.
+		if not owner.has_module(".".join(name.split(".")[:2])):
+			continue
+		if owner.defines_at_head(name):
 			continue
 		findings.append(
 			Finding(
@@ -372,6 +440,9 @@ def _missing_route(
 		in_family = [r for r in other.routes if family in r[1].split("/")]
 		if not in_family or _reaches(other.routes, call):
 			continue
+		if other.newer_head:
+			# The index is behind the repository: the route may be new. Do not guess.
+			continue
 		close = ", ".join(f"`{v} {p}`" for v, p, _, _ in in_family[:4])
 		body = (
 			f"`{other.full_name}` serves `{family}` routes, but none of them matches "
@@ -392,6 +463,10 @@ def _missing_route(
 			)
 		]
 	return []
+
+
+def _definition(name: str) -> re.Pattern[str]:
+	return re.compile(rf"^\s*(?:async\s+def|def|class)\s+{re.escape(name)}\b|^{re.escape(name)}\s*=", re.M)
 
 
 def _reaches(defined: list[tuple[str, str, str, int]], call: routes.ClientCall) -> bool:

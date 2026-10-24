@@ -146,3 +146,33 @@ class TestCrossRepository(IntegrationTestCase):
 		titles = [comment.body for comment in adapter.named("create_review")[0]]
 		self.assertTrue(any("`central.api.pilot.nope` does not exist" in t for t in titles), titles)
 		self.assertTrue(any("matches POST virtual-machines/*/actions/hibernate" in t for t in titles), titles)
+
+	def test_a_method_merged_after_the_index_exists(self):
+		# pilot#690: central merged the method 20 minutes before the review, and its index was older.
+		self.provider_repo.commit(
+			{"central/api/pilot.py": PILOT_API + '\n\n@frappe.whitelist()\ndef fresh():\n    return "new"\n'},
+			"add fresh",
+		)
+		client = CLIENT.replace("central.api.pilot.heartbeat", "central.api.pilot.fresh")
+		adapter = self.open_pull_request(self.consumer_repo, self.consumer, {"pilot/client.py": client}, 3)
+		self.assertFalse(self.bodies(adapter, "does not exist"))
+
+	def test_strings_that_only_look_like_methods(self):
+		# suite#881: a contract names `admin.invites.get`, and the other repository has an `admin`
+		# package but no `admin.invites`. A JSON file holds no calls either.
+		files = {
+			"pilot/contract.ts": 'export const op = "central.invites.get"\n',
+			"pilot/contract.json": '{"op": "central.api.pilot.nope"}\n',
+		}
+		adapter = self.open_pull_request(self.consumer_repo, self.consumer, files, 4)
+		self.assertFalse(self.bodies(adapter, "does not exist"))
+
+	def test_a_route_definition_is_not_a_call(self):
+		# pilot#557: its own new route `/<name>/actions/clone` was read as a call to atlas.
+		server = '@app.post("/api/virtual-machines/<vm_id>/actions/hibernate")\ndef hibernate(vm_id):\n    return vm_id\n'
+		adapter = self.open_pull_request(self.consumer_repo, self.consumer, {"pilot/server.py": server}, 5)
+		self.assertFalse(self.bodies(adapter, "No route in"))
+
+	def bodies(self, adapter: FakeAdapter, text: str) -> list[str]:
+		posted = [c.body for review in adapter.named("create_review") for c in review]
+		return [body for body in posted + adapter.named("post_comment") if text in body]
