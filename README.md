@@ -33,10 +33,11 @@ We used a hosted AI reviewer on our pull requests. It had hard limits on new rep
 - Reviews pull requests on open, push or rebase, or when someone writes `@guard` in a comment.
 - Posts a summary with a 0 to 5 confidence score, a risk level, a findings table, a diagram and a blast radius line, and inline comments with P0, P1 or P2 severity and suggested fixes.
 - Reads team rules from `.guard/config.toml`, `.guard/rules.md`, `.guard/files.toml` and `guard.toml` in any directory, merged over dashboard settings.
+- Checks each change against the project rules in `CLAUDE.md`, `AGENTS.md` and similar files, and reports each break as a P2 that links to the rule. It measures complexity, file-length and boolean-naming rules in code.
 - Answers questions in pull request threads, and in Chat with PR and codebase chat in Desk.
 - Learns from reactions, replies, fixes and human review comments. It suppresses findings that the team rejects, remembers problems that human reviewers caught and it missed, and suggests rules from human review comments.
 - Builds a knowledge base for each repository and reads Jira, Confluence and Linear tickets.
-- Approves a pull request after a clean 5/5 review, and resolves its own threads when the code fixes them.
+- Resolves its own threads when the code fixes them, and, when a repository turns on auto-approve, approves a pull request after a clean 5/5 review.
 - Runs targeted tests in a rootless container, when runtime validation is on.
 - Serves a query API, an MCP server and a `guard` CLI for local branch reviews and fixes with coding agents.
 
@@ -69,7 +70,7 @@ Without a gateway, Guard still indexes code, runs the graph checks, the secret s
 | Where | What |
 | - | - |
 | GitHub | `@guard`, `@guard review this at apex`, `@guard is this thread-safe?`, replies in Guard threads, 👍 and 👎 |
-| Desk | The **Guard** workspace, **Pull Request Review** (`/desk/guard-pr`), **Codebase Chat**, and the Guard Analytics, Bugs Caught and My Guard reports |
+| Desk | The **Guard** workspace, **Pull Request Review** (`/desk/guard-pr`), **Codebase Chat**, **Guard Health** (queues, failures, the AI gateway and the indexes), and the Guard Analytics, Bugs Caught and My Guard reports |
 | Terminal | `curl -fsSL "<site>/api/method/guard.api.cli.download" -o ~/.local/bin/guard && chmod +x ~/.local/bin/guard`, then `guard login` and `guard review` |
 | Coding agents | MCP at `<site>/api/method/guard.mcp.server.handle` with `Authorization: token <key>:<secret>` |
 
@@ -82,7 +83,13 @@ bench --site <test-site> run-tests --app guard
 
 Tests run offline: a scripted model replaces the gateway, and temporary git repositories replace GitHub.
 
-This app uses `pre-commit` with ruff, eslint, prettier and pyupgrade:
+Evals replay recorded pull requests from `guard/evals/cases` through a full review, and need the AI gateway:
+
+```bash
+bench --site <site> execute guard.evals.run.run
+```
+
+This app uses `pre-commit` with ruff, prettier and eslint:
 
 ```bash
 cd apps/guard
