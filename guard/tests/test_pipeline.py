@@ -317,28 +317,15 @@ class TestPipeline(PullRequestCase):
 		self.assertEqual(db.value("Code Review", str(failed.name), "status"), "Queued")
 
 	def test_dead_review_job_fails_the_review(self):
-		from frappe.utils import now_datetime
-
 		from guard.review.jobs import fail_dead_reviews
 
-		# What a worker restart leaves: Running, and no job in the queue.
-		dead = frappe.get_doc(
-			{
-				"doctype": "Code Review",
-				"pull_request": self.pr,
-				"repository": self.repository,
-				"source": "pull_request",
-				"status": "Running",
-				"trigger": "open",
-				"head_sha": self.head,
-				"started_at": now_datetime(),
-			}
-		).insert(ignore_permissions=True)
+		# What a worker restart leaves: Running, and no job in the queue. It had started to post.
+		dead = self.running_review("publish")
 		with patch("guard.review.jobs.is_job_enqueued", return_value=True):
 			fail_dead_reviews()
-		self.assertEqual(db.value("Code Review", str(dead.name), "status"), "Running")
+		self.assertEqual(db.value("Code Review", dead, "status"), "Running")
 		fail_dead_reviews()
-		self.assertEqual(db.value("Code Review", str(dead.name), "status"), "Failed")
+		self.assertEqual(db.value("Code Review", dead, "status"), "Failed")
 		self.assertEqual(self.adapter.named("status"), ["error"])
 		self.assertIn("confused", self.adapter.named("react"))
 
@@ -458,6 +445,40 @@ class TestPipeline(PullRequestCase):
 		)
 		self.assertFalse([r for r in requests if r.purpose == "verdict"])
 		self.assertEqual(db.value("Code Review", {"pull_request": self.pr}, "confidence_score"), 3)
+
+	def test_dead_review_job_starts_again_before_it_posts(self):
+		from guard.review import jobs
+
+		dead, worn = self.running_review("review"), self.running_review("review", jobs.MAX_ATTEMPT - 1)
+		with patch("guard.review.jobs.enqueue_review") as enqueue:
+			jobs.fail_dead_reviews()
+		enqueue.assert_called_once_with(dead, attempt=1, tier="")
+		row = db.values("Code Review", dead, ("status", "stage"))
+		self.assertEqual(row, {"status": "Queued", "stage": jobs.RESTARTED})
+		# One that stopped too often fails, so it cannot loop for ever.
+		self.assertEqual(db.value("Code Review", worn, "status"), "Failed")
+
+	def running_review(self, stage: str, attempt: int = 0) -> str:
+		from frappe.utils import now_datetime
+
+		return str(
+			frappe.get_doc(
+				{
+					"doctype": "Code Review",
+					"pull_request": self.pr,
+					"repository": self.repository,
+					"source": "pull_request",
+					"status": "Running",
+					"stage": stage,
+					"attempt": attempt,
+					"trigger": "open",
+					"head_sha": self.head,
+					"started_at": now_datetime(),
+				}
+			)
+			.insert(ignore_permissions=True)
+			.name
+		)
 
 	def online_review(self, steps, answers, manual=False):
 		"""Run a review with the clients online, and return every model request."""

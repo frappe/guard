@@ -8,6 +8,10 @@ from guard.utils import db
 
 QUEUE_BY_TIER = {"apex": "long"}
 DEAD_AFTER = 600  # seconds past the job timeout
+# Stages that post nothing yet. A review whose job stopped in one of them can start again.
+BEFORE_PUBLISH = ("prepare", "start", "index", "context", "review", "verify", "filter")
+MAX_ATTEMPT = 5  # restarts and retries of one review, together
+RESTARTED = "restarting: the worker stopped during the review"
 
 
 def create_review(
@@ -77,19 +81,30 @@ def job_id(review: str, attempt: int) -> str:
 
 
 def fail_dead_reviews() -> None:
-	"""Every 5 minutes: fail a running review whose job stopped, for example in a restart.
+	"""Every 5 minutes: start again a running review whose job stopped, for example in a deploy.
 
-	Else it stays Running, and its pull request shows "Guard is reviewing" for ever.
+	A review that had started to post, or that stopped too often, fails: else it stays Running,
+	and its pull request shows "Guard is reviewing" for ever.
 	"""
 	from guard.review.pipeline import ReviewPipeline
 
 	rows = frappe.get_all(
-		"Code Review", filters={"status": "Running"}, fields=["name", "attempt", "tier", "started_at"]
+		"Code Review",
+		filters={"status": "Running"},
+		fields=["name", "attempt", "tier", "started_at", "stage", "cancel_requested"],
 	)
 	for row in rows:
-		alive = is_job_enqueued(job_id(row.name, row.attempt or 0))
+		attempt = row.attempt or 0
+		alive = is_job_enqueued(job_id(row.name, attempt))
 		age = time_diff_in_seconds(now_datetime(), row.started_at) if row.started_at else 0
 		if alive and age < job_timeout(row.tier or "") + DEAD_AFTER:
+			continue
+		if row.cancel_requested and not alive:
+			db.set_values("Code Review", row.name, {"status": "Cancelled", "completed_at": now_datetime()})
+			continue
+		if not alive and row.stage in BEFORE_PUBLISH and attempt + 1 < MAX_ATTEMPT:
+			db.set_values("Code Review", row.name, {"status": "Queued", "stage": RESTARTED})
+			enqueue_review(row.name, attempt=attempt + 1, tier=row.tier or "")
 			continue
 		pipeline = ReviewPipeline(row.name)
 		pipeline.fail("The review job stopped before the review finished, for example in a restart.")

@@ -1,9 +1,7 @@
 """One bare mirror for each repository, driven by the git CLI."""
 
-import fcntl
 import os
 import subprocess
-import time
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -11,13 +9,13 @@ from pathlib import Path
 
 import frappe
 
+from guard.utils.locks import file_lock
 from guard.utils.redact import redact
 
 TIMEOUT = 600
 EMPTY_TREE = "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
 # A fetch starts git's automatic gc. On a big mirror that is a detached repack on every core.
 NO_GC = ("-c", "gc.auto=0", "-c", "maintenance.auto=false")
-LOCK_POLL = 0.5
 
 
 class GitError(Exception):
@@ -251,22 +249,10 @@ class GitStore:
 	def _lock(self) -> Iterator[None]:
 		"""Held while git writes refs or config: two fetches into one repository fail to lock a ref.
 		The kernel drops the lock when a process dies."""
-		self.path.mkdir(parents=True, exist_ok=True)
-		fd = os.open(self.path / "guard.lock", os.O_CREAT | os.O_RDWR, 0o600)
-		try:
-			deadline = time.monotonic() + TIMEOUT
-			while True:
-				try:
-					fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-					break
-				except BlockingIOError as error:
-					if time.monotonic() > deadline:
-						raise GitError(f"{self.name} is locked by another git command") from error
-					time.sleep(LOCK_POLL)
+		with file_lock(self.path / "guard.lock", wait=TIMEOUT) as acquired:
+			if not acquired:
+				raise GitError(f"{self.name} is locked by another git command")
 			yield
-		finally:
-			# Closing the file drops the lock.
-			os.close(fd)
 
 	def _git(
 		self, *args: str, auth: bool = False, stdin: str | None = None, config: tuple[str, ...] = ()

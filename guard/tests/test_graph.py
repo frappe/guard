@@ -290,7 +290,7 @@ class TestGitStore(IntegrationTestCase):
 		self.addCleanup(repo.cleanup)
 		git = store_for(make_repository(repo, full_name=f"acme/{frappe.generate_hash(length=6)}"))
 		git.fetch_branches("main")
-		with git._lock(), patch("guard.git.store.TIMEOUT", 0), patch("guard.git.store.LOCK_POLL", 0):
+		with git._lock(), patch("guard.git.store.TIMEOUT", 0):
 			with self.assertRaises(GitError):
 				git.fetch_branches("main")
 

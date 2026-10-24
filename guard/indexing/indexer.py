@@ -4,6 +4,7 @@ import hashlib
 from collections import Counter
 from collections.abc import Iterable
 from contextlib import AbstractContextManager
+from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
 import frappe
@@ -20,12 +21,12 @@ from guard.indexing.symbols import EntityRow, SymbolTable
 from guard.indexing.vectors import VectorRow, VectorStore
 from guard.llm.embeddings import Embedder
 from guard.utils import cache, db
+from guard.utils.locks import file_lock
 
 if TYPE_CHECKING:
 	from guard.guard.doctype.repository_index.repository_index import RepositoryIndex
 
 BATCH = 300
-LOCK_TTL = 7200  # the timeout of the index job
 FAILED_FOR = 3600  # seconds a review skips an index that failed
 # A run sets these. When a new run finds one, the run before it died.
 RUNNING = ("cloning", "processing")
@@ -103,8 +104,9 @@ class IndexFailed(Exception):
 
 
 def index_lock(index: str) -> AbstractContextManager[bool]:
-	"""Held while a run writes the index, so two runs never write the same rows."""
-	return cache.exclusive(f"guard:index:{index}", LOCK_TTL)
+	"""Held while a run writes the index, so two runs never write the same rows. A run that a
+	deploy stops lets go of it at once: reviews of the repository do not wait for a timeout."""
+	return file_lock(Path(frappe.get_site_path("private", "guard", "locks", f"index-{index}.lock")))
 
 
 def recent_failure(index: str) -> str:
