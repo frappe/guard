@@ -9,6 +9,16 @@ from guard.tests.cases import AUTO_APPROVE, PullRequestCase
 from guard.tests.fakes import scripted
 from guard.utils import db
 
+PROBLEM = {
+	"path": "app/models.py",
+	"start_line": 5,
+	"severity": "P2",
+	"comment_type": "style",
+	"title": "Name is vague",
+	"body": "x",
+	"confidence": 0.9,
+}
+
 
 class TestPipeline(PullRequestCase):
 	def test_review_posts_findings_summary_and_status(self):
@@ -399,8 +409,71 @@ class TestPipeline(PullRequestCase):
 		):
 			second = trigger.consider(self.pr, "open", manual=True, requested_by="ada")
 		self.assertEqual(self.row(second)["posted_count"], 0)
-		# Only a dropped P2 was left, so 4 becomes 5.
-		self.assertEqual(self.row(second)["confidence_score"], 5)
+		# No model checks the score here, and a held-back P2 is no proof that it is wrong.
+		self.assertEqual(self.row(second)["confidence_score"], 4)
+
+	def test_score_of_a_refuted_finding_is_fact_checked(self):
+		# erpnext #62149: every finding was refuted or held back, and the score of 3 stayed.
+		finding = dict(PROBLEM, severity="P1")
+		refuted = '[{"index": 0, "valid": false, "reason": "the caller passes notify"}]'
+		checked = '{"score": 5, "reason": "The only issue did not hold up."}'
+		verdict = {"summary": "s", "confidence_score": 3, "confidence_reason": "Callers break."}
+		requests = self.online_review(
+			[[("report_finding", finding), ("submit_review", verdict)]],
+			{"verify": refuted, "verdict": checked},
+		)
+		review = db.values(
+			"Code Review", {"pull_request": self.pr}, ("confidence_score", "confidence_reason")
+		)
+		self.assertEqual(
+			review, {"confidence_score": 5, "confidence_reason": "The only issue did not hold up."}
+		)
+		[check] = [r for r in requests if r.purpose == "verdict"]
+		self.assertIn("refuted: the caller passes notify", check.messages[-1].content)
+		self.assertIn("Reason: Callers break.", check.messages[-1].content)
+
+	def test_fact_check_keeps_a_score_that_held_back_findings_back(self):
+		self.review([[("submit_review", {"summary": "s", "confidence_score": 5})]])
+		checked = '{"score": 4, "reason": "A naming point is left."}'
+		requests = self.online_review(
+			[[("report_finding", PROBLEM), ("submit_review", {"summary": "s", "confidence_score": 4})]],
+			{"verify": '[{"index": 0, "valid": true}]', "verdict": checked},
+			manual=True,
+		)
+		latest = frappe.get_all(
+			"Code Review",
+			filters={"pull_request": self.pr},
+			fields=["confidence_score"],
+			order_by="creation desc",
+		)[0]
+		self.assertEqual(latest.confidence_score, 4)
+		[check] = [r for r in requests if r.purpose == "verdict"]
+		self.assertIn("held back: re-reviews post P2 only on new lines", check.messages[-1].content)
+
+	def test_no_fact_check_when_posted_findings_back_the_score(self):
+		finding = dict(PROBLEM, severity="P1")
+		requests = self.online_review(
+			[[("report_finding", finding), ("submit_review", {"summary": "s", "confidence_score": 3})]],
+			{"verify": '[{"index": 0, "valid": true}]', "verdict": '{"score": 5}'},
+		)
+		self.assertFalse([r for r in requests if r.purpose == "verdict"])
+		self.assertEqual(db.value("Code Review", {"pull_request": self.pr}, "confidence_score"), 3)
+
+	def online_review(self, steps, answers, manual=False):
+		"""Run a review with the clients online, and return every model request."""
+		requests = []
+		respond = scripted(steps, answers)
+
+		def record(request):
+			requests.append(request)
+			return respond(request)
+
+		with (
+			patch.object(LLMClient, "online", new_callable=PropertyMock, return_value=True),
+			use_responder(record),
+		):
+			trigger.consider(self.pr, "open", manual=manual, requested_by="ada" if manual else "")
+		return requests
 
 	def test_rereview_posts_p2_on_new_lines(self):
 		self.review([[("submit_review", {"summary": "s", "confidence_score": 5})]])

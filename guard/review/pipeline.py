@@ -24,7 +24,7 @@ from guard.llm.types import GatewayBusy, GatewayDown
 from guard.providers import adapter_for_repository
 from guard.review import checks, context, crossrepo, prompts, rule_files, sandbox, stale, verify
 from guard.review.agent import Agent
-from guard.review.findings import FindingFilter, score_cap, score_floor
+from guard.review.findings import FindingFilter, score_cap
 from guard.review.publish import Publisher
 from guard.review.run import ReviewRun, Verdict
 from guard.review.task import compose
@@ -198,10 +198,11 @@ class ReviewPipeline:
 		finding_filter = FindingFilter(run.files, run.settings, existing, run.fresh_lines)
 		finding_filter.run(run.findings)
 		suppression.suppress(run.findings, run.repository)
+		# Only the model's verdict: the graph verdict below does not rest on findings.
+		verify.check_verdict(run)
 		if not run.verdict.submitted:
 			run.verdict = graph_verdict(run)
-		score = score_floor(run.findings, run.verdict.confidence_score)
-		run.verdict.confidence_score = min(score, score_cap(run.findings))
+		run.verdict.confidence_score = min(run.verdict.confidence_score, score_cap(run.findings))
 		self.stage("publish")
 		names = publisher.save_findings()
 		number = self.review_number()

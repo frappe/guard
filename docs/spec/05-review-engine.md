@@ -176,6 +176,14 @@ The agent gives a score. Guard then applies caps:
 
 The final score is the lower of the agent score and the cap.
 
+The agent gives its score before its findings are checked. When that score is lower than the cap, a fact check runs before the cap. The check gets the score, its reason, and each finding with what happened to it:
+
+- **Posted.**
+- **Refuted** by the verifier. A refuted finding is no evidence.
+- **Held back** by the filter or by suppression, for example as minor or as already posted. Nothing showed that it is wrong, so it still counts.
+
+The check answers the score that this evidence supports, and a new reason. Without a model, the agent score stays.
+
 ## Stage 9: Publish
 
 ### Summary comment

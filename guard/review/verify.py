@@ -1,8 +1,9 @@
-"""Second pass that removes false positives (plus and apex; P0 only for base)."""
+"""Second pass that removes false positives (plus and apex; P0 only for base), and the fact
+check of the confidence score."""
 
 from guard.llm.client import LLMClient
-from guard.review.findings import SEVERITIES, Finding
-from guard.review.prompts import VERIFIER, data
+from guard.review.findings import SEVERITIES, Finding, score_cap
+from guard.review.prompts import VERDICT, VERIFIER, data
 from guard.review.rule_files import mandatory_rules
 from guard.review.run import ReviewRun
 
@@ -41,6 +42,46 @@ def verify(run: ReviewRun) -> None:
 			finding.severity = answer["severity"]
 		if isinstance(answer.get("confidence"), int | float):
 			finding.confidence = min(max(float(answer["confidence"]), 0.0), 1.0)
+
+
+def check_verdict(run: ReviewRun) -> None:
+	"""Fact-check a score that is lower than the posted findings allow.
+
+	The reviewer scores from what it suspects, before its findings are checked. When the check
+	refutes some, the score can rest on issues that are wrong. A finding that is held back, for
+	example as minor, still counts: nothing showed that it is wrong. Without a model the score
+	stays as it is.
+	"""
+	verdict = run.verdict
+	if not verdict.submitted or verdict.confidence_score >= score_cap(run.findings):
+		return
+	client = LLMClient(tier=run.tier, purpose="verdict", usage=run.usage)
+	if not client.online:
+		return
+	claim = (
+		f"Score: {verdict.confidence_score}\nReason: {verdict.confidence_reason}\nSummary:\n{verdict.summary}"
+	)
+	parts = [data("review", claim)]
+	parts += [_checked(run, index, finding) for index, finding in enumerate(run.findings)]
+	if not run.findings:
+		parts.append("The reviewer reported no findings.")
+	answer = client.complete_json(VERDICT, "\n\n".join(parts), default={})
+	score = answer.get("score") if isinstance(answer, dict) else None
+	if not isinstance(score, int) or isinstance(score, bool) or not 0 <= score <= 5:
+		return
+	verdict.confidence_score = score
+	if reason := str(answer.get("reason") or "").strip():
+		verdict.confidence_reason = reason[:500]
+
+
+def _checked(run: ReviewRun, index: int, finding: Finding) -> str:
+	if finding.kept:
+		fate = "posted"
+	elif finding.status_reason.startswith("verifier:"):
+		fate = f"refuted: {finding.status_reason.removeprefix('verifier:').strip()}"
+	else:
+		fate = f"held back: {finding.status_reason}"
+	return _item(run, index, finding) + "\n" + data(f"what happened to finding {index}", fate)
 
 
 def proven_break(run: ReviewRun, finding: Finding) -> bool:
