@@ -1,6 +1,7 @@
 """Parse one source file into entities and raw edges."""
 
 import re
+from collections import Counter
 from dataclasses import dataclass, field
 from functools import cache
 from typing import Any
@@ -83,10 +84,18 @@ class ParsedFile:
 	entities: list[ParsedEntity] = field(default_factory=list)
 	edges: list[RawEdge] = field(default_factory=list)
 	imports: list[ImportRef] = field(default_factory=list)
+	keys: Counter[str] = field(default_factory=Counter, repr=False)
 
 	@property
 	def file_entity(self) -> ParsedEntity:
 		return self.entities[0]
+
+	def unique_key(self, key: str) -> str:
+		"""`key`, or `key#n` when an entity of this file has it. Minified code has many
+		`function n` on one line, and the indexer names each entity by its key."""
+		count = self.keys[key]
+		self.keys[key] += 1
+		return f"{key}#{count}" if count else key
 
 	def innermost(self, line: int) -> ParsedEntity:
 		"""The smallest entity that contains the line, else the file."""
@@ -172,7 +181,7 @@ class _Extractor:
 		qualified = f"{parent.qualified_name}.{item.name}" if parent.qualified_name else item.name
 		decorators = [str(d) for d in item.decorators or []] or self._decorators_above(item.span.start_line)
 		entity = ParsedEntity(
-			key=f"{qualified}@{start}",
+			key=self.parsed.unique_key(f"{qualified}@{start}"),
 			kind=kind,
 			name=item.name,
 			qualified_name=qualified,
@@ -286,7 +295,7 @@ def _http(parsed: ParsedFile, source: str) -> None:
 		qualified = f"route:{route.verb} {route.router}:{routes.normalize(route.path)}"
 		parsed.entities.append(
 			ParsedEntity(
-				key=f"{qualified}@{route.line}",
+				key=parsed.unique_key(f"{qualified}@{route.line}"),
 				kind="route",
 				name=f"{route.verb} {route.path or '/'}",
 				qualified_name=qualified,
@@ -301,7 +310,7 @@ def _http(parsed: ParsedFile, source: str) -> None:
 	for router in routes.routers(lines):
 		parsed.entities.append(
 			ParsedEntity(
-				key=f"router:{router.name}@{router.line}",
+				key=parsed.unique_key(f"router:{router.name}@{router.line}"),
 				kind="router",
 				name=router.name,
 				qualified_name=f"router:{parsed.module}.{router.name}",

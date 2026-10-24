@@ -331,6 +331,18 @@ class TestSameNameInTwoFiles(IntegrationTestCase):
 		paths = {e.path for e in CodeGraph(index).definitions("app/x.foo", "function")}
 		self.assertEqual(paths, {"app/x.js", "app/x.ts"})
 
+	def test_one_name_twice_on_one_line(self):
+		# Short one-line code is indexed and keeps both functions. A minified bundle is skipped.
+		line = "(function(){function n(){return 1}})();(function(){function n(){return 2}})();\n"
+		repo = TempRepo({"lib/short.js": line, "lib/bundle.js": line.strip() * 40 + "\n"})
+		self.addCleanup(repo.cleanup)
+		index = index_for(make_repository(repo, full_name=f"acme/{frappe.generate_hash(length=6)}"))
+		Indexer(index).run()
+		self.assertEqual(db.value("Repository Index", index, "status"), "completed")
+		paths = [e.path for e in CodeGraph(index).definitions("lib/short.n", "function")]
+		self.assertEqual(paths, ["lib/short.js", "lib/short.js"])
+		self.assertFalse(frappe.db.exists("Code Entity", {"index": index, "path": "lib/bundle.js"}))
+
 
 class TestIndexCheck(IntegrationTestCase):
 	def test_reports_and_raises(self):

@@ -15,7 +15,7 @@ from guard.indexing import frappe_plugin, languages
 from guard.indexing.chunker import Chunk, chunk_file
 from guard.indexing.parser import PARSER_VERSION, ParsedFile, parse_file
 from guard.indexing.resolver import EdgeRow, Resolver
-from guard.indexing.selection import FileSelector, is_text
+from guard.indexing.selection import FileSelector, is_minified, is_text
 from guard.indexing.symbols import EntityRow, SymbolTable
 from guard.indexing.vectors import VectorRow, VectorStore
 from guard.llm.embeddings import Embedder
@@ -236,6 +236,8 @@ class Indexer:
 				if data is None or not is_text(data):
 					continue
 				source = data.decode("utf-8", "replace")
+				if is_minified(source):
+					continue
 				parsed = parse_file(entry.path, source)
 				if frappe_app:
 					frappe_plugin.augment(parsed, source)

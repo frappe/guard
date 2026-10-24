@@ -4,6 +4,10 @@ from guard.git.diff import parse_diff
 from guard.indexing import languages
 from guard.indexing.chunker import chunk_file
 from guard.indexing.parser import parse_file
+from guard.indexing.selection import is_minified
+
+# Two `function n` on one line, each inside an anonymous function: both belong to the file.
+ONE_LINE = "(function(){function n(){return 1}})();(function(){function n(){return 2}})();\n"
 
 DIFF = """diff --git a/app/a.py b/app/a.py
 index 111..222 100644
@@ -130,6 +134,21 @@ def entry():
 		keys = [e.key for e in parsed.entities]
 		self.assertEqual(len(keys), len(set(keys)))
 		self.assertEqual([e.name for e in parsed.entities if e.kind != "file"], ["SMS"])
+
+	def test_same_name_on_one_line_gets_two_keys(self):
+		parsed = parse_file("lib/bundle.js", ONE_LINE)
+		functions = [e for e in parsed.entities if e.name == "n"]
+		self.assertEqual(len(functions), 2)
+		keys = [e.key for e in parsed.entities]
+		self.assertEqual(len(keys), len(set(keys)))
+		contains = {e.target_key for e in parsed.edges if e.kind == "contains"}
+		self.assertTrue({e.key for e in functions} <= contains)
+
+	def test_minified(self):
+		self.assertTrue(is_minified(ONE_LINE.strip() * 40))
+		self.assertFalse(is_minified(self.SOURCE))
+		# One long data line does not make normal code minified.
+		self.assertFalse(is_minified(self.SOURCE * 4 + f'ICON = "{"x" * 5000}"\n'))
 
 	def test_unknown_language_is_file_only(self):
 		parsed = parse_file("notes/readme.txt", "hello")

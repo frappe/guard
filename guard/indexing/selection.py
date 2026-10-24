@@ -5,6 +5,9 @@ import pathspec
 from guard.git.store import GitStore, TreeEntry
 
 MAX_FILE_BYTES = 1024 * 1024
+# Minified code has lines of thousands of characters. One long line, such as a data string in
+# normal code, does not make the average this high.
+MINIFIED_LINE = 1000
 MAX_FILES = 200_000
 SKIP_DIRS = (
 	"node_modules/",
@@ -103,3 +106,9 @@ class FileSelector:
 
 def is_text(data: bytes) -> bool:
 	return b"\0" not in data[:8192]
+
+
+def is_minified(text: str) -> bool:
+	"""A bundle that is not named `.min.js`, such as a vendored `leaflet.js`. Its entities and
+	chunks are noise, and its one-line functions are many with the same name."""
+	return len(text) / (text.count("\n") + 1) > MINIFIED_LINE
