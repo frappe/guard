@@ -10,7 +10,7 @@ from guard.llm.client import PARALLEL_CALLS, ChatRequest, LLMClient, parse_json,
 from guard.llm.embeddings import hash_embedding, tokens
 from guard.llm.offline import OfflineDialect
 from guard.llm.openai_dialect import _result as openai_result
-from guard.llm.types import ChatResult, LLMError, Message, ToolCall, ToolSpec, Usage
+from guard.llm.types import ChatResult, GatewayBusy, GatewayDown, LLMError, Message, ToolCall, ToolSpec, Usage
 
 SUBMIT = ToolSpec(
 	"submit_review",
@@ -161,7 +161,6 @@ class TestGatewayErrors(UnitTestCase):
 			return post_json("https://gateway.test/v1", {}, {}, 5)
 
 	def test_lasting_5xx_is_gateway_down(self):
-		from guard.llm.types import GatewayBusy, GatewayDown
 
 		calls: list[int] = []
 		with self.assertRaises(GatewayDown) as raised:
@@ -204,3 +203,34 @@ class TestChatMany(UnitTestCase):
 			with self.assertRaises(LLMError):
 				client.chat_many([[Message("user", "bad")], [Message("user", "alone")]])
 		self.assertEqual(client.usage.input_tokens, 10 * PARALLEL_CALLS + 10, "the call that answered counts")
+
+	def test_calls_that_a_busy_gateway_refuses_go_again_one_at_a_time(self):
+		lock = threading.Lock()
+		refused: list[str] = []
+
+		def respond(request: ChatRequest) -> ChatResult:
+			text = request.messages[-1].content
+			with lock:
+				if text in ("1", "2") and text not in refused:
+					refused.append(text)
+					raise GatewayBusy("429", 5)
+			return ChatResult(text, [], Usage(10, 1))
+
+		client = LLMClient(purpose="test")
+		with use_responder(respond):
+			results = client.chat_many([[Message("user", str(n))] for n in range(4)])
+		self.assertEqual([r.content for r in results], ["0", "1", "2", "3"])
+		self.assertEqual(sorted(refused), ["1", "2"])
+		self.assertEqual(client.parallel, 1, "the later calls of the client go one at a time")
+		self.assertEqual(client.usage.input_tokens, 40)
+
+	def test_a_down_gateway_is_not_asked_again(self):
+		calls: list[str] = []
+
+		def respond(request: ChatRequest) -> ChatResult:
+			calls.append(request.messages[-1].content)
+			raise GatewayDown("down")
+
+		with use_responder(respond), self.assertRaises(GatewayDown):
+			LLMClient(purpose="test").chat_many([[Message("user", "a")], [Message("user", "b")]])
+		self.assertEqual(len(calls), 2)

@@ -13,7 +13,7 @@ from guard import settings as guard_settings
 from guard.llm.anthropic_dialect import AnthropicDialect
 from guard.llm.offline import OfflineDialect
 from guard.llm.openai_dialect import OpenAIDialect
-from guard.llm.types import ChatResult, Message, ToolSpec, Usage
+from guard.llm.types import ChatResult, GatewayBusy, GatewayDown, Message, ToolSpec, Usage
 
 
 @dataclass
@@ -66,6 +66,7 @@ class LLMClient:
 		self.purpose = purpose
 		self.usage = usage if usage is not None else Usage()
 		self.dialect = self._dialect()
+		self.parallel = PARALLEL_CALLS
 
 	@classmethod
 	def fast(cls, purpose: str = "", usage: Usage | None = None) -> "LLMClient":
@@ -99,6 +100,9 @@ class LLMClient:
 		Only the gateway calls run on threads. The breaker and the token count stay on this thread,
 		because they can reach `frappe.db`, which is not thread-safe. When a call fails, the others
 		still finish and count, and then the first error is raised.
+
+		When the gateway refuses calls as busy, they go again one at a time, and so do the later
+		calls of this client: the answers already in are kept, and the load on the gateway drops.
 		"""
 
 		def call(messages: list[Message]) -> ChatResult | Exception:
@@ -107,12 +111,17 @@ class LLMClient:
 			except Exception as error:
 				return error
 
-		if len(conversations) <= 1:
+		if len(conversations) <= 1 or self.parallel <= 1:
 			return [self.chat(m, tools, tool_choice, max_tokens, temperature) for m in conversations]
-		with ThreadPoolExecutor(min(PARALLEL_CALLS, len(conversations))) as pool:
+		with ThreadPoolExecutor(min(self.parallel, len(conversations))) as pool:
 			# A copy of the context gives each thread `frappe.local`: the site config, flags and cache.
 			futures = [pool.submit(contextvars.copy_context().run, call, m) for m in conversations]
 			outcomes = [future.result() for future in futures]
+		for index, outcome in enumerate(outcomes):
+			# Not GatewayDown: the calls already outlasted their retries, and the breaker handles it.
+			if isinstance(outcome, GatewayBusy) and not isinstance(outcome, GatewayDown):
+				self.parallel = 1
+				outcomes[index] = call(conversations[index])
 		results = self._record([o for o in outcomes if isinstance(o, ChatResult)])
 		error = next((o for o in outcomes if isinstance(o, Exception)), None)
 		if error:

@@ -96,6 +96,17 @@ class TestPipeline(PullRequestCase):
 		self.assertEqual((row["status"], row["stage"]), ("Queued", "waiting 60s for the code graph index"))
 		self.assertEqual(retries, [(60, 1)])
 
+	def test_a_busy_gateway_gets_longer_waits_than_other_retries(self):
+		name = self.running_review("review", attempt=3)
+		pipeline = ReviewPipeline(name)
+		with patch("guard.review.jobs.enqueue_review") as enqueue:
+			pipeline.retry(3, 60, "the AI gateway", "busy", pipeline_module.BUSY_DELAYS)
+		self.assertEqual(db.value("Code Review", name, "status"), "Queued")
+		enqueue.assert_called_once_with(name, delay=2400, attempt=4)
+		with patch("guard.review.jobs.enqueue_review") as enqueue:
+			pipeline.retry(3, 60, "the code graph index", "index busy")
+		self.assertEqual(db.value("Code Review", name, "status"), "Failed")
+
 	def test_review_waits_while_the_gateway_is_down(self):
 		from guard.llm.types import GatewayDown
 		from guard.review import jobs

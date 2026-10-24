@@ -53,6 +53,8 @@ MAX_AREAS = 6
 FINISH_SECONDS = 360
 MAX_REST_NAMES = 60
 RETRY_DELAYS = (60, 300, 900)
+# Rate limits on the gateway last up to an hour. These waits add up to 72 minutes.
+BUSY_DELAYS = (120, 600, 1200, 2400)
 SLOT_WAIT = 60  # seconds a review waits for a free slot before it looks again
 GATEWAY_DOWN = "paused: the AI gateway is down"
 
@@ -104,7 +106,7 @@ class ReviewPipeline:
 				return
 			self.retry(attempt, down.retry_after, "the AI gateway", f"{breaker.FAILED_PREFIX}: {down}")
 		except GatewayBusy as busy:
-			self.retry(attempt, busy.retry_after, "the AI gateway", f"AI gateway busy: {busy}")
+			self.retry(attempt, busy.retry_after, "the AI gateway", f"AI gateway busy: {busy}", BUSY_DELAYS)
 		except IndexBusy:
 			# Do not index the branch a second time, in parallel.
 			self.retry(attempt, 0, "the code graph index", "The code graph index stayed busy.")
@@ -137,9 +139,16 @@ class ReviewPipeline:
 
 		enqueue_review(str(self.review.name), delay=wait, attempt=attempt)
 
-	def retry(self, attempt: int, after: int, waiting_for: str, failure: str) -> None:
-		delay = max(after, RETRY_DELAYS[min(attempt, len(RETRY_DELAYS) - 1)])
-		if attempt >= len(RETRY_DELAYS):
+	def retry(
+		self,
+		attempt: int,
+		after: int,
+		waiting_for: str,
+		failure: str,
+		delays: tuple[int, ...] = RETRY_DELAYS,
+	) -> None:
+		delay = max(after, delays[min(attempt, len(delays) - 1)])
+		if attempt >= len(delays):
 			self.fail(failure)
 			return
 		self.review.db_set({"status": "Queued", "stage": f"waiting {delay}s for {waiting_for}"})
