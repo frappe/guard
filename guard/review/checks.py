@@ -21,6 +21,7 @@ SECRET_PATTERNS = (
 ASSIGNED_SECRET = re.compile(
 	r"""(?i)\b(password|passwd|secret|api_?key|token|auth)\w*\s*[:=]\s*['"]([^'"\s]{16,})['"]"""
 )
+MEMBER_PATH = re.compile(r"[A-Za-z_$][\w$]*(?:\??\.[A-Za-z_$][\w$]*)+(?:\(\))?")
 PLACEHOLDER = re.compile(
 	r"(?i)example|placeholder|dummy|test|xxx|changeme|your[_-]|<|\$\{|\{\{|os\.environ|getenv"
 )
@@ -164,9 +165,22 @@ def _secret_kind(text: str) -> str | None:
 		if pattern.search(text):
 			return kind
 	match = ASSIGNED_SECRET.search(text)
-	if match and not PLACEHOLDER.search(text) and entropy(match.group(2)) > 3.5:
-		return "Hard-coded secret"
-	return None
+	if not match or PLACEHOLDER.search(text) or entropy(match.group(2)) <= 3.5:
+		return None
+	if _is_expression(match.group(2)) or _is_bound_attribute(text, match.start()):
+		return None
+	return "Hard-coded secret"
+
+
+def _is_expression(value: str) -> bool:
+	"""`connectionState.guestAuthToken` names a variable. A JWT is dotted too, but starts `eyJ`."""
+	return bool(MEMBER_PATH.fullmatch(value)) and not value.startswith("eyJ")
+
+
+def _is_bound_attribute(text: str, start: int) -> bool:
+	"""`:guest-auth-token="..."` in a Vue template: the value is code, not a string."""
+	attribute = text[:start].rsplit(None, 1)[-1] if text[:start].strip() else ""
+	return attribute.startswith((":", "v-bind:", "@", "v-on:"))
 
 
 def entropy(value: str) -> float:

@@ -193,6 +193,16 @@ class TestChecks(UnitTestCase):
 		self.assertEqual([f.title for f in frappe_pack], ["SQL built from strings"])
 		self.assertNotIn("ghp_", checks.mask_secrets(files[0].annotated()))
 
+	def test_code_that_names_a_secret_is_not_one(self):
+		from guard.review.checks import _secret_kind
+
+		# suite#881: a Vue prop bound to a variable was posted as a P0 hard-coded secret.
+		self.assertIsNone(_secret_kind(':guest-auth-token="connectionState.guestAuthToken"'))
+		self.assertIsNone(_secret_kind('const token = "session.user.accessToken"'))
+		self.assertEqual(_secret_kind('api_key = "Zq8vT3kLm2Xw9Rb7Yp4N"'), "Hard-coded secret")
+		jwt = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NSJ9.SflKxwRJSMeKKF2QT4fwpMeJf36P"
+		self.assertEqual(_secret_kind(f'token = "{jwt}"'), "Hard-coded secret")
+
 
 class TestWebhookHeaders(UnitTestCase):
 	def test_signature_and_event_with_any_header_case(self):
