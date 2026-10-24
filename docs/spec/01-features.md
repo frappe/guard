@@ -76,7 +76,9 @@ On a new review Guard edits the same summary comment. It does not post a second 
 
 - Guard posts a pending status when it starts and a final status when it is done.
 - The status is `success` only when the review scores 5/5 and no finding is open on the pull request. Otherwise it is `failure`. This matches the auto-approve rule.
-- `status_check = false` turns the status off.
+- When Guard skips a review (the gate, no reviewable files, or the monthly credit cap), the status is `skipped` and gives the reason, so nobody waits for a review. A commit status has no skipped state, so token installs get `success`. GitHub counts a skipped check as passing.
+- A skip does not replace the status of a commit that a review ran or runs on. It also leaves the status alone while a review is queued, because that review fetches the newest head when it starts.
+- A repository with reviews off gets no status. `status_check = false` turns the status off.
 - With the status off and no findings, Guard posts a short "N files reviewed, no comments" note if `status_comments` is true.
 
 ### R9. Re-reviews and deduplication
