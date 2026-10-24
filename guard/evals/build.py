@@ -11,10 +11,12 @@ keywords come from the finding titles, and a case must not hold secrets.
 """
 
 import json
+import os
 import re
 from typing import Any
 
 import frappe
+import httpx
 
 from guard.evals.run import CASES
 from guard.git.diff import parse_diff
@@ -47,10 +49,95 @@ def from_reviews(limit: int = 20, write: bool = True) -> list[str]:
 		if not case:
 			continue
 		if write:
-			path = CASES / f"{re.sub(r'[^a-z0-9]+', '_', case['name'].lower())}.json"
-			path.write_text(json.dumps(case, indent="\t", ensure_ascii=False) + "\n")
+			write_case(case)
 		names.append(case["name"])
 	return names
+
+
+def write_case(case: dict[str, Any]) -> None:
+	path = CASES / f"{re.sub(r'[^a-z0-9]+', '_', case['name'].lower())}.json"
+	path.write_text(json.dumps(case, indent="\t", ensure_ascii=False) + "\n")
+
+
+def from_github(
+	full_name: str,
+	number: int,
+	head: str,
+	base: str,
+	expected: list[dict[str, Any]] | None = None,
+	unexpected: list[dict[str, Any]] | None = None,
+	note: str = "",
+) -> dict[str, Any]:
+	"""A case from one commit of a public pull request, read through the GitHub API.
+
+	For a review that another site did, or a miss that someone found by hand. `base` is the merge
+	base that the review used. Write the expectations by hand: a path, the lowest severity that
+	counts, keywords that a matching finding must have, and why. Then call `write_case`.
+	"""
+	github = _GitHub()
+	pr = github.get(f"/repos/{full_name}/pulls/{number}")
+	diff = mask_secrets(github.text(f"/repos/{full_name}/compare/{base}...{head}", "diff"))
+	changed = parse_diff(diff)
+	tree = [
+		item["path"]
+		for item in github.get(f"/repos/{full_name}/git/trees/{head}", recursive=1).get("tree") or []
+		if item.get("type") == "blob"
+	][:MAX_TREE]
+	wanted = {f.path for f in changed if f.status != "deleted"} | {p for p in tree if CONTEXT_FILES.search(p)}
+	return {
+		"name": f"{full_name.split('/')[-1]}-{number}",
+		"source": f"https://github.com/{full_name}/pull/{number}/commits/{head[:7]}",
+		"note": note,
+		"payload": {
+			"full_name": full_name,
+			"title": pr.get("title") or "",
+			"description": pr.get("body") or "",
+			"branch": (pr.get("head") or {}).get("ref") or "",
+			"base_branch": (pr.get("base") or {}).get("ref") or "",
+			"head_sha": head,
+			"base_sha": base,
+			"diff": diff,
+			"files": {p: mask_secrets(github.file(full_name, p, head)) for p in sorted(wanted)},
+			"base_files": {
+				f.path: mask_secrets(github.file(full_name, f.old_path or f.path, base))
+				for f in changed
+				if f.status == "modified"
+			},
+			"tree": tree,
+		},
+		"expected": expected or [],
+		"unexpected": unexpected or [],
+	}
+
+
+class _GitHub:
+	"""Read-only GitHub REST calls. GITHUB_TOKEN raises the rate limit; public repositories need none."""
+
+	URL = "https://api.github.com"
+
+	def __init__(self):
+		token = os.environ.get("GITHUB_TOKEN")
+		self.headers = {"Authorization": f"Bearer {token}"} if token else {}
+
+	def get(self, path: str, **params: Any) -> Any:
+		return self._request(path, "json", params).json()
+
+	def text(self, path: str, kind: str) -> str:
+		return self._request(path, kind, {}).text
+
+	def file(self, full_name: str, path: str, ref: str) -> str:
+		try:
+			return self._request(f"/repos/{full_name}/contents/{path}", "raw", {"ref": ref}).text
+		except httpx.HTTPStatusError:
+			return ""
+
+	def _request(self, path: str, kind: str, params: dict[str, Any]) -> httpx.Response:
+		accept = "application/vnd.github+json" if kind == "json" else f"application/vnd.github.{kind}"
+		response = httpx.get(
+			f"{self.URL}{path}", params=params, headers={**self.headers, "Accept": accept}, timeout=60
+		)
+		response.raise_for_status()
+		return response
 
 
 def case_from_review(review: str) -> dict[str, Any] | None:

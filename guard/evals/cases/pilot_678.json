@@ -1,7 +1,7 @@
 {
 	"name": "pilot-678",
 	"source": "https://github.com/frappe/pilot/pull/678/commits/aa5316d",
-	"note": "Greptile found all three, Guard found none.",
+	"note": "Another reviewer found all three; Guard found none.",
 	"payload": {
 		"full_name": "frappe/pilot",
 		"title": "fix(setup): Use configured database ports in the setup wizard",
