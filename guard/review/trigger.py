@@ -13,6 +13,7 @@ from guard.guard.doctype.review_settings.review_settings import get_effective
 from guard.providers import adapter_for_repository
 from guard.review import permissions
 from guard.review.jobs import create_review
+from guard.review.publish import report_skip
 from guard.utils import db
 
 if TYPE_CHECKING:
@@ -63,10 +64,28 @@ def consider(
 	result = gate.check(facts, config, event, manual, rules)
 	if not result.allowed:
 		frappe.logger("guard").info(f"review skipped for {pull_request}: {result.reason}")
+		if adapter and config.settings.get("status_check", True) and not owns_check(pull_request, head):
+			report_skip(adapter, str(repo.get("full_name")), head, result.reason)
 		return None
 	trigger = event if not manual else ("retrigger" if event == "retrigger" else "mention")
 	user = permissions.user_for_login(requested_by) if requested_by else None
 	return create_review(pull_request, trigger, requested_by, requested_tier, instructions, user)
+
+
+def owns_check(pull_request: str, head: str) -> bool:
+	"""A review of the commit set a result or runs, or a queued review will review it.
+
+	A skip must not replace the check of that review: GitHub counts a skipped check as passing. A queued
+	review fetches the newest head when it starts. A running review keeps its own commit.
+	"""
+	return bool(
+		db.scalar(
+			"""SELECT COUNT(*) FROM `tabCode Review` WHERE pull_request = %s
+			AND ((head_sha = %s AND status IN ('Completed', 'Failed', 'Running'))
+				OR (status = 'Queued' AND cancel_requested = 0))""",
+			(pull_request, head),
+		)
+	)
 
 
 def push_kind(repository: str, before: str | None, after: str | None) -> str:

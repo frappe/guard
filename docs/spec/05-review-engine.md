@@ -17,7 +17,7 @@
 | 9 | Publish | Summary comment, inline comments, status, reactions |
 | 10 | After | Auto-approve, tour, vectors for findings, credits, realtime event |
 
-Before stage 1, Guard checks the monthly credit cap. If the review would pass the cap, the review ends as Skipped and Guard posts one note on the pull request.
+Before stage 1, Guard checks the monthly credit cap. If the review would pass the cap, the review ends as Skipped, the status is `skipped`, and Guard posts one note on the pull request.
 
 ### Cancellation
 

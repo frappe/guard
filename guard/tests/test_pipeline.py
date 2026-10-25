@@ -767,6 +767,51 @@ class TestPipeline(PullRequestCase):
 		frappe.db.set_value("Code Repository", self.repository, "reviews_enabled", 0)
 		self.assertIsNone(trigger.consider(self.pr, "open"))
 
+	def test_skipped_review_marks_the_commit(self):
+		frappe.db.set_value("Pull Request", self.pr, "is_draft", 1)
+		self.assertIsNone(trigger.consider(self.pr, "open"))
+		self.assertEqual(self.adapter.named("status"), ["skipped"])
+		# A repository without reviews gets no check.
+		frappe.db.set_value("Code Repository", self.repository, "reviews_enabled", 0)
+		self.assertIsNone(trigger.consider(self.pr, "open"))
+		self.assertEqual(self.adapter.named("status"), ["skipped"])
+
+	def test_skip_keeps_the_check_of_a_reviewed_commit(self):
+		self.review([[("submit_review", {"summary": "s", "confidence_score": 5})]])
+		statuses = self.adapter.named("status")
+		self.assertEqual(statuses, ["pending", "success"])
+		# A skipped check counts as passing on GitHub. It must not replace the result of a review.
+		frappe.db.set_value("Pull Request", self.pr, "is_draft", 1)
+		self.assertIsNone(trigger.consider(self.pr, "open"))
+		self.assertEqual(self.adapter.named("status"), statuses)
+
+	def test_skip_marks_a_new_commit_while_an_older_review_runs(self):
+		# The running review ends the check of its own commit, not the check of the new one.
+		older = self.running_review("review")
+		frappe.db.set_value("Code Review", older, "head_sha", self.base)
+		frappe.db.set_value("Pull Request", self.pr, "is_draft", 1)
+		self.assertIsNone(trigger.consider(self.pr, "open"))
+		self.assertEqual(self.adapter.named("status"), ["skipped"])
+		# A queued review fetches the newest head when it starts, so it owns the check.
+		frappe.db.set_value("Code Review", older, "status", "Queued")
+		self.assertIsNone(trigger.consider(self.pr, "open"))
+		self.assertEqual(self.adapter.named("status"), ["skipped"])
+		# Not when the queued review is cancelled: it will not review the commit.
+		frappe.db.set_value("Code Review", older, "cancel_requested", 1)
+		self.assertIsNone(trigger.consider(self.pr, "open"))
+		self.assertEqual(self.adapter.named("status"), ["skipped", "skipped"])
+
+	def test_credit_cap_marks_the_check_skipped(self):
+		cap = db.single_int("Guard Settings", "monthly_credit_cap", 0)
+		frappe.db.set_single_value("Guard Settings", "monthly_credit_cap", 1)
+		try:
+			name = self.review([])
+		finally:
+			# Later tests in this class would hit the cap.
+			frappe.db.set_single_value("Guard Settings", "monthly_credit_cap", cap)
+		self.assertEqual(self.row(name)["status"], "Skipped")
+		self.assertEqual(self.adapter.named("status"), ["pending", "skipped"])
+
 	def test_skip_authors_from_review_settings(self):
 		settings = frappe.get_doc("Review Settings", "Organization")
 		settings.set("exclude_authors", "mergify[bot]\nad*")
