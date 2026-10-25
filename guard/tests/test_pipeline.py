@@ -117,6 +117,52 @@ class TestPipeline(PullRequestCase):
 		self.assertEqual((done["status"], done["agent_turns"]), ("Completed", 2))
 		self.assertGreaterEqual(done["input_tokens"], failed["input_tokens"] + 100)
 
+	def test_a_failed_review_logs_its_traceback(self):
+		# Error Logs outlive the test transaction, and review names repeat across tests.
+		earlier = set(frappe.get_all("Error Log", filters={"reference_doctype": "Code Review"}, pluck="name"))
+		with (
+			patch("guard.review.verify.verify", side_effect=RuntimeError("verifier broke")),
+			self.assertRaises(RuntimeError),
+		):
+			self.review([[("submit_review", {"summary": "Fine.", "confidence_score": 5})]])
+		name = str(frappe.get_last_doc("Code Review", filters={"pull_request": self.pr}).name)
+		logs = [
+			frappe.get_doc("Error Log", log)
+			for log in frappe.get_all("Error Log", filters={"reference_doctype": "Code Review"}, pluck="name")
+			if log not in earlier
+		]
+		self.assertEqual([log.get("reference_name") for log in logs], [name])
+		self.assertIn("Traceback", str(logs[0].get("error")))
+		self.assertIn("verifier broke", str(logs[0].get("error")))
+
+	def test_a_review_writes_the_pull_request_before_the_code_review(self):
+		"""The webhook handler locks the Pull Request row, then the Code Review row. The other order deadlocks."""
+		from frappe.model.document import Document
+
+		real_set, real_commit = Document.db_set, db.commit
+		transactions: list[list[str]] = [[]]
+
+		def db_set(doc, *args, **kwargs):
+			transactions[-1].append(doc.doctype)
+			return real_set(doc, *args, **kwargs)
+
+		def commit():
+			transactions.append([])
+			real_commit()
+
+		# Tests run jobs inline. In production after_review runs on its own, after the commit.
+		with (
+			patch.object(Document, "db_set", db_set),
+			patch.object(db, "commit", commit),
+			patch("guard.review.jobs.after_review"),
+		):
+			name = self.review([[("submit_review", {"summary": "Fine.", "confidence_score": 5})]])
+		self.assertEqual(self.row(name)["status"], "Completed")
+		both = [w for w in transactions if "Code Review" in w and "Pull Request" in w]
+		self.assertTrue(both)
+		for writes in both:
+			self.assertNotIn("Pull Request", writes[writes.index("Code Review") :], writes)
+
 	def test_a_busy_gateway_gets_longer_waits_than_other_retries(self):
 		name = self.running_review("review", attempt=3)
 		pipeline = ReviewPipeline(name)
@@ -1052,3 +1098,19 @@ class TestDeadline(UnitTestCase):
 		with use_responder(respond):
 			result = Agent(run, "s", 8).run_loop("task", deadline=time.time() - 1)
 		self.assertEqual((result.turns, len(calls)), (0, 0))
+
+
+class TestWebhookDeadlock(IntegrationTestCase):
+	def test_a_deadlock_goes_to_the_job_retry(self):
+		"""Frappe runs a job again after a deadlock. The handler must not mark the delivery Failed first."""
+		from guard.webhooks import handler
+
+		delivery = frappe.get_doc({"doctype": "Webhook Delivery", "event": "ping", "payload": "{}"}).insert(
+			ignore_permissions=True
+		)
+		with (
+			patch("guard.webhooks.github.parse", side_effect=frappe.QueryDeadlockError("deadlock")),
+			self.assertRaises(frappe.QueryDeadlockError),
+		):
+			handler.process(str(delivery.name))
+		self.assertEqual(db.value("Webhook Delivery", str(delivery.name), "status"), "Received")

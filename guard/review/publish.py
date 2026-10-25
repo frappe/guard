@@ -87,6 +87,8 @@ class Publisher:
 			urls = self._inline([f for f in posted if not f.outside_diff], names)
 		body = render.summary(self.run, posted, review_number, urls)
 		self.run.review.db_set("body", body)
+		# Do not keep the Code Review row locked through the GitHub calls and the Pull Request write below.
+		db.commit()
 		if self.run.settings.get("update_description"):
 			text = render.description(self.run.description, body.replace(render.SUMMARY_MARKER, ""))
 			self.gh.update_description(self.repo, self.number, text)

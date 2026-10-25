@@ -26,6 +26,9 @@ def process(delivery: str) -> None:
 		for event in events:
 			handled = dispatch(str(doc.get("code_provider")), event) or handled
 		doc.db_set("status", "Processed" if handled else "Ignored")
+	except frappe.QueryDeadlockError, frappe.QueryTimeoutError:
+		# The database rolled back the work. Frappe runs the job again.
+		raise
 	except Exception as error:
 		db.rollback()
 		doc.db_set({"status": "Failed", "error": redact(f"{type(error).__name__}: {error}")[:5000]})
@@ -79,6 +82,8 @@ def _pull_request(repository: str, event: WebhookEvent) -> bool:
 	assert info is not None
 	before_head = db.value("Pull Request", {"repository": repository, "number": info.number}, "head_sha")
 	pr = pull_requests.upsert(repository, info)
+	# Release the Pull Request row before the git work below. A review that ends writes it too.
+	db.commit()
 	name = str(pr.name)
 	action = event.action
 	if action in OPEN_ACTIONS:
@@ -92,6 +97,7 @@ def _pull_request(repository: str, event: WebhookEvent) -> bool:
 		from guard.learning import approve
 
 		approve.dismiss(name)
+		db.commit()
 		if before and event.after:
 			frappe.enqueue(
 				"guard.learning.addressed.on_push",

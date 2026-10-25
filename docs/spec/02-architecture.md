@@ -73,6 +73,8 @@ The gate picks the tier inside the review job, so a new review gets the timeout 
 
 Job keys stop duplicate work: one review job for each pull request and head commit, one index job for each repository and branch.
 
+A job that writes a Pull Request and its Code Review in one transaction writes the Pull Request first. The webhook handler commits the Pull Request before its git work, and the review commits before its provider calls, so neither holds a row lock for long. The webhook handler lets a deadlock or a lock timeout go up, and Frappe runs the job again. A review that fails logs its traceback in the Error Log, with the Code Review as the reference.
+
 ## Main data flow: a review
 
 1. The provider sends a `pull_request` event. The webhook endpoint checks the signature and writes a Webhook Delivery.

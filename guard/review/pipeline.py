@@ -116,6 +116,10 @@ class ReviewPipeline:
 			self.retry(attempt, 0, "the code graph index", "The code graph index stayed busy.")
 		except Exception as error:
 			db.rollback()
+			# The error field keeps one line. The traceback tells where it failed.
+			frappe.log_error(
+				"Guard review failed", redact(frappe.get_traceback()), "Code Review", self.review.name
+			)
 			self.fail(redact(f"{type(error).__name__}: {error}"))
 			if frappe.flags.in_test:
 				raise
@@ -469,6 +473,17 @@ class ReviewPipeline:
 
 	def after(self, run: ReviewRun, number: int) -> None:
 		posted = [f for f in run.findings if f.kept]
+		# The Pull Request row first, as the webhook handler locks it: the other order deadlocks.
+		if run.pr is not None:
+			run.pr.db_set(
+				{
+					"review_count": number,
+					"last_reviewed_sha": run.head_sha,
+					"latest_review": self.review.name,
+					"confidence_score": run.verdict.confidence_score,
+					"risk_level": run.verdict.risk_level,
+				}
+			)
 		self.review.db_set(
 			{
 				"status": "Completed",
@@ -497,15 +512,6 @@ class ReviewPipeline:
 			}
 		)
 		if run.pr is not None:
-			run.pr.db_set(
-				{
-					"review_count": number,
-					"last_reviewed_sha": run.head_sha,
-					"latest_review": self.review.name,
-					"confidence_score": run.verdict.confidence_score,
-					"risk_level": run.verdict.risk_level,
-				}
-			)
 			frappe.enqueue(
 				"guard.review.jobs.after_review",
 				queue="short",
