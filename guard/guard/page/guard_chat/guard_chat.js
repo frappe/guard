@@ -19,14 +19,18 @@ frappe.pages["guard-chat"].on_page_load = function (wrapper) {
 		fieldtype: "Check",
 		label: __("Deep answer"),
 	});
-	const $log = $(`<div style="max-height:65vh;overflow:auto;margin:12px 0"></div>`).appendTo(
-		page.main
-	);
+	// Desk gives page.main no padding: line the content up with the page title and fields.
+	const $body = $(
+		`<div style="padding: var(--padding-sm) var(--padding-md) var(--padding-lg)"></div>`
+	).appendTo(page.main);
+	const $log = $(
+		`<div style="max-height:65vh;overflow:auto;margin-bottom:12px"></div>`
+	).appendTo($body);
 	const $input = $(
 		`<textarea class="form-control" rows="3" placeholder="${__(
 			"Ask about the code. Ctrl+Enter to send."
 		)}"></textarea>`
-	).appendTo(page.main);
+	).appendTo($body);
 	const session = frappe.utils.get_random(12);
 
 	const add = (role, html) =>

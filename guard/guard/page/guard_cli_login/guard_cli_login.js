@@ -8,13 +8,17 @@ frappe.pages["guard-cli-login"].on_page_load = function (wrapper) {
 		title: __("Sign in the Guard CLI"),
 		single_column: true,
 	});
+	// Desk gives page.main no padding: line the content up with the page title.
+	const $body = $(
+		`<div style="padding: var(--padding-sm) var(--padding-md) var(--padding-lg)"></div>`
+	).appendTo(page.main);
 	const port = parseInt(frappe.utils.get_url_arg("port"), 10);
 	const code = String(frappe.utils.get_url_arg("code") || "");
 	if (!Number.isInteger(port) || port < 1024 || port > 65535 || !/^[A-Z0-9]{8}$/.test(code)) {
-		page.main.html(`<p>${__("Run <code>guard login</code> in your terminal to start.")}</p>`);
+		$body.html(`<p>${__("Run <code>guard login</code> in your terminal to start.")}</p>`);
 		return;
 	}
-	page.main.html(`<p>${__(
+	$body.html(`<p>${__(
 		"The Guard CLI asks for access as {0}. A new API key replaces your current one.",
 		[frappe.session.user]
 	)}</p>

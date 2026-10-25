@@ -78,10 +78,10 @@ class GuardReviewPage {
 
 	render_shell() {
 		$(`<style>
-			.gpr { display: grid; grid-template-columns: 260px 1fr; gap: 12px; }
+			.gpr { display: grid; grid-template-columns: 260px 1fr; gap: 12px; padding: var(--padding-sm) var(--padding-md) var(--padding-lg); }
 			.gpr.chat-open { grid-template-columns: 260px 1fr 380px; }
 			.gpr.no-side { grid-template-columns: 1fr; } .gpr.no-side.chat-open { grid-template-columns: 1fr 380px; }
-			.gpr-side { border-right: 1px solid var(--border-color); max-height: 80vh; overflow: auto; }
+			.gpr-side { border-right: 1px solid var(--border-color); padding-right: 12px; max-height: 80vh; overflow: auto; }
 			.gpr-item { padding: 8px; border-radius: 6px; cursor: pointer; font-size: 13px; }
 			.gpr-item.active { background: var(--bg-light-gray); } .gpr-item.focus { outline: 1px solid var(--primary); }
 			.gpr-tabs .tab { margin-right: 16px; cursor: pointer; } .gpr-tabs .tab.active { font-weight: 600; border-bottom: 2px solid var(--primary); }

@@ -6,7 +6,10 @@ frappe.pages["guard-health"].on_page_load = function (wrapper) {
 		title: __("Guard Health"),
 		single_column: true,
 	});
-	const $body = $(`<div></div>`).appendTo(page.main);
+	// Desk gives page.main no padding: line the content up with the page title.
+	const $body = $(
+		`<div style="padding: var(--padding-sm) var(--padding-md) var(--padding-lg)"></div>`
+	).appendTo(page.main);
 	const esc = (v) => frappe.utils.escape_html(v == null ? "" : String(v));
 
 	const table = (title, columns, rows) => {
