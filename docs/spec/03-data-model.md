@@ -15,7 +15,8 @@ All DocTypes are in the module "Guard". Field lists show the main fields only. S
 | `fast_model` | Data | Classifiers, titles, small summaries. |
 | `embedding_model` | Data | Blank means hash embeddings. |
 | `embedding_dimensions` | Int | Size of the vector column. Changing it rebuilds vectors. |
-| `max_turns_base`, `max_turns_plus`, `max_turns_apex` | Int | Agent turn limits. Defaults 15, 30, 50. |
+| `max_turns_base`, `max_turns_plus`, `max_turns_apex` | Int | Agent turn limits. Defaults 10, 16, 24. |
+| `input_price`, `cached_input_price`, `output_price` | Float | USD for one million tokens. Guard Usage uses them to estimate cost. `input_price` is for prompt tokens that the cache did not cover. 0 leaves that part out. |
 | `trigger_handles` | Small Text | One handle each line. Default `@guard`. |
 | `bot_logins` | Small Text | Provider logins that are Guard itself. Guard ignores its own comments. |
 | `public_url` | Data | Base URL for links in comments. Default: the site URL. |

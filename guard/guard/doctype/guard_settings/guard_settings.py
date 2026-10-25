@@ -22,6 +22,7 @@ class GuardSettings(Document):
 		auto_enable_new_repositories: DF.Check
 		base_model: DF.Data | None
 		bot_logins: DF.SmallText | None
+		cached_input_price: DF.Float
 		chat_permission: DF.Literal["Everyone", "Organization members", "Guard users"]
 		default_coding_agents: DF.SmallText | None
 		embedding_dimensions: DF.Int
@@ -31,12 +32,14 @@ class GuardSettings(Document):
 		gateway_api_key: DF.Password | None
 		gateway_dialect: DF.Literal["openai", "anthropic"]
 		gateway_url: DF.Data | None
+		input_price: DF.Float
 		learn_from_activity: DF.Check
 		max_concurrent_reviews: DF.Int
 		max_turns_apex: DF.Int
 		max_turns_base: DF.Int
 		max_turns_plus: DF.Int
 		monthly_credit_cap: DF.Int
+		output_price: DF.Float
 		plus_model: DF.Data | None
 		polling_enabled: DF.Check
 		public_url: DF.Data | None

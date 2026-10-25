@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, cast
 
 import frappe
-from frappe.utils import cint, get_url
+from frappe.utils import cint, flt, get_url
 
 if TYPE_CHECKING:
 	from guard.guard.doctype.guard_settings.guard_settings import GuardSettings
@@ -58,6 +58,29 @@ def gateway() -> GatewayConfig:
 		embedding_model=doc.embedding_model or "",
 		embedding_dimensions=cint(doc.embedding_dimensions) or 1024,
 	)
+
+
+@dataclass
+class Prices:
+	"""USD for one million tokens, from Guard Settings. Only for cost estimates: the gateway bills."""
+
+	input: float = 0.0
+	cached_input: float = 0.0
+	output: float = 0.0
+
+	@property
+	def known(self) -> bool:
+		return bool(self.input or self.cached_input or self.output)
+
+	def cost(self, input_tokens: int, cached_tokens: int, output_tokens: int) -> float:
+		"""`input_tokens` is the whole prompt, and `cached_tokens` is the part of it that the cache covered."""
+		uncached = max(input_tokens - cached_tokens, 0)
+		return (uncached * self.input + cached_tokens * self.cached_input + output_tokens * self.output) / 1e6
+
+
+def prices() -> Prices:
+	doc = settings()
+	return Prices(flt(doc.input_price), flt(doc.cached_input_price), flt(doc.output_price))
 
 
 def max_turns(tier: str) -> int:

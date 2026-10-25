@@ -26,6 +26,12 @@
   "max_turns_plus",
   "turns_col2",
   "max_turns_apex",
+  "price_section",
+  "input_price",
+  "price_col1",
+  "cached_input_price",
+  "price_col2",
+  "output_price",
   "bot_tab",
   "trigger_handles",
   "bot_logins",
@@ -186,6 +192,44 @@
    "fieldtype": "Int",
    "idx": 20,
    "label": "Max Turns (Apex)"
+  },
+  {
+   "fieldname": "price_section",
+   "fieldtype": "Section Break",
+   "label": "Prices",
+   "description": "USD for one million tokens. Guard Usage uses them to estimate cost. 0 leaves that part out."
+  },
+  {
+   "fieldname": "input_price",
+   "fieldtype": "Float",
+   "label": "Input Price",
+   "precision": "4",
+   "non_negative": 1,
+   "description": "Prompt tokens that the cache did not cover"
+  },
+  {
+   "fieldname": "price_col1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "cached_input_price",
+   "fieldtype": "Float",
+   "label": "Cached Input Price",
+   "precision": "4",
+   "non_negative": 1,
+   "description": "Prompt tokens read from the gateway's prompt cache"
+  },
+  {
+   "fieldname": "price_col2",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "output_price",
+   "fieldtype": "Float",
+   "label": "Output Price",
+   "precision": "4",
+   "non_negative": 1,
+   "description": "Answer and reasoning tokens"
   },
   {
    "fieldname": "bot_tab",
@@ -391,7 +435,7 @@
  "index_web_pages_for_search": 0,
  "issingle": 1,
  "links": [],
- "modified": "2026-10-24 08:00:00.000000",
+ "modified": "2026-10-25 16:30:00.000000",
  "modified_by": "Administrator",
  "module": "Guard",
  "name": "Guard Settings",

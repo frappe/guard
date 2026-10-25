@@ -39,6 +39,7 @@ Guard has no separate front end. One site serves one company, and every employee
 | Guard Analytics | Script | Summary cards, charts and leaderboards |
 | Bugs Caught | Script | One row for each posted finding |
 | My Guard | Script | The same metrics for the pull requests of the current user |
+| Guard Usage | Script | Reviews, credits, input, cached and output tokens, cache share, agent turns and estimated cost, by day, tier or repository. Tokens count every attempt of every review. Credits count completed reviews, as the monthly cap does. The cost uses the prices in Guard Settings and is only an estimate: the gateway bills. Guard Admin and System Manager only, because it reads all teams. |
 
 Frappe report export gives CSV and Excel.
 
