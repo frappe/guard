@@ -191,8 +191,52 @@
   }
  ],
  "index_web_pages_for_search": 0,
- "links": [],
- "modified": "2026-10-20 10:00:00.000000",
+ "links": [
+  {
+   "group": "Reviews",
+   "link_doctype": "Pull Request",
+   "link_fieldname": "repository"
+  },
+  {
+   "group": "Reviews",
+   "link_doctype": "Code Review",
+   "link_fieldname": "repository"
+  },
+  {
+   "group": "Reviews",
+   "link_doctype": "Review Finding",
+   "link_fieldname": "repository"
+  },
+  {
+   "group": "Conversation",
+   "link_doctype": "Pull Request Comment",
+   "link_fieldname": "repository"
+  },
+  {
+   "group": "Conversation",
+   "link_doctype": "Review Feedback",
+   "link_fieldname": "repository"
+  },
+  {
+   "group": "Code Graph",
+   "link_doctype": "Repository Index",
+   "link_fieldname": "repository"
+  },
+  {
+   "group": "Code Graph",
+   "link_doctype": "Knowledge Base Document",
+   "link_fieldname": "repository"
+  },
+  {
+   "group": "Code Graph",
+   "is_child_table": 1,
+   "link_doctype": "Repository Cluster Member",
+   "link_fieldname": "repository",
+   "parent_doctype": "Repository Cluster",
+   "table_fieldname": "members"
+  }
+ ],
+ "modified": "2026-10-25 16:55:29.000000",
  "modified_by": "Administrator",
  "module": "Guard",
  "name": "Code Repository",

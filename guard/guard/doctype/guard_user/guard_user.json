@@ -105,8 +105,32 @@
   }
  ],
  "index_web_pages_for_search": 0,
- "links": [],
- "modified": "2026-10-20 10:00:00.000000",
+ "links": [
+  {
+   "group": "Teams",
+   "is_child_table": 1,
+   "link_doctype": "Guard Team Member",
+   "link_fieldname": "user",
+   "parent_doctype": "Guard Team",
+   "table_fieldname": "members"
+  },
+  {
+   "group": "Activity",
+   "link_doctype": "Code Review",
+   "link_fieldname": "triggered_by_user"
+  },
+  {
+   "group": "Activity",
+   "link_doctype": "Chat Session",
+   "link_fieldname": "user"
+  },
+  {
+   "group": "Activity",
+   "link_doctype": "Chat Action",
+   "link_fieldname": "executed_by"
+  }
+ ],
+ "modified": "2026-10-25 16:55:29.000000",
  "modified_by": "Administrator",
  "module": "Guard",
  "name": "Guard User",

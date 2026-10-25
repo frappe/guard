@@ -432,8 +432,19 @@
   }
  ],
  "index_web_pages_for_search": 0,
- "links": [],
- "modified": "2026-10-25 00:36:38.963246",
+ "links": [
+  {
+   "group": "Findings",
+   "link_doctype": "Review Finding",
+   "link_fieldname": "code_review"
+  },
+  {
+   "group": "Findings",
+   "link_doctype": "Sandbox Run",
+   "link_fieldname": "code_review"
+  }
+ ],
+ "modified": "2026-10-25 16:55:29.000000",
  "modified_by": "Administrator",
  "module": "Guard",
  "name": "Code Review",

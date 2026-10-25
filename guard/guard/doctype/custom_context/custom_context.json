@@ -99,18 +99,18 @@
    "label": "Rule Id"
   },
   {
+   "depends_on": "status_reason",
    "fieldname": "status_reason",
    "fieldtype": "Small Text",
    "label": "Status Reason",
-   "read_only": 1,
-   "depends_on": "status_reason"
+   "read_only": 1
   },
   {
+   "description": "Guard retires a learned memory only for findings after this time.",
    "fieldname": "active_since",
    "fieldtype": "Datetime",
    "label": "Active Since",
-   "read_only": 1,
-   "description": "Guard retires a learned memory only for findings after this time."
+   "read_only": 1
   },
   {
    "fieldname": "body_section",
@@ -209,15 +209,21 @@
   {
    "fieldname": "evidence",
    "fieldtype": "JSON",
+   "hidden": 1,
    "idx": 22,
    "label": "Evidence",
-   "read_only": 1,
-   "hidden": 1
+   "read_only": 1
   }
  ],
  "index_web_pages_for_search": 0,
- "links": [],
- "modified": "2026-10-23 12:00:00.000000",
+ "links": [
+  {
+   "group": "Findings",
+   "link_doctype": "Review Finding",
+   "link_fieldname": "custom_context"
+  }
+ ],
+ "modified": "2026-10-25 16:55:29.000000",
  "modified_by": "Administrator",
  "module": "Guard",
  "name": "Custom Context",

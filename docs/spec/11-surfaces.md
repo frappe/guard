@@ -25,6 +25,25 @@ Guard has no separate front end. One site serves one company, and every employee
 | Code Provider | Buttons: Test connection, Sync repositories, Show webhook URL. |
 | Guard Settings | Button: Fetch models from the gateway. |
 
+### Connections
+
+The Connections tab of a form lists the documents that link to it. The `links` in the DocType JSON define them.
+
+| DocType | Connections |
+| - | - |
+| Code Provider | Guard Team, Code Repository, Webhook Delivery |
+| Guard Team | Code Repository, Review Settings, Custom Context |
+| Code Repository | Pull Request, Code Review, Review Finding, Pull Request Comment, Review Feedback, Repository Index, Knowledge Base Document, Repository Cluster |
+| Repository Index | Code Repository (default index), Code Entity, Code Edge, Code Chunk |
+| Pull Request | Code Review, Review Finding, Pull Request Comment, Review Feedback, Chat Session |
+| Code Review | Review Finding, Sandbox Run |
+| Review Finding | Pull Request Comment, Review Feedback, Sandbox Run |
+| Custom Context | Review Finding |
+| Chat Session | Chat Action |
+| Guard User | Guard Team, Code Review, Chat Session, Chat Action |
+
+Code Entity, Code Edge and Code Chunk connect only to Repository Index. Their tables have no index on `repository`, so a count from Code Repository would scan every row.
+
 ### Pages
 
 | Page | Route | Purpose |

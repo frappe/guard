@@ -148,8 +148,24 @@
   }
  ],
  "index_web_pages_for_search": 0,
- "links": [],
- "modified": "2026-10-20 10:00:00.000000",
+ "links": [
+  {
+   "group": "Setup",
+   "link_doctype": "Guard Team",
+   "link_fieldname": "code_provider"
+  },
+  {
+   "group": "Setup",
+   "link_doctype": "Code Repository",
+   "link_fieldname": "code_provider"
+  },
+  {
+   "group": "Activity",
+   "link_doctype": "Webhook Delivery",
+   "link_fieldname": "code_provider"
+  }
+ ],
+ "modified": "2026-10-25 16:55:29.000000",
  "modified_by": "Administrator",
  "module": "Guard",
  "name": "Code Provider",
