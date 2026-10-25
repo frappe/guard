@@ -63,8 +63,7 @@
    "fieldtype": "Link",
    "idx": 2,
    "label": "Pull Request",
-   "options": "Pull Request",
-   "search_index": 1
+   "options": "Pull Request"
   },
   {
    "fieldname": "repository",
@@ -283,7 +282,8 @@
    "fieldtype": "Link",
    "idx": 35,
    "label": "Custom Context",
-   "options": "Custom Context"
+   "options": "Custom Context",
+   "search_index": 1
   },
   {
    "fieldname": "learning_col",
@@ -334,7 +334,7 @@
    "link_fieldname": "finding"
   }
  ],
- "modified": "2026-10-25 16:55:29.000000",
+ "modified": "2026-10-25 17:06:56.000000",
  "modified_by": "Administrator",
  "module": "Guard",
  "name": "Review Finding",

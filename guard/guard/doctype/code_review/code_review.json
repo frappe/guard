@@ -80,8 +80,7 @@
    "idx": 2,
    "in_standard_filter": 1,
    "label": "Repository",
-   "options": "Code Repository",
-   "search_index": 1
+   "options": "Code Repository"
   },
   {
    "default": "pull_request",
@@ -127,7 +126,8 @@
    "fieldtype": "Link",
    "idx": 8,
    "label": "Triggered By User",
-   "options": "User"
+   "options": "User",
+   "search_index": 1
   },
   {
    "fieldname": "main_col",
@@ -165,7 +165,8 @@
    "fieldname": "head_sha",
    "fieldtype": "Data",
    "idx": 14,
-   "label": "Head Sha"
+   "label": "Head Sha",
+   "search_index": 1
   },
   {
    "fieldname": "base_sha",
@@ -340,7 +341,8 @@
    "fieldname": "completed_at",
    "fieldtype": "Datetime",
    "idx": 41,
-   "label": "Completed At"
+   "label": "Completed At",
+   "search_index": 1
   },
   {
    "fieldname": "timing_col",
@@ -444,7 +446,7 @@
    "link_fieldname": "code_review"
   }
  ],
- "modified": "2026-10-25 16:55:29.000000",
+ "modified": "2026-10-25 17:06:56.000000",
  "modified_by": "Administrator",
  "module": "Guard",
  "name": "Code Review",

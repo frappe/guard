@@ -22,14 +22,16 @@
    "in_list_view": 1,
    "label": "Code Review",
    "options": "Code Review",
-   "reqd": 1
+   "reqd": 1,
+   "search_index": 1
   },
   {
    "fieldname": "finding",
    "fieldtype": "Link",
    "idx": 2,
    "label": "Finding",
-   "options": "Review Finding"
+   "options": "Review Finding",
+   "search_index": 1
   },
   {
    "fieldname": "command",
@@ -68,7 +70,7 @@
  ],
  "index_web_pages_for_search": 0,
  "links": [],
- "modified": "2026-10-20 10:00:00.000000",
+ "modified": "2026-10-25 17:06:56.000000",
  "modified_by": "Administrator",
  "module": "Guard",
  "name": "Sandbox Run",

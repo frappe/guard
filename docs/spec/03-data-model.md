@@ -242,6 +242,40 @@ Every comment on a pull request, human or bot. Learning, thread replies and comm
 
 `code_provider`, `delivery_id` (unique), `event`, `action`, `repository_full_name`, `status` (Received, Processed, Ignored, Failed), `payload`, `error`. A daily job deletes rows older than 30 days.
 
+## Indexes
+
+Each index serves a known query. Rules:
+
+- In a composite index, equality columns come first, then the range or sort column.
+- A column that leads a composite index gets no single-column index. The composite index serves it.
+- Do not wrap an indexed column in a function in `WHERE`. For example, use `col != ''`, not `IFNULL(col, '') != ''`. Both skip NULL.
+- The graph tables take bulk writes, so add an index there only for a query on the review or index path.
+
+`install.COMPOSITE_INDEXES` holds the composite indexes. `after_migrate` creates them, and replaces an index whose columns changed.
+
+| Table | Composite index | Queries |
+| - | - | - |
+| Code Entity | `index, path(255)` | Outline of a file, deletes by path |
+| Code Entity | `index, entity_name`; `index, qualified_name(255)` | Definitions, cross-repo `defines` and modules |
+| Code Entity | `index, kind, path(255)` | Files, routes, routers, siblings in a folder |
+| Code Edge | `index, source_entity, kind, line` | Callees in line order |
+| Code Edge | `index, target_entity`; `index, target_name` | Callers, references, cross-repo symbol users |
+| Code Edge | `index, kind, target_name` | Inherits edges for the symbol table, HTTP references |
+| Code Edge, Code Chunk | `index, path(255)` | Deletes by path |
+| Code Chunk | `index, entity` | Chunks of symbol hits |
+| Code Chunk | FULLTEXT `content` | Lexical search |
+| Code Review | `status, creation` | Queued reviews to resume, running slots, monthly credits, counts |
+| Code Review | `repository, creation` | Reviews of a repository in a time window |
+| Review Finding | `pull_request, status` | Open findings of a pull request |
+| Review Finding | `repository, creation` | Noisy comment types |
+| Review Finding | `status, posted` | Open findings number cards |
+| Pull Request | `repository, number` | Lookup by provider number |
+| Pull Request | `repository, state, merged_at`; `state, merged_at` | Polling of open pull requests, merged pull requests in a window |
+| Pull Request Comment | `repository, author` | Feature tips |
+| Knowledge Base Document | `repository, path` | Read and list documents |
+
+Single-column indexes (`search_index`) cover the other lookups and the link fields that Connections tabs count.
+
 ## Roles
 
 | Role | Access |

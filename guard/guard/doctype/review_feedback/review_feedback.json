@@ -31,7 +31,8 @@
    "fieldtype": "Link",
    "idx": 2,
    "label": "Pull Request",
-   "options": "Pull Request"
+   "options": "Pull Request",
+   "search_index": 1
   },
   {
    "fieldname": "repository",
@@ -39,7 +40,8 @@
    "idx": 3,
    "in_standard_filter": 1,
    "label": "Repository",
-   "options": "Code Repository"
+   "options": "Code Repository",
+   "search_index": 1
   },
   {
    "fieldname": "author",
@@ -86,7 +88,7 @@
  ],
  "index_web_pages_for_search": 0,
  "links": [],
- "modified": "2026-10-23 10:00:00.000000",
+ "modified": "2026-10-25 17:06:56.000000",
  "modified_by": "Administrator",
  "module": "Guard",
  "name": "Review Feedback",

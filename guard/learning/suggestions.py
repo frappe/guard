@@ -135,7 +135,7 @@ def update_rule_metrics() -> None:
 		"""SELECT f.custom_context AS name, SUM(f.posted) AS used, SUM(p.state = 'merged') AS merged,
 			SUM(p.state = 'merged' AND f.status = 'Addressed') AS addressed
 		FROM `tabReview Finding` f LEFT JOIN `tabPull Request` p ON p.name = f.pull_request
-		WHERE IFNULL(f.custom_context, '') != '' GROUP BY f.custom_context"""
+		WHERE f.custom_context != '' GROUP BY f.custom_context"""
 	):
 		merged = int(row["merged"] or 0)
 		values: dict[str, Any] = {

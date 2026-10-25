@@ -17,7 +17,7 @@ def after_reply(repository: str, author: str) -> str:
 		return ""
 	replies = db.scalar(
 		"""SELECT COUNT(*) FROM `tabPull Request Comment` WHERE repository = %s AND author = %s
-		AND IFNULL(finding, '') != '' AND is_guard = 0""",
+		AND finding != '' AND is_guard = 0""",
 		(repository, author),
 	)
 	return CONFIG_TIP if int(replies or 0) == 1 else ""

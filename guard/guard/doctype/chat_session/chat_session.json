@@ -29,7 +29,8 @@
    "idx": 2,
    "in_list_view": 1,
    "label": "User",
-   "options": "User"
+   "options": "User",
+   "search_index": 1
   },
   {
    "fieldname": "kind",
@@ -45,7 +46,8 @@
    "fieldtype": "Link",
    "idx": 4,
    "label": "Pull Request",
-   "options": "Pull Request"
+   "options": "Pull Request",
+   "search_index": 1
   },
   {
    "fieldname": "repositories",
@@ -84,7 +86,7 @@
    "link_fieldname": "chat_session"
   }
  ],
- "modified": "2026-10-25 16:55:29.000000",
+ "modified": "2026-10-25 17:06:56.000000",
  "modified_by": "Administrator",
  "module": "Guard",
  "name": "Chat Session",
