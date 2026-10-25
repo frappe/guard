@@ -10,7 +10,7 @@ from guard.git.diff import parse_diff
 from guard.graph.overlay import ChangedEntity
 from guard.graph.queries import Link
 from guard.llm.client import ChatRequest, LLMClient, use_responder
-from guard.llm.types import ChatResult, ToolCall, Usage
+from guard.llm.types import ChatResult, GatewayBusy, ToolCall, Usage
 from guard.providers.base import ProviderComment
 from guard.review import jobs, trigger
 from guard.review import pipeline as pipeline_module
@@ -311,6 +311,42 @@ class TestPipeline(PullRequestCase):
 		self.assertEqual(result["raised"], [rejected["title"]])
 		self.assertEqual(summary["recall"], 1.0)
 		self.assertIn("| 1/1 | 1/1 |", summary["markdown"])
+
+	def test_an_eval_review_that_parks_runs_again(self):
+		from guard.evals import build, run
+
+		calls: list[str] = []
+		answer = scripted([[("submit_review", {"summary": "s", "confidence_score": 5})]])
+
+		def busy_once(request: ChatRequest) -> ChatResult:
+			calls.append(request.purpose)
+			if len(calls) == 1:
+				raise GatewayBusy("429", 5)
+			return answer(request)
+
+		finding = {
+			"path": "app/models.py",
+			"start_line": 5,
+			"severity": "P1",
+			"comment_type": "logic",
+			"title": "Callers of update_user_email miss the notify argument",
+			"body": "`app/service.py:6` still calls it with two arguments.",
+		}
+		name = self.review(
+			[[("report_finding", finding), ("submit_review", {"summary": "s", "confidence_score": 3})]]
+		)
+		frappe.db.set_value("Review Finding", {"code_review": name}, "status", "Addressed")
+		case = build.case_from_review(str(name))
+		assert case is not None
+		# As on a site with a scheduler: a retry only marks the review, it does not run it.
+		with (
+			use_responder(busy_once),
+			patch("guard.review.jobs.enqueue_review"),
+			patch("guard.evals.run.time.sleep") as sleep,
+		):
+			result = run.review_case(case)
+		self.assertEqual(result["status"], "Completed")
+		sleep.assert_called_once_with(run.PARK_WAIT)
 
 	def test_breaker_pauses_reviews_and_reruns_them(self):
 		from frappe.utils import now_datetime

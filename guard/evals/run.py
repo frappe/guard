@@ -1,5 +1,6 @@
 import json
 import os
+import time
 from pathlib import Path
 from typing import Any
 
@@ -12,6 +13,8 @@ from guard.utils import db
 CASES = Path(__file__).parent / "cases"
 SUMMARY_START = "<!-- guard-evals -->"
 SUMMARY_END = "<!-- /guard-evals -->"
+MAX_PARKS = 8  # a review that parks more often than this does not count
+PARK_WAIT = 90  # seconds: a rate limit on the eval key passes in a minute or two
 
 
 def run(case: str = "", tier: str = "") -> list[dict[str, Any]]:
@@ -120,12 +123,12 @@ def review_case(case: dict[str, Any], tier: str = "") -> dict[str, Any]:
 			"triggered_by_user": frappe.session.user,
 		}
 	).insert(ignore_permissions=True)
-	ReviewPipeline.run(str(review.name))
-	state = db.values("Code Review", str(review.name), ("status", "error")) or {}
+	state = run_until_done(str(review.name))
 	status = state.get("status")
 	if status != "Completed":
-		# Queued after gateway backoff, or failed: there is nothing to score.
-		return {"case": case["name"], "review": review.name, "status": status, "error": state.get("error")}
+		# Failed, or still parked after the last wait: there is nothing to score.
+		error = state.get("error") or state.get("stage")
+		return {"case": case["name"], "review": review.name, "status": status, "error": error}
 	findings = frappe.get_all(
 		"Review Finding",
 		filters={"code_review": review.name, "status": "Open"},
@@ -145,6 +148,27 @@ def review_case(case: dict[str, Any], tier: str = "") -> dict[str, Any]:
 		"unexpected": len(unexpected),
 		"raised": [u["why"] for u in raised],
 	}
+
+
+def run_until_done(review: str) -> dict[str, Any]:
+	"""Run the review, and run it again each time it parks on a busy gateway.
+
+	No scheduler runs here to pick up a parked review, so the eval waits for it. The wait is short:
+	an eval run has a time limit, and a parked review keeps the turns it already used.
+	"""
+	fields = ("status", "error", "stage", "attempt", "retry_at")
+	ReviewPipeline.run(review)
+	state = db.values("Code Review", review, fields) or {}
+	for _ in range(MAX_PARKS):
+		if state.get("status") != "Queued":
+			break
+		print(f"{review} waits: {state.get('stage')}")
+		time.sleep(PARK_WAIT)
+		db.set_values("Code Review", review, {"retry_at": None})
+		db.commit()
+		ReviewPipeline.run(review, int(state.get("attempt") or 0))
+		state = db.values("Code Review", review, fields) or {}
+	return state
 
 
 def matches(expected: dict[str, Any], finding: dict[str, Any]) -> bool:
