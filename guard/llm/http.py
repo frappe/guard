@@ -5,7 +5,7 @@ from typing import Any
 
 import httpx
 
-from guard.llm.types import GatewayBusy, GatewayDown, LLMError
+from guard.llm.types import GatewayBilling, GatewayBusy, GatewayDown, LLMError
 
 RETRIES = 4
 RATE_RETRIES = 3
@@ -13,8 +13,8 @@ RATE_WAIT_CAP = 30
 
 
 def post_json(url: str, body: dict[str, Any], headers: dict[str, str], timeout: int) -> dict[str, Any]:
-	"""POST JSON. Retry network errors and 5xx. Raise GatewayBusy on 402 and 429, and
-	GatewayDown when the errors outlast the retries."""
+	"""POST JSON. Retry network errors and 5xx. Raise GatewayBilling on 402, GatewayBusy on 429,
+	and GatewayDown when the errors outlast the retries."""
 	last_error: Exception | None = None
 	for attempt in range(RETRIES + RATE_RETRIES):
 		try:
@@ -27,7 +27,9 @@ def post_json(url: str, body: dict[str, Any], headers: dict[str, str], timeout: 
 			# A short wait keeps the turns already done. Long waits go back to the job queue.
 			time.sleep(min(_retry_after(response), RATE_WAIT_CAP) * (attempt + 1))
 			continue
-		if response.status_code in (402, 429):
+		if response.status_code == 402:
+			raise GatewayBilling(_message(response), _retry_after(response))
+		if response.status_code == 429:
 			raise GatewayBusy(_message(response), _retry_after(response))
 		if response.status_code >= 500:
 			last_error = LLMError(_message(response))

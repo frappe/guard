@@ -10,7 +10,7 @@ from guard.git.diff import parse_diff
 from guard.graph.overlay import ChangedEntity
 from guard.graph.queries import Link
 from guard.llm.client import ChatRequest, LLMClient, use_responder
-from guard.llm.types import ChatResult, GatewayBusy, ToolCall, Usage
+from guard.llm.types import ChatResult, GatewayBilling, GatewayBusy, ToolCall, Usage
 from guard.providers.base import ProviderComment, ProviderError
 from guard.review import jobs, trigger
 from guard.review import pipeline as pipeline_module
@@ -347,6 +347,44 @@ class TestPipeline(PullRequestCase):
 			result = run.review_case(case)
 		self.assertEqual(result["status"], "Completed")
 		sleep.assert_called_once_with(run.PARK_WAIT)
+
+	def test_an_eval_stops_at_once_when_the_gateway_refuses_the_key_for_money(self):
+		from guard.evals import build, run
+
+		def unpaid(request: ChatRequest) -> ChatResult:
+			raise GatewayBilling("Gateway answered 402: credit balance exhausted", 300)
+
+		finding = {
+			"path": "app/models.py",
+			"start_line": 5,
+			"severity": "P1",
+			"comment_type": "logic",
+			"title": "Callers of update_user_email miss the notify argument",
+			"body": "`app/service.py:6` still calls it with two arguments.",
+		}
+		name = self.review(
+			[[("report_finding", finding), ("submit_review", {"summary": "s", "confidence_score": 3})]]
+		)
+		frappe.db.set_value("Review Finding", {"code_review": name}, "status", "Addressed")
+		case = build.case_from_review(str(name))
+		assert case is not None
+		with (
+			use_responder(unpaid),
+			patch("guard.llm.client.LLMClient.online", new=True),
+			patch("guard.review.jobs.enqueue_review"),
+			patch("guard.evals.run.time.sleep") as sleep,
+		):
+			result = run.review_case(case)
+		sleep.assert_not_called()
+		self.assertEqual((result["status"], result["billing"]), ("Failed", True))
+		self.assertIn("credit balance exhausted", result["error"])
+		# The later cases do not run: they would stop at their first model call too.
+		with (
+			patch("guard.evals.run.load_cases", return_value=[case, case]),
+			patch("guard.evals.run.review_case", return_value=result) as review_case,
+		):
+			run.run()
+		review_case.assert_called_once()
 
 	def test_breaker_pauses_reviews_and_reruns_them(self):
 		from frappe.utils import now_datetime

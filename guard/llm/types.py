@@ -66,6 +66,13 @@ class GatewayBusy(LLMError):
 		self.retry_after = retry_after
 
 
+class GatewayBilling(GatewayBusy):
+	"""The gateway refused the key for money (402): credit is used up, or a spend cap is reached.
+
+	A review waits, as for a rate limit, because someone can add credit. An eval stops at once.
+	"""
+
+
 class GatewayDown(GatewayBusy):
 	"""The gateway kept failing after the retries: 5xx answers, or no connection.
 

@@ -10,7 +10,17 @@ from guard.llm.client import PARALLEL_CALLS, ChatRequest, LLMClient, parse_json,
 from guard.llm.embeddings import hash_embedding, tokens
 from guard.llm.offline import OfflineDialect
 from guard.llm.openai_dialect import _result as openai_result
-from guard.llm.types import ChatResult, GatewayBusy, GatewayDown, LLMError, Message, ToolCall, ToolSpec, Usage
+from guard.llm.types import (
+	ChatResult,
+	GatewayBilling,
+	GatewayBusy,
+	GatewayDown,
+	LLMError,
+	Message,
+	ToolCall,
+	ToolSpec,
+	Usage,
+)
 
 SUBMIT = ToolSpec(
 	"submit_review",
@@ -168,6 +178,13 @@ class TestGatewayErrors(UnitTestCase):
 		self.assertIsInstance(raised.exception, GatewayBusy)  # so a review waits, not fails
 		self.assertIn("upstream account unpaid", str(raised.exception))
 
+	def test_402_is_a_billing_error_and_429_is_not(self):
+		with self.assertRaises(GatewayBilling):
+			self.post(402)
+		with self.assertRaises(GatewayBusy) as raised:
+			self.post(429)
+		self.assertNotIsInstance(raised.exception, GatewayBilling)
+
 	def test_4xx_is_not_retried(self):
 		from guard.llm.types import GatewayDown, LLMError
 
@@ -223,13 +240,14 @@ class TestChatMany(UnitTestCase):
 		self.assertEqual(client.parallel, 1, "the later calls of the client go one at a time")
 		self.assertEqual(client.usage.input_tokens, 40)
 
-	def test_a_down_gateway_is_not_asked_again(self):
-		calls: list[str] = []
+	def test_a_down_or_unpaid_gateway_is_not_asked_again(self):
+		for error in (GatewayDown("down"), GatewayBilling("402")):
+			calls: list[str] = []
 
-		def respond(request: ChatRequest) -> ChatResult:
-			calls.append(request.messages[-1].content)
-			raise GatewayDown("down")
+			def respond(request: ChatRequest, error: Exception = error) -> ChatResult:
+				calls.append(request.messages[-1].content)
+				raise error
 
-		with use_responder(respond), self.assertRaises(GatewayDown):
-			LLMClient(purpose="test").chat_many([[Message("user", "a")], [Message("user", "b")]])
-		self.assertEqual(len(calls), 2)
+			with use_responder(respond), self.assertRaises(type(error)):
+				LLMClient(purpose="test").chat_many([[Message("user", "a")], [Message("user", "b")]])
+			self.assertEqual(len(calls), 2)

@@ -13,7 +13,7 @@ from guard import settings as guard_settings
 from guard.llm.anthropic_dialect import AnthropicDialect
 from guard.llm.offline import OfflineDialect
 from guard.llm.openai_dialect import OpenAIDialect
-from guard.llm.types import ChatResult, GatewayBusy, GatewayDown, Message, ToolSpec, Usage
+from guard.llm.types import ChatResult, GatewayBilling, GatewayBusy, GatewayDown, Message, ToolSpec, Usage
 
 
 @dataclass
@@ -119,7 +119,8 @@ class LLMClient:
 			outcomes = [future.result() for future in futures]
 		for index, outcome in enumerate(outcomes):
 			# Not GatewayDown: the calls already outlasted their retries, and the breaker handles it.
-			if isinstance(outcome, GatewayBusy) and not isinstance(outcome, GatewayDown):
+			# Not GatewayBilling: a refused key stays refused, one call at a time or not.
+			if isinstance(outcome, GatewayBusy) and not isinstance(outcome, GatewayDown | GatewayBilling):
 				self.parallel = 1
 				outcomes[index] = call(conversations[index])
 		results = self._record([o for o in outcomes if isinstance(o, ChatResult)])

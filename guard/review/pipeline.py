@@ -68,14 +68,16 @@ class ReviewPipeline:
 		self.review = cast("CodeReview", frappe.get_doc("Code Review", review))
 		self.started = time.time()
 		self.current: ReviewRun | None = None  # the run of this attempt, once prepared
+		self.busy: GatewayBusy | None = None  # why this attempt went back to the queue, if it did
 
 	@classmethod
-	def run(cls, review: str, attempt: int = 0) -> None:
+	def run(cls, review: str, attempt: int = 0) -> "ReviewPipeline":
 		pipeline = cls(review)
 		try:
 			pipeline.attempt(attempt)
 		finally:
 			pipeline.acknowledge()
+		return pipeline
 
 	def acknowledge(self) -> None:
 		"""Finish the mention that asked for this review: 👍 when it completed, 😕 when it did not."""
@@ -107,6 +109,7 @@ class ReviewPipeline:
 				return
 			self.retry(attempt, down.retry_after, "the AI gateway", f"{breaker.FAILED_PREFIX}: {down}")
 		except GatewayBusy as busy:
+			self.busy = busy
 			self.retry(attempt, busy.retry_after, "the AI gateway", f"AI gateway busy: {busy}", BUSY_DELAYS)
 		except IndexBusy:
 			# Do not index the branch a second time, in parallel.

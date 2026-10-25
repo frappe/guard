@@ -6,9 +6,11 @@ from typing import Any
 
 import frappe
 
+from guard.llm.types import GatewayBilling
 from guard.review.findings import SEVERITIES
 from guard.review.pipeline import ReviewPipeline
 from guard.utils import db
+from guard.utils.redact import redact
 
 CASES = Path(__file__).parent / "cases"
 SUMMARY_START = "<!-- guard-evals -->"
@@ -22,7 +24,12 @@ def run(case: str = "", tier: str = "") -> list[dict[str, Any]]:
 
 	`bench --site <site> execute guard.evals.run.run --kwargs "{'case': 'pilot-678'}"`. Needs the AI gateway.
 	"""
-	results = [review_case(item, tier) for item in load_cases(case)]
+	results = []
+	for item in load_cases(case):
+		results.append(review_case(item, tier))
+		if results[-1].get("billing"):
+			# Every later review would stop at its first model call: do not index and prepare them.
+			break
 	for result in results:
 		if result["status"] != "Completed":
 			print(f"{result['case']}: review {result['review']} is {result['status']}: {result['error']}")
@@ -69,6 +76,8 @@ def ci() -> None:
 	summary = score(results)
 	print(f"{SUMMARY_START}\n{summary['markdown']}{SUMMARY_END}")
 	print(summary["line"])
+	if billing := [r["error"] for r in results if r.get("billing")]:
+		raise EvalFailed(f"The AI gateway refused the eval key, so the evals stopped: {billing[0]}")
 	if summary["unfinished"]:
 		raise EvalFailed(f"Reviews did not finish: {', '.join(summary['unfinished'])}")
 	if summary["recall"] < float(env.get("EVAL_MIN_RECALL") or 0):
@@ -128,7 +137,13 @@ def review_case(case: dict[str, Any], tier: str = "") -> dict[str, Any]:
 	if status != "Completed":
 		# Failed, or still parked after the last wait: there is nothing to score.
 		error = state.get("error") or state.get("stage")
-		return {"case": case["name"], "review": review.name, "status": status, "error": error}
+		return {
+			"case": case["name"],
+			"review": review.name,
+			"status": status,
+			"error": error,
+			"billing": bool(state.get("billing")),
+		}
 	findings = frappe.get_all(
 		"Review Finding",
 		filters={"code_review": review.name, "status": "Open"},
@@ -154,19 +169,23 @@ def run_until_done(review: str) -> dict[str, Any]:
 	"""Run the review, and run it again each time it parks on a busy gateway.
 
 	No scheduler runs here to pick up a parked review, so the eval waits for it. The wait is short:
-	an eval run has a time limit, and a parked review keeps the turns it already used.
+	an eval run has a time limit, and a parked review keeps the turns it already used. A billing
+	error (402) does not pass while the eval waits, so the review fails at once.
 	"""
 	fields = ("status", "error", "stage", "attempt", "retry_at")
-	ReviewPipeline.run(review)
+	pipeline = ReviewPipeline.run(review)
 	state = db.values("Code Review", review, fields) or {}
 	for _ in range(MAX_PARKS):
 		if state.get("status") != "Queued":
 			break
+		if isinstance(pipeline.busy, GatewayBilling):
+			pipeline.fail(redact(f"AI gateway billing: {pipeline.busy}"))
+			return {**(db.values("Code Review", review, fields) or {}), "billing": True}
 		print(f"{review} waits: {state.get('stage')}")
 		time.sleep(PARK_WAIT)
 		db.set_values("Code Review", review, {"retry_at": None})
 		db.commit()
-		ReviewPipeline.run(review, int(state.get("attempt") or 0))
+		pipeline = ReviewPipeline.run(review, int(state.get("attempt") or 0))
 		state = db.values("Code Review", review, fields) or {}
 	return state
 
