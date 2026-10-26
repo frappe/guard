@@ -334,6 +334,6 @@ frappe.pages["guard-health"].on_page_load = function (wrapper) {
 			.xcall("guard.api.health.status", { days: Number(days) })
 			.then((data) => render(data, label));
 	};
-	page.set_primary_action(__("Refresh"), load, "refresh");
+	page.set_primary_action(__("Refresh"), load, "refresh-cw");
 	load();
 };
