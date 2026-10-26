@@ -21,7 +21,7 @@ Before stage 1, Guard checks the monthly credit cap. If the review would pass th
 
 ### Cancellation
 
-A new push to a pull request cancels a queued or running review for an older head. The running job checks a cancel flag between stages and before each agent turn. Only one review runs for each pull request at a time.
+A new push to a pull request cancels a queued or running review for an older head. The running job checks a cancel flag between stages and before each agent turn. A queued review checks it before it waits for the gateway or a free slot, so a cancelled review does not stay Queued. Only one review runs for each pull request at a time.
 
 ### Failure
 

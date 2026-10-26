@@ -80,24 +80,39 @@ class ReviewPipeline:
 		return pipeline
 
 	def acknowledge(self) -> None:
-		"""Finish the mention that asked for this review: 👍 when it completed, 😕 when it did not."""
+		"""Finish the mentions that wait for a review: 👍 when this one completed, 😕 when it did not.
+
+		A push can replace the review that a mention asked for. Then the newer review finishes them.
+		"""
 		status = db.value("Code Review", str(self.review.name), "status")
-		if status in ("Queued", "Running") or not self.review.pull_request or not self.review.requested_by:
+		if status in ("Queued", "Running") or not self.review.pull_request:
+			return
+		if status != "Completed" and self.replaced():
 			return
 		from guard.conversation import acks
 
-		acks.review_finished(
-			str(self.review.pull_request), str(self.review.requested_by), failed=status != "Completed"
+		acks.review_finished(str(self.review.pull_request), failed=status != "Completed")
+
+	def replaced(self) -> bool:
+		"""A newer review of the pull request is queued or runs, and nothing cancelled it."""
+		return bool(
+			db.scalar(
+				"""SELECT COUNT(*) FROM `tabCode Review` WHERE pull_request = %s AND name != %s
+				AND creation > %s AND status IN ('Queued', 'Running') AND cancel_requested = 0""",
+				(str(self.review.pull_request), str(self.review.name), self.review.creation),
+			)
 		)
 
 	def attempt(self, attempt: int) -> None:
-		if wait := breaker.wait_seconds():
-			self.park(attempt, wait, GATEWAY_DOWN)
-			return
-		if self.slots_full():
-			self.park(attempt, SLOT_WAIT, "waiting for a free review slot")
-			return
 		try:
+			# Before a park: else a cancelled review stays Queued while it waits for the gateway or a slot.
+			self.check_cancel()
+			if wait := breaker.wait_seconds():
+				self.park(attempt, wait, GATEWAY_DOWN)
+				return
+			if self.slots_full():
+				self.park(attempt, SLOT_WAIT, "waiting for a free review slot")
+				return
 			self.execute()
 		except Cancelled:
 			self.review.db_set({"status": "Cancelled", "completed_at": now_datetime()})

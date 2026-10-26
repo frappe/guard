@@ -1,9 +1,10 @@
 """Reactions on the comment that mentions Guard: 👀 when Guard accepts it, 👍 when it is done.
 
-A review runs later, in a job. The mention waits in the cache for the pull request and the
-person who asked, and the pipeline finishes it. See docs/spec/07-conversations.md.
+A review runs later, in a job. The mention waits in the cache under the pull request, and the
+last review of the pull request finishes it. See docs/spec/07-conversations.md.
 """
 
+import json
 from dataclasses import asdict, dataclass
 
 import frappe
@@ -42,26 +43,25 @@ def withdraw(ack: Ack) -> None:
 		_remove(ack, ack.eyes)
 
 
-def wait_for_review(ack: Ack, requested_by: str) -> None:
-	cache.set(_key(ack.pull_request, requested_by), asdict(ack), PENDING_TTL)
+def wait_for_review(ack: Ack) -> None:
+	cache.hash_set(_key(ack.pull_request), ack.comment_id, json.dumps(asdict(ack)), PENDING_TTL)
 
 
-def forget(pull_request: str, requested_by: str) -> None:
-	cache.delete(_key(pull_request, requested_by))
+def forget(ack: Ack) -> None:
+	cache.hash_take(_key(ack.pull_request), ack.comment_id)
 
 
-def review_finished(pull_request: str, requested_by: str, failed: bool = False) -> None:
-	"""Called when a review ends. Finish the mention that asked for it, if there is one."""
-	key = _key(pull_request, requested_by)
-	pending = cache.get(key)
-	if not isinstance(pending, dict):
-		return
-	cache.delete(key)
-	done(Ack(**pending), failed)
+def review_finished(pull_request: str, failed: bool = False) -> None:
+	"""Called when a review ends. Finish every mention that waits for a review of the pull request."""
+	key = _key(pull_request)
+	for comment_id, pending in cache.hash_items(key).items():
+		# Two reviews can end at the same time. Only one of them reacts.
+		if cache.hash_take(key, comment_id):
+			done(Ack(**json.loads(pending)), failed)
 
 
-def _key(pull_request: str, requested_by: str) -> str:
-	return f"guard:mention:{pull_request}:{(requested_by or '').lower()}"
+def _key(pull_request: str) -> str:
+	return f"guard:mentions:{pull_request}"
 
 
 def _context(ack: Ack) -> tuple[ProviderAdapter, str, int] | None:

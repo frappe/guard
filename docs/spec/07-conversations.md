@@ -29,7 +29,7 @@ Guard reacts on the comment that mentions it, so the author knows where the comm
 2. 👍 when the command is done: the review is complete, or the reply is posted. 👀 is removed.
 3. 😕 when the review fails, is skipped or is cancelled, or the reply cannot be posted. 👀 is removed.
 
-If Guard does not accept a review command, for example because reviews are off for the repository, it removes 👀. A review runs later in a job, so the mention waits in the cache for 24 hours under the pull request and the person who asked.
+If Guard does not accept a review command, for example because reviews are off for the repository, it removes 👀. A review runs later in a job, so the mention waits in the cache for 24 hours under the pull request and the comment. The last review of the pull request finishes every mention that waits. A push can cancel the review that a mention asked for. Then the mention keeps 👀, and the newer review gives it 👍 or 😕.
 
 ### Answers
 

@@ -1005,6 +1005,58 @@ class TestPipeline(PullRequestCase):
 		threads.handle(self.pr, ProviderComment("c4", "issue", "ada", "@guard review", number=7))
 		self.assertEqual(self.on_comment("c4"), ["eyes", "removed"])
 
+	def mention_replaced_by_push(self, comment_id):
+		"""A mention asks for a review, and a push replaces that review while the model runs."""
+		from guard.conversation import threads
+		from guard.review.jobs import create_review
+
+		newer = []
+
+		def push_then_submit(request):
+			if not newer:
+				with patch("guard.review.jobs.enqueue_review"):
+					newer.append(create_review(self.pr, "push"))
+			return respond(request)
+
+		respond = scripted([[("submit_review", {"summary": "s", "confidence_score": 4})]])
+		with use_responder(push_then_submit):
+			threads.handle(self.pr, ProviderComment(comment_id, "issue", "ada", "@guard review", number=7))
+		requested = db.value("Code Review", {"pull_request": self.pr, "trigger": "mention"}, "status")
+		self.assertEqual(requested, "Cancelled")
+		return newer[0]
+
+	def test_mention_waits_for_the_review_that_replaced_its_own(self):
+		# suite #881: a push came while the requested review ran. That is no failure of the request.
+		push = self.mention_replaced_by_push("c5")
+		self.assertEqual(self.on_comment("c5"), ["eyes"])
+		with use_responder(scripted([[("submit_review", {"summary": "s", "confidence_score": 4})]])):
+			ReviewPipeline.run(push)
+		self.assertEqual(self.row(push)["status"], "Completed")
+		self.assertEqual(self.on_comment("c5"), ["eyes", "removed", "+1"])
+
+	def test_review_finishes_every_waiting_mention(self):
+		from guard.conversation import threads
+
+		self.mention_replaced_by_push("c6")
+		# The same person asks again. Their first mention must not keep 👀.
+		with use_responder(scripted([[("submit_review", {"summary": "s", "confidence_score": 4})]])):
+			threads.handle(self.pr, ProviderComment("c7", "issue", "ada", "@guard review", number=7))
+		self.assertEqual(self.on_comment("c6"), ["eyes", "removed", "+1"])
+		self.assertEqual(self.on_comment("c7"), ["eyes", "removed", "+1"])
+
+	def test_cancelled_review_does_not_wait_for_a_slot(self):
+		waiting = self.running_review("")
+		db.set_values("Code Review", waiting, {"status": "Queued", "cancel_requested": 1})
+		running = self.running_review("review")
+		# Rows outlive the test: fail_dead_reviews in a later test would start this one again.
+		self.addCleanup(db.set_values, "Code Review", running, {"status": "Completed"})
+		frappe.db.set_single_value("Guard Settings", "max_concurrent_reviews", 1)
+		self.addCleanup(frappe.db.set_single_value, "Guard Settings", "max_concurrent_reviews", 4)
+		with patch("guard.review.jobs.enqueue_review") as enqueue:
+			ReviewPipeline.run(waiting)
+		self.assertEqual(self.row(waiting)["status"], "Cancelled")
+		enqueue.assert_not_called()
+
 	def test_polling_opens_and_syncs(self):
 		from guard.webhooks import polling
 
