@@ -566,6 +566,40 @@ class TestPipeline(PullRequestCase):
 		# Raised again, so it still applies: the thread stays open.
 		self.assertFalse(self.adapter.named("resolve"))
 
+	def test_rereview_does_not_post_a_finding_that_a_person_dismissed(self):
+		from guard.api import ui
+
+		finding = {
+			"path": "app/models.py",
+			"start_line": 5,
+			"severity": "P1",
+			"comment_type": "logic",
+			"title": "Callers are not updated",
+			"body": "x",
+			"confidence": 0.9,
+		}
+		first = self.review(
+			[[("report_finding", finding), ("submit_review", {"summary": "s", "confidence_score": 4})]]
+		)
+		[earlier] = frappe.get_all("Review Finding", filters={"code_review": first}, pluck="name")
+		ui.set_finding_status(earlier, "Dismissed")
+		self.adapter.calls.clear()
+		with use_responder(
+			scripted(
+				[[("report_finding", finding), ("submit_review", {"summary": "s", "confidence_score": 4})]]
+			)
+		):
+			second = trigger.consider(self.pr, "open", manual=True, requested_by="ada")
+		review = self.row(second)
+		self.assertEqual(review["status"], "Completed", review["error"])
+		self.assertEqual(review["posted_count"], 0)
+		self.assertFalse(self.adapter.named("unresolve"))
+		self.assertEqual(db.value("Review Finding", earlier, "status"), "Dismissed")
+		self.assertEqual(
+			frappe.get_all("Review Finding", filters={"code_review": second}, pluck="status_reason"),
+			["dismissed earlier on this pull request"],
+		)
+
 	def test_rereview_resolves_fixed_findings(self):
 		finding = {
 			"path": "app/models.py",

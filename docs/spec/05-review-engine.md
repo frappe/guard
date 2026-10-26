@@ -202,7 +202,7 @@ In this order:
 4. **Strictness.** 1 keeps all. 2 drops a P2 with confidence below 0.6 that no verifier confirmed, and a P2 that rests on library behavior. A P2 that the verifier confirmed is kept: it is correct and worth posting. A P2 marked `verify_failed` is kept too: the verifier was asked and gave no answer, which is no evidence against it. 3 keeps only P0 and P1.
 5. **Re-review.** On a later review, drop a P2 unless it touches a line added since the last reviewed commit.
 6. **Dedupe in the review.** Same path, overlapping lines and similar title: keep the higher severity.
-7. **Dedupe across reviews.** Skip a finding whose fingerprint or vector matches (cosine 0.88 or more) an open finding on the same pull request.
+7. **Dedupe across reviews.** Skip a finding that matches a posted finding of an earlier review on the same pull request: the fingerprint is the same, or the path is the same and the titles are similar. The earlier finding counts when it is open, or when a person dismissed it (in Desk, by resolving its thread, or by answering its question). A match with an open finding means it still applies. A match with a dismissed finding is not posted again, and the earlier one stays dismissed.
 8. **Suppression.** See [08-learning.md](08-learning.md).
 9. **Cap.** At most 40, 20 or 10 inline comments for strictness 1, 2 or 3. Sort by severity, then confidence.
 

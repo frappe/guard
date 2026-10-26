@@ -718,11 +718,15 @@ class ReviewPipeline:
 			raise Cancelled
 
 	def existing_findings(self) -> list[dict[str, Any]]:
+		"""Posted findings of earlier reviews that are open or that a person dismissed. Only a person
+		dismisses a posted finding: in Desk, by resolving its thread, or by answering its question.
+		Open ones come first, so a finding that matches both counts as raised again."""
 		if not self.review.pull_request:
 			return []
 		return db.dict_rows(
-			"""SELECT name, fingerprint, path, title FROM `tabReview Finding`
-			WHERE pull_request = %s AND status = 'Open' AND posted = 1 AND code_review != %s""",
+			"""SELECT name, fingerprint, path, title, status FROM `tabReview Finding`
+			WHERE pull_request = %s AND status IN ('Open', 'Dismissed') AND posted = 1 AND code_review != %s
+			ORDER BY status = 'Open' DESC""",
 			(self.review.pull_request, self.review.name),
 		)
 

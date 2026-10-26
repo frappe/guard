@@ -212,6 +212,8 @@ class FindingFilter:
 				)
 
 	def dedupe_existing(self, findings: list[Finding]) -> None:
+		"""Drop what earlier reviews posted. A person dismissed some of those findings: posting them
+		again raises what the team already accepted. Only open ones are raised again, and stay open."""
 		for finding in findings:
 			if not finding.kept:
 				continue
@@ -220,8 +222,11 @@ class FindingFilter:
 					row.get("path") == finding.path
 					and similar_titles(row.get("title") or "", finding.title, 0.6)
 				):
-					finding.drop("Dismissed", "already reported on this pull request")
-					self.reraised.add(str(row.get("name")))
+					if row.get("status") == "Dismissed":
+						finding.drop("Dismissed", "dismissed earlier on this pull request")
+					else:
+						finding.drop("Dismissed", "already reported on this pull request")
+						self.reraised.add(str(row.get("name")))
 					break
 
 	def cap(self, findings: list[Finding]) -> None:
