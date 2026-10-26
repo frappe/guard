@@ -399,6 +399,8 @@ class TestIndexCheck(IntegrationTestCase):
 			with self.assertRaises(IndexCheckFailed) as raised:
 				check([(name, str(repo.path), "main")])
 		self.assertIn("parser broke", str(raised.exception))
+		# The check makes its own Code Repository, so the repo does not know its mirror.
+		repo.repositories.append(str(db.value("Code Repository", {"full_name": name}, "name")))
 
 
 class TestScopedKnowledgeBase(IntegrationTestCase):

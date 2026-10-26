@@ -1,11 +1,14 @@
 """Test helpers: temporary git repositories and Guard records."""
 
+import shutil
 import subprocess
 import tempfile
 from collections.abc import Mapping
 from pathlib import Path
 
 import frappe
+
+from guard.git.store import GitStore
 
 GIT_ENV = {
 	"GIT_AUTHOR_NAME": "Test",
@@ -23,6 +26,8 @@ class TempRepo:
 		self.dir = tempfile.TemporaryDirectory(prefix="guard-test-")
 		self.path = Path(self.dir.name)
 		self.branch = branch
+		# Code Repositories made from this repo. Their mirrors are under the site, not in `dir`.
+		self.repositories: list[str] = []
 		self.git("init", "-q", "-b", branch)
 		self.commit(files, "initial")
 
@@ -51,7 +56,11 @@ class TempRepo:
 		self.git("checkout", "-q", "-b", name)
 
 	def cleanup(self) -> None:
+		"""Remove the folder and the mirrors. The test rolls back the rows, not the files, so each
+		run left a mirror for each repository: 9,845 mirrors and 3 GB on the test site."""
 		self.dir.cleanup()
+		for repository in self.repositories:
+			shutil.rmtree(GitStore(repository, "").path, ignore_errors=True)
 
 
 def make_repository(repo: TempRepo, full_name: str = "acme/app", provider: str = "Test Provider") -> str:
@@ -69,4 +78,5 @@ def make_repository(repo: TempRepo, full_name: str = "acme/app", provider: str =
 			"reviews_enabled": 1,
 		}
 	).insert(ignore_permissions=True)
+	repo.repositories.append(str(doc.name))
 	return str(doc.name)
