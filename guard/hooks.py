@@ -34,7 +34,11 @@ scheduler_events = {
 			"guard.webhooks.handler.resume_comments",
 			"guard.learning.addressed.resume",
 		],
-		"*/5 * * * *": ["guard.webhooks.polling.poll", "guard.review.jobs.fail_dead_reviews"],
+		"*/5 * * * *": [
+			"guard.webhooks.polling.poll",
+			"guard.review.jobs.fail_dead_reviews",
+			"guard.knowledge.builder.recover_stuck",
+		],
 		"17 * * * *": ["guard.review.jobs.close_stuck_checks"],
 		"*/15 * * * *": [
 			"guard.learning.addressed.poll_reactions",

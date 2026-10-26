@@ -7,6 +7,7 @@ from dataclasses import dataclass, field
 
 import frappe
 from frappe.utils import add_to_date, now_datetime
+from frappe.utils.background_jobs import is_job_enqueued
 
 from guard.git.repository import store_for
 from guard.graph.overlay import TEST_PATH
@@ -390,6 +391,10 @@ def build(repository: str, only: list[str] | None = None) -> int:
 	return KnowledgeBuilder(repository).build(set(only) if only is not None else None)
 
 
+def job_id(repository: str) -> str:
+	return f"guard-kb-{repository}"
+
+
 def enqueue_build(repository: str, only: list[str] | None = None) -> None:
 	"""Queue a build of every document, or of the paths in `only`.
 
@@ -399,12 +404,25 @@ def enqueue_build(repository: str, only: list[str] | None = None) -> None:
 		"guard.knowledge.builder.build",
 		queue="long",
 		timeout=7200,
-		job_id=f"guard-kb-{repository}",
+		job_id=job_id(repository),
 		deduplicate=True,
 		enqueue_after_commit=True,
 		repository=repository,
 		only=only,
 	)
+
+
+def recover_stuck() -> None:
+	"""Every 5 minutes: end the Building status of a build whose job stopped, for example in a deploy.
+
+	Pushes mark documents stale and MCP reads them only while the status is Ready. A repository
+	with a finished earlier build still has its documents, so it goes back to Ready.
+	"""
+	for row in frappe.get_all(
+		"Code Repository", filters={"kb_status": "Building"}, fields=["name", "kb_version"]
+	):
+		if not is_job_enqueued(job_id(row.name)):
+			db.set_values("Code Repository", row.name, {"kb_status": "Ready" if row.kb_version else "Failed"})
 
 
 def mark_stale(repository: str, paths: list[str]) -> None:

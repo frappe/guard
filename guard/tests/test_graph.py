@@ -450,3 +450,27 @@ class TestScopedKnowledgeBase(IntegrationTestCase):
 		):
 			builder.build(repository)
 		self.assertEqual(db.value("Code Repository", repository, "kb_status"), "Failed")
+
+	def test_build_whose_job_stopped_does_not_stay_building(self):
+		from guard.knowledge import builder
+
+		built, never_built, running = (self.indexed_repository() for _ in range(3))
+		db.set_values("Code Repository", built, {"kb_status": "Building", "kb_version": "v1"})
+		db.set_values("Code Repository", never_built, {"kb_status": "Building", "kb_version": ""})
+		db.set_values("Code Repository", running, {"kb_status": "Building", "kb_version": "v1"})
+		alive = {builder.job_id(running)}
+		with patch("guard.knowledge.builder.is_job_enqueued", side_effect=lambda job: job in alive):
+			builder.recover_stuck()
+		status = {r: db.value("Code Repository", r, "kb_status") for r in (built, never_built, running)}
+		self.assertEqual(status, {built: "Ready", never_built: "Failed", running: "Building"})
+
+	def test_patch_gives_back_ready_to_a_knowledge_base_with_documents(self):
+		from guard.patches import reset_knowledge_base_status
+
+		failed, never_built = (self.indexed_repository() for _ in range(2))
+		db.set_values("Code Repository", failed, {"kb_status": "Failed", "kb_version": "v1"})
+		db.set_values("Code Repository", never_built, {"kb_status": "Failed", "kb_version": ""})
+		with patch("guard.knowledge.builder.is_job_enqueued", return_value=False):
+			reset_knowledge_base_status.execute()
+		self.assertEqual(db.value("Code Repository", failed, "kb_status"), "Ready")
+		self.assertEqual(db.value("Code Repository", never_built, "kb_status"), "Failed")
