@@ -213,7 +213,7 @@ The check answers the score that this evidence supports, and a new reason that n
 
 ### Summary comment
 
-The summary comment starts with the marker `<!-- guard:summary -->`. On a re-review Guard edits it. Sections:
+The summary comment starts with the marker `<!-- guard:summary -->`. On a re-review Guard edits it. On the first review Guard posts it before the inline comments, so that it shows above them, and then edits it to add the links to them. Sections:
 
 ```markdown
 <!-- guard:summary -->

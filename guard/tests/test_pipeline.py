@@ -75,6 +75,22 @@ class TestPipeline(PullRequestCase):
 		self.assertEqual(self.adapter.named("status"), ["pending", "failure"])
 		self.assertIn("+1", self.adapter.named("react"))
 
+	def test_summary_is_posted_above_the_inline_comments(self):
+		self.review(
+			[[("report_finding", PROBLEM), ("submit_review", {"summary": "s", "confidence_score": 4})]]
+		)
+		kinds = [
+			kind
+			for kind, _ in self.adapter.calls
+			if kind in ("post_comment", "create_review", "update_comment")
+		]
+		self.assertEqual(kinds, ["post_comment", "create_review", "update_comment"])
+		# The edit adds the link to the inline comment.
+		summary_id = self.adapter.named("update_comment")[0]
+		inline_url = frappe.db.get_value("Review Finding", {"pull_request": self.pr}, "comment_url")
+		self.assertNotIn(inline_url, self.adapter.named("post_comment")[0])
+		self.assertIn(inline_url, self.adapter.comments[summary_id])
+
 	def test_review_waits_while_the_index_is_busy(self):
 		from guard.indexing.indexer import index_lock
 		from guard.indexing.jobs import index_for
@@ -516,6 +532,7 @@ class TestPipeline(PullRequestCase):
 		self.review(
 			[[("report_finding", finding), ("submit_review", {"summary": "s", "confidence_score": 4})]]
 		)
+		self.adapter.calls.clear()
 		with use_responder(
 			scripted(
 				[[("report_finding", finding), ("submit_review", {"summary": "s", "confidence_score": 4})]]
@@ -527,6 +544,7 @@ class TestPipeline(PullRequestCase):
 		self.assertEqual(review["posted_count"], 0)
 		self.assertEqual(review["review_number"], 2)
 		self.assertEqual(len(self.adapter.named("update_comment")), 1)
+		self.assertFalse(self.adapter.named("post_comment"))
 		# Raised again, so it still applies: the thread stays open.
 		self.assertFalse(self.adapter.named("resolve"))
 

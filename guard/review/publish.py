@@ -82,9 +82,16 @@ class Publisher:
 		if not self.adapter or self.run.pr is None:
 			return
 		posted = [f for f in self.run.findings if f.kept]
-		urls: dict[int, str] = {}
-		if not self.run.settings.get("update_summary_only"):
-			urls = self._inline([f for f in posted if not f.outside_diff], names)
+		inline = (
+			[] if self.run.settings.get("update_summary_only") else [f for f in posted if not f.outside_diff]
+		)
+		if inline and not self.run.settings.get("update_description") and not self.run.pr.summary_comment_id:
+			# GitHub orders the timeline by creation time. Post the summary before the inline comments so
+			# that it shows above them, then edit it below to add the links to them.
+			self._new_summary(render.summary(self.run, posted, review_number, {}))
+			# Do not keep the Pull Request row locked through the GitHub calls for the inline comments.
+			db.commit()
+		urls = self._inline(inline, names)
 		body = render.summary(self.run, posted, review_number, urls)
 		self.run.review.db_set("body", body)
 		# Do not keep the Code Review row locked through the GitHub calls and the Pull Request write below.

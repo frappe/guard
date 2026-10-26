@@ -42,7 +42,7 @@ The summary comment has these sections. Each section can be turned on or off, ma
 6. **Context used**: tickets, pages and cross-repo files that the review read.
 7. **Footer**: review counter ("Reviews (2)"), last reviewed commit with its message, a **Re-trigger** link, a **Fix All** link.
 
-On a new review Guard edits the same summary comment. It does not post a second one. If `update_description` is true, Guard writes the summary into the pull request description between markers instead.
+On a new review Guard edits the same summary comment. It does not post a second one. On the first review Guard posts the summary comment before the inline comments, so that it shows above them on the pull request. If `update_description` is true, Guard writes the summary into the pull request description between markers instead.
 
 ### R5. Inline comments
 
