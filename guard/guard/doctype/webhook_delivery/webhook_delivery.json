@@ -20,7 +20,6 @@
   {
    "fieldname": "code_provider",
    "fieldtype": "Link",
-   "idx": 1,
    "in_standard_filter": 1,
    "label": "Code Provider",
    "options": "Code Provider"
@@ -28,14 +27,12 @@
   {
    "fieldname": "delivery_id",
    "fieldtype": "Data",
-   "idx": 2,
    "label": "Delivery Id",
    "unique": 1
   },
   {
    "fieldname": "event",
    "fieldtype": "Data",
-   "idx": 3,
    "in_list_view": 1,
    "in_standard_filter": 1,
    "label": "Event"
@@ -43,14 +40,12 @@
   {
    "fieldname": "action",
    "fieldtype": "Data",
-   "idx": 4,
    "in_list_view": 1,
    "label": "Action"
   },
   {
    "fieldname": "repository_full_name",
    "fieldtype": "Data",
-   "idx": 5,
    "in_list_view": 1,
    "label": "Repository Full Name"
   },
@@ -58,7 +53,6 @@
    "default": "Received",
    "fieldname": "status",
    "fieldtype": "Select",
-   "idx": 6,
    "in_list_view": 1,
    "in_standard_filter": 1,
    "label": "Status",
@@ -67,14 +61,12 @@
   {
    "fieldname": "payload",
    "fieldtype": "Code",
-   "idx": 7,
    "label": "Payload",
    "options": "JSON"
   },
   {
    "fieldname": "error",
    "fieldtype": "Long Text",
-   "idx": 8,
    "label": "Error"
   },
   {
@@ -88,7 +80,7 @@
  ],
  "index_web_pages_for_search": 0,
  "links": [],
- "modified": "2026-10-26 20:34:49.986952",
+ "modified": "2026-10-26 23:45:00.000000",
  "modified_by": "Administrator",
  "module": "Guard",
  "name": "Webhook Delivery",

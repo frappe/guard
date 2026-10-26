@@ -38,7 +38,6 @@
    "default": "Rule",
    "fieldname": "context_type",
    "fieldtype": "Select",
-   "idx": 1,
    "in_list_view": 1,
    "in_standard_filter": 1,
    "label": "Context Type",
@@ -48,7 +47,6 @@
   {
    "fieldname": "title",
    "fieldtype": "Data",
-   "idx": 2,
    "in_list_view": 1,
    "label": "Title"
   },
@@ -56,7 +54,6 @@
    "default": "Active",
    "fieldname": "status",
    "fieldtype": "Select",
-   "idx": 3,
    "in_list_view": 1,
    "in_standard_filter": 1,
    "label": "Status",
@@ -65,20 +62,17 @@
   {
    "fieldname": "severity",
    "fieldtype": "Select",
-   "idx": 4,
    "label": "Severity",
    "options": "\nlow\nmedium\nhigh"
   },
   {
    "fieldname": "main_col",
-   "fieldtype": "Column Break",
-   "idx": 5
+   "fieldtype": "Column Break"
   },
   {
    "description": "Blank means organization scope",
    "fieldname": "team",
    "fieldtype": "Link",
-   "idx": 6,
    "label": "Team",
    "options": "Guard Team"
   },
@@ -86,7 +80,6 @@
    "default": "Dashboard",
    "fieldname": "source",
    "fieldtype": "Select",
-   "idx": 7,
    "in_standard_filter": 1,
    "label": "Source",
    "options": "Dashboard\nLearned\nSuggested\nMCP\nChat"
@@ -95,7 +88,6 @@
    "description": "Stable id. Config files can turn the rule off with disabledRules.",
    "fieldname": "rule_id",
    "fieldtype": "Data",
-   "idx": 8,
    "label": "Rule Id"
   },
   {
@@ -115,13 +107,11 @@
   {
    "fieldname": "body_section",
    "fieldtype": "Section Break",
-   "idx": 9,
    "label": "Content"
   },
   {
    "fieldname": "body",
    "fieldtype": "Long Text",
-   "idx": 10,
    "label": "Body",
    "reqd": 1
   },
@@ -129,70 +119,59 @@
    "depends_on": "eval:doc.context_type=='File'",
    "fieldname": "file_path",
    "fieldtype": "Data",
-   "idx": 11,
    "label": "File Path"
   },
   {
    "fieldname": "scope_section",
    "fieldtype": "Section Break",
-   "idx": 12,
    "label": "Scope"
   },
   {
    "description": "One pattern each line, for example acme/* . Blank means all.",
    "fieldname": "repository_scope",
    "fieldtype": "Small Text",
-   "idx": 13,
    "label": "Repository Scope"
   },
   {
    "fieldname": "scope_col",
-   "fieldtype": "Column Break",
-   "idx": 14
+   "fieldtype": "Column Break"
   },
   {
    "description": "One glob each line. Blank means all.",
    "fieldname": "path_scope",
    "fieldtype": "Small Text",
-   "idx": 15,
    "label": "Path Scope"
   },
   {
    "fieldname": "metrics_section",
    "fieldtype": "Section Break",
-   "idx": 16,
    "label": "Metrics"
   },
   {
    "fieldname": "usage_count",
    "fieldtype": "Int",
-   "idx": 17,
    "label": "Usage Count",
    "read_only": 1
   },
   {
    "fieldname": "merged_count",
    "fieldtype": "Int",
-   "idx": 18,
    "label": "Merged Count",
    "read_only": 1
   },
   {
    "fieldname": "metrics_col",
-   "fieldtype": "Column Break",
-   "idx": 19
+   "fieldtype": "Column Break"
   },
   {
    "fieldname": "addressed_count",
    "fieldtype": "Int",
-   "idx": 20,
    "label": "Addressed Count",
    "read_only": 1
   },
   {
    "fieldname": "addressed_rate",
    "fieldtype": "Percent",
-   "idx": 21,
    "label": "Addressed Rate",
    "read_only": 1
   },
@@ -210,7 +189,6 @@
    "fieldname": "evidence",
    "fieldtype": "JSON",
    "hidden": 1,
-   "idx": 22,
    "label": "Evidence",
    "read_only": 1
   }
@@ -223,7 +201,7 @@
    "link_fieldname": "custom_context"
   }
  ],
- "modified": "2026-10-25 16:55:29.000000",
+ "modified": "2026-10-26 23:45:00.000000",
  "modified_by": "Administrator",
  "module": "Guard",
  "name": "Custom Context",

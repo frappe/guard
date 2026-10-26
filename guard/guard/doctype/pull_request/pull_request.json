@@ -55,25 +55,21 @@
   {
    "fieldname": "overview_tab",
    "fieldtype": "Tab Break",
-   "idx": 1,
    "label": "Overview"
   },
   {
    "fieldname": "overview_html",
    "fieldtype": "HTML",
-   "idx": 2,
    "label": "Overview Html"
   },
   {
    "fieldname": "details_tab",
    "fieldtype": "Tab Break",
-   "idx": 3,
    "label": "Details"
   },
   {
    "fieldname": "title",
    "fieldtype": "Small Text",
-   "idx": 4,
    "in_list_view": 1,
    "label": "Title",
    "reqd": 1
@@ -81,7 +77,6 @@
   {
    "fieldname": "repository",
    "fieldtype": "Link",
-   "idx": 5,
    "in_list_view": 1,
    "in_standard_filter": 1,
    "label": "Repository",
@@ -91,7 +86,6 @@
   {
    "fieldname": "number",
    "fieldtype": "Int",
-   "idx": 6,
    "in_list_view": 1,
    "label": "Number",
    "reqd": 1
@@ -100,7 +94,6 @@
    "default": "open",
    "fieldname": "state",
    "fieldtype": "Select",
-   "idx": 7,
    "in_list_view": 1,
    "in_standard_filter": 1,
    "label": "State",
@@ -110,13 +103,11 @@
    "default": "0",
    "fieldname": "is_draft",
    "fieldtype": "Check",
-   "idx": 8,
    "label": "Is Draft"
   },
   {
    "fieldname": "author",
    "fieldtype": "Data",
-   "idx": 9,
    "in_standard_filter": 1,
    "label": "Author",
    "search_index": 1
@@ -124,133 +115,111 @@
   {
    "fieldname": "web_url",
    "fieldtype": "Data",
-   "idx": 10,
    "label": "Web Url"
   },
   {
    "fieldname": "details_col",
-   "fieldtype": "Column Break",
-   "idx": 11
+   "fieldtype": "Column Break"
   },
   {
    "fieldname": "base_branch",
    "fieldtype": "Data",
-   "idx": 12,
    "label": "Base Branch"
   },
   {
    "fieldname": "head_branch",
    "fieldtype": "Data",
-   "idx": 13,
    "label": "Head Branch"
   },
   {
    "fieldname": "base_sha",
    "fieldtype": "Data",
-   "idx": 14,
    "label": "Base Sha"
   },
   {
    "fieldname": "head_sha",
    "fieldtype": "Data",
-   "idx": 15,
    "label": "Head Sha"
   },
   {
    "fieldname": "first_commit_sha",
    "fieldtype": "Data",
-   "idx": 16,
    "label": "First Commit Sha"
   },
   {
    "fieldname": "head_clone_url",
    "fieldtype": "Data",
-   "idx": 17,
    "label": "Head Clone Url"
   },
   {
    "fieldname": "provider_node_id",
    "fieldtype": "Data",
-   "idx": 18,
    "label": "Provider Node Id"
   },
   {
    "fieldname": "labels",
    "fieldtype": "JSON",
-   "idx": 19,
    "label": "Labels"
   },
   {
    "fieldname": "stats_section",
    "fieldtype": "Section Break",
-   "idx": 20,
    "label": "Stats"
   },
   {
    "fieldname": "opened_at",
    "fieldtype": "Datetime",
-   "idx": 21,
    "label": "Opened At"
   },
   {
    "fieldname": "merged_at",
    "fieldtype": "Datetime",
-   "idx": 22,
    "label": "Merged At"
   },
   {
    "fieldname": "closed_at",
    "fieldtype": "Datetime",
-   "idx": 23,
    "label": "Closed At"
   },
   {
    "fieldname": "stats_col",
-   "fieldtype": "Column Break",
-   "idx": 24
+   "fieldtype": "Column Break"
   },
   {
    "fieldname": "additions",
    "fieldtype": "Int",
-   "idx": 25,
    "label": "Additions"
   },
   {
    "fieldname": "deletions",
    "fieldtype": "Int",
-   "idx": 26,
    "label": "Deletions"
   },
   {
    "fieldname": "changed_files",
    "fieldtype": "Int",
-   "idx": 27,
    "label": "Changed Files"
   },
   {
    "fieldname": "review_section",
    "fieldtype": "Section Break",
-   "idx": 28,
    "label": "Guard"
   },
   {
    "fieldname": "review_count",
    "fieldtype": "Int",
-   "idx": 29,
    "label": "Review Count",
    "read_only": 1
   },
   {
    "fieldname": "last_reviewed_sha",
    "fieldtype": "Data",
-   "idx": 30,
    "label": "Last Reviewed Sha",
    "read_only": 1
   },
   {
    "fieldname": "latest_review",
    "fieldtype": "Link",
-   "idx": 31,
    "label": "Latest Review",
    "options": "Code Review",
    "read_only": 1
@@ -258,7 +227,6 @@
   {
    "fieldname": "confidence_score",
    "fieldtype": "Int",
-   "idx": 32,
    "in_list_view": 1,
    "label": "Confidence Score",
    "read_only": 1
@@ -266,20 +234,17 @@
   {
    "fieldname": "risk_level",
    "fieldtype": "Select",
-   "idx": 33,
    "label": "Risk Level",
    "options": "\nlow\nmedium\nhigh\ncritical",
    "read_only": 1
   },
   {
    "fieldname": "review_col",
-   "fieldtype": "Column Break",
-   "idx": 34
+   "fieldtype": "Column Break"
   },
   {
    "fieldname": "summary_comment_id",
    "fieldtype": "Data",
-   "idx": 35,
    "label": "Summary Comment Id",
    "read_only": 1
   },
@@ -287,21 +252,18 @@
    "default": "0",
    "fieldname": "guard_approved",
    "fieldtype": "Check",
-   "idx": 36,
    "label": "Guard Approved",
    "read_only": 1
   },
   {
    "fieldname": "approval_id",
    "fieldtype": "Data",
-   "idx": 37,
    "label": "Approval Id",
    "read_only": 1
   },
   {
    "fieldname": "tour_sha",
    "fieldtype": "Data",
-   "idx": 38,
    "label": "Tour Sha",
    "read_only": 1
   },
@@ -334,13 +296,11 @@
   {
    "fieldname": "description",
    "fieldtype": "Long Text",
-   "idx": 43,
    "label": "Description"
   },
   {
    "fieldname": "tour",
    "fieldtype": "JSON",
-   "idx": 44,
    "label": "Tour",
    "read_only": 1
   }
@@ -373,7 +333,7 @@
    "link_fieldname": "pull_request"
   }
  ],
- "modified": "2026-10-26 19:46:02.331629",
+ "modified": "2026-10-26 23:45:00.000000",
  "modified_by": "Administrator",
  "module": "Guard",
  "name": "Pull Request",
