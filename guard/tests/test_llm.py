@@ -4,6 +4,7 @@ from unittest.mock import patch
 import frappe
 from frappe.tests import UnitTestCase
 
+from guard.llm import markup
 from guard.llm.anthropic_dialect import _messages
 from guard.llm.anthropic_dialect import _result as anthropic_result
 from guard.llm.client import PARALLEL_CALLS, ChatRequest, LLMClient, parse_json, use_responder
@@ -21,6 +22,7 @@ from guard.llm.types import (
 	ToolSpec,
 	Usage,
 )
+from guard.tests.fakes import dsml
 
 SUBMIT = ToolSpec(
 	"submit_review",
@@ -275,3 +277,54 @@ class TestChatMany(UnitTestCase):
 			with use_responder(respond), self.assertRaises(type(error)):
 				LLMClient(purpose="test").chat_many([[Message("user", "a")], [Message("user", "b")]])
 			self.assertEqual(len(calls), 2)
+
+
+READ = ToolSpec("read_file", "Read a file", {"type": "object", "properties": {"path": {"type": "string"}}})
+LEAKED = dsml([("read_file", {"path": "app/a.py", "ranges": [{"start_line": 1, "end_line": 9}]})])
+
+
+class TestMarkup(UnitTestCase):
+	"""DeepSeek tool calls that came back as text (frappe/erpnext#62211, frappe/suite#1081)."""
+
+	def chat(self, content: str, tools: list[ToolSpec] | None) -> ChatResult:
+		with use_responder(lambda request: ChatResult(content, [], Usage(10, 5))):
+			return LLMClient(purpose="test").chat([Message("user", "q")], tools=tools)
+
+	def test_calls_in_text_become_tool_calls(self):
+		result = self.chat(LEAKED, [READ])
+		self.assertEqual(result.content, "")
+		self.assertEqual([call.name for call in result.tool_calls], ["read_file"])
+		# A string stays a string, and other values are JSON.
+		self.assertEqual(
+			result.tool_calls[0].arguments,
+			{"path": "app/a.py", "ranges": [{"start_line": 1, "end_line": 9}]},
+		)
+		self.assertTrue(result.tool_calls[0].id)
+
+	def test_markup_is_removed_when_no_tools_were_offered(self):
+		result = self.chat(f"Partly checked.\n\n{LEAKED}", None)
+		self.assertEqual((result.content, result.tool_calls), ("Partly checked.", []))
+
+	def test_only_offered_tools_are_called(self):
+		result = self.chat(dsml([("write_file", {"path": "x"}), ("read_file", {"path": "y"})]), [READ])
+		self.assertEqual([call.name for call in result.tool_calls], ["read_file"])
+
+	def test_the_documented_tag_and_a_block_that_max_tokens_cut_off(self):
+		self.assertEqual(
+			len(
+				markup.recover(
+					ChatResult(dsml([("read_file", {"path": "a"})], "function_calls"), [], Usage()), [READ]
+				).tool_calls
+			),
+			1,
+		)
+		cut = LEAKED.rsplit("</", 1)[0]
+		result = self.chat(cut, [READ])
+		self.assertEqual((result.content, len(result.tool_calls)), ("", 1))
+
+	def test_real_tool_calls_and_plain_text_are_left_alone(self):
+		call = ToolCall("t1", "read_file", {"path": "a"})
+		with use_responder(lambda request: ChatResult(LEAKED, [call], Usage())):
+			result = LLMClient(purpose="test").chat([Message("user", "q")], tools=[READ])
+		self.assertEqual((result.content, result.tool_calls), ("", [call]))
+		self.assertEqual(self.chat("Use `a|b` here.", [READ]).content, "Use `a|b` here.")

@@ -1,5 +1,6 @@
 """A fake GitHub adapter that records calls, and a scripted model."""
 
+import json
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
@@ -139,6 +140,25 @@ class FakeAdapter(ProviderAdapter):
 
 	def named(self, name: str) -> list[Any]:
 		return [value for call, value in self.calls if call == name]
+
+
+def dsml(calls: list[tuple[str, dict[str, Any]]], tag: str = " calls") -> str:
+	"""Tool calls in DeepSeek markup, as the model wrote them in Guard replies on GitHub: the tag
+	`<|DSML| calls>` is one the server does not parse. Strings have `string="true"`, other values JSON."""
+	bar = "\uff5c"
+	lines = [f"<{bar}DSML{bar}{tag}>"]
+	for name, args in calls:
+		lines.append(f'<{bar}DSML{bar} invoke name="{name}">')
+		for key, value in args.items():
+			is_string = isinstance(value, str)
+			text = value if is_string else json.dumps(value)
+			lines.append(
+				f'<{bar}DSML{bar} parameter name="{key}" string="{str(is_string).lower()}">'
+				f"{text}</{bar}DSML{bar} parameter>"
+			)
+		lines.append(f"</{bar}DSML{bar} invoke>")
+	lines.append(f"</{bar}DSML{bar}{tag}>")
+	return "\n".join(lines)
 
 
 def scripted(

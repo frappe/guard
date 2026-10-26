@@ -57,6 +57,8 @@ Guard settings hold:
 
 Any other OpenAI-compatible or Anthropic-compatible endpoint also works with the same settings. Guard reads `/v1/models` to fill the model pickers. A gateway answer of 402 (cap reached) or 429 (rate limit) puts the job back in the queue with a delay. It does not fail the review at once.
 
+Some models write tool calls in their own markup, and the server can fail to parse it. DeepSeek, for example, sometimes writes a DSML tag the server does not know. Then the calls come back as text. `llm/markup.py` reads such calls when the request offered those tools, and it always removes the markup from the text, so Guard never posts it.
+
 With no gateway set, Guard uses the offline fallback. The fallback returns empty findings and hash-based embeddings. Tests use it.
 
 ## Processes and queues
@@ -126,7 +128,7 @@ guard/
   knowledge/            builder.py, store.py
   learning/             feedback.py, memory_writer.py, memories.py, addressed.py, suppression.py,
                         suggestions.py, approve.py
-  llm/                  client.py, openai_dialect.py, anthropic_dialect.py, offline.py, embeddings.py, http.py
+  llm/                  client.py, openai_dialect.py, anthropic_dialect.py, markup.py, offline.py, embeddings.py, http.py
   mcp/                  server.py, tools.py
   providers/            base.py, github.py, sync.py
   review/               pipeline.py, run.py, context.py, task.py, agent.py, prompts.py, findings.py,

@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from typing import Any, Protocol
 
 from guard import settings as guard_settings
+from guard.llm import markup
 from guard.llm.anthropic_dialect import AnthropicDialect
 from guard.llm.offline import OfflineDialect
 from guard.llm.openai_dialect import OpenAIDialect
@@ -138,8 +139,10 @@ class LLMClient:
 		temperature: float,
 	) -> ChatResult:
 		if _responder:
-			return _responder(ChatRequest(self.model, messages, tools, tool_choice, self.purpose))
-		return self.dialect.chat(self.model, messages, tools, tool_choice, max_tokens, temperature)
+			result = _responder(ChatRequest(self.model, messages, tools, tool_choice, self.purpose))
+		else:
+			result = self.dialect.chat(self.model, messages, tools, tool_choice, max_tokens, temperature)
+		return markup.recover(result, tools)
 
 	def _record(self, results: list[ChatResult]) -> list[ChatResult]:
 		if results and self.online:

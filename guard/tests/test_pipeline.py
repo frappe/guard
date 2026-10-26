@@ -20,7 +20,7 @@ from guard.review.pipeline import ReviewPipeline
 from guard.review.prompt import ContextPack
 from guard.review.run import ReviewRun
 from guard.tests.cases import AUTO_APPROVE, PullRequestCase
-from guard.tests.fakes import scripted
+from guard.tests.fakes import dsml, scripted
 from guard.utils import db
 
 PROBLEM = {
@@ -1027,6 +1027,43 @@ class TestPipeline(PullRequestCase):
 			with patch("guard.llm.client.LLMClient.online", new=True):
 				threads.handle(self.pr, comment)
 		self.assertEqual(self.adapter.named("reply"), ["It adds `notify` to `update_user_email`."])
+
+	def test_mention_runs_tool_calls_that_came_back_as_text(self):
+		from guard.conversation import threads
+
+		requests: list[ChatRequest] = []
+		responder = scripted([dsml([("read_file", {"path": "app/models.py"})]), "It adds `notify`."])
+
+		def respond(request: ChatRequest) -> ChatResult:
+			requests.append(request)
+			return responder(request)
+
+		comment = ProviderComment("c5", "issue", "ada", "@guard why this signature?", number=7)
+		with use_responder(respond), patch("guard.llm.client.LLMClient.online", new=True):
+			threads.handle(self.pr, comment)
+		self.assertEqual(self.adapter.named("reply"), ["It adds `notify`."])
+		tools = [m.content for m in requests[-1].messages if m.role == "tool"]
+		self.assertIn("def update_user_email", tools[0])
+
+	def test_mention_never_posts_tool_markup(self):
+		from guard.conversation import answer, threads
+
+		# Every turn asks for a tool, and the last call, which offers no tools, does as well.
+		leaked = dsml([("read_file", {"path": "app/models.py"})])
+		responder = scripted([leaked] * answer.MAX_TURNS, {"conversation": leaked})
+		comment = ProviderComment("c6", "issue", "ada", "@guard is this safe?", number=7)
+		with use_responder(responder), patch("guard.llm.client.LLMClient.online", new=True):
+			threads.handle(self.pr, comment)
+		self.assertFalse(self.adapter.named("reply"))
+		self.assertEqual(self.on_comment("c6")[-1], "confused")
+
+	def test_chat_runs_tool_calls_that_came_back_as_text(self):
+		from guard.conversation import chat
+
+		responder = scripted([dsml([("read_file", {"path": "app/models.py"})]), "It adds `notify`."])
+		with use_responder(responder):
+			result = chat.send(self.pr, "Why this signature?")
+		self.assertEqual(result["answer"], "It adds `notify`.")
 
 	def on_comment(self, comment_id):
 		"""Reactions on one comment, in order: added contents and "removed"."""

@@ -12,7 +12,7 @@ from guard.review.context import BuiltContext
 from guard.review.prompt import ContextFile, ContextPack
 from guard.review.run import ReviewRun
 from guard.review.spans import ContextSpan
-from guard.tests.fakes import scripted
+from guard.tests.fakes import dsml, scripted
 
 LONG = "\n".join(f"line_{n} = {'x' * 60}" for n in range(1, 1001))
 
@@ -124,6 +124,15 @@ class TestGraphTools(UnitTestCase):
 		names = [spec.name for spec in agent.read_specs(self.review)]
 		self.assertIn("get_callees", names)
 		self.assertNotIn("report_finding", names)
+
+
+class TestToolCallsAsText(UnitTestCase):
+	def test_the_review_goes_on_after_tool_calls_that_came_back_as_text(self):
+		review = agent.Agent(run_on(LONG), "system", max_turns=4)
+		with use_responder(scripted([dsml([("read_file", {"path": "app/a.py"})])])):
+			review.run_loop("task")
+		self.assertTrue(review.run.verdict.submitted)
+		self.assertIn("line_1 = ", next(m.content for m in review.messages if m.role == "tool"))
 
 
 class TestTrim(UnitTestCase):
