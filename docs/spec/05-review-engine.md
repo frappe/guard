@@ -142,7 +142,7 @@ The graph tools are there only when the repository has an index. Thread answers 
 
 ### Turn limit
 
-The agent stops at `submit_review` or at the turn limit of the tier. At the limit, Guard sends one more request that allows only `submit_review`.
+The agent stops at `submit_review` or at the turn limit of the tier. At the limit, Guard sends one more request that allows only `submit_review`. The Anthropic front does not force the call, because Claude 5 models refuse a forced tool. The prompt asks for the call. When no verdict comes, the graph verdict is used.
 
 ### Old tool output and the prompt cache
 

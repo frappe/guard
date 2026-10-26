@@ -5,8 +5,8 @@ import frappe
 from frappe.tests import UnitTestCase
 
 from guard.llm import markup
+from guard.llm.anthropic_dialect import THINKING_ROOM, AnthropicDialect, _messages
 from guard.llm.anthropic_dialect import VERSION as ANTHROPIC_VERSION
-from guard.llm.anthropic_dialect import AnthropicDialect, _messages
 from guard.llm.anthropic_dialect import _result as anthropic_result
 from guard.llm.client import PARALLEL_CALLS, ChatRequest, LLMClient, parse_json, use_responder
 from guard.llm.embeddings import hash_embedding, tokens
@@ -149,6 +149,36 @@ class TestDialects(UnitTestCase):
 		self.assertEqual(result.tool_calls[0].arguments, {"pattern": "x"})
 		self.assertEqual(result.usage.output_tokens, 4)
 		self.assertEqual((result.usage.input_tokens, result.usage.cached_tokens), (3, 2))
+
+	def test_anthropic_request_fits_claude_5(self):
+		bodies: list[dict] = []
+		thinking = [
+			{"type": "thinking", "thinking": "", "signature": "s1"},
+			{"type": "redacted_thinking", "data": "d1"},
+		]
+		answer = {
+			"content": [*thinking, {"type": "tool_use", "id": "x", "name": "submit_review", "input": {}}],
+			"usage": {},
+		}
+
+		def post(url, body, headers, timeout):
+			bodies.append(body)
+			return answer
+
+		submit = ToolSpec("submit_review", "verdict", {"type": "object"})
+		with patch("guard.llm.anthropic_dialect.post_json", side_effect=post):
+			result = AnthropicDialect("https://gw", "k", 30).chat(
+				"claude-opus-5-5", [Message("user", "review")], [submit], "submit_review", 100, 0.1
+			)
+		# Claude 5 models refuse a temperature and a forced tool, and think within `max_tokens`.
+		self.assertNotIn("temperature", bodies[0])
+		self.assertEqual(bodies[0]["tool_choice"], {"type": "auto"})
+		self.assertEqual(bodies[0]["max_tokens"], 100 + THINKING_ROOM)
+		# The thinking blocks go back unchanged, before the tool call.
+		self.assertEqual(result.thinking, thinking)
+		converted = _messages([result.as_message(), Message("tool", "ok", tool_call_id="x")])
+		self.assertEqual(converted[0]["content"][:2], thinking)
+		self.assertEqual(converted[0]["content"][2]["type"], "tool_use")
 
 	def test_models_use_the_auth_of_the_dialect(self):
 		import httpx

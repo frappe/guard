@@ -109,7 +109,14 @@ def load_findings(rows: list[dict[str, Any]]) -> list[Finding]:
 
 def _message(row: dict[str, Any]) -> Message:
 	calls = [ToolCall(**call) for call in row.get("tool_calls") or []]
-	return Message(row["role"], row["content"], calls, row.get("tool_call_id"), bool(row.get("cache")))
+	return Message(
+		row["role"],
+		row["content"],
+		calls,
+		row.get("tool_call_id"),
+		bool(row.get("cache")),
+		row.get("thinking") or [],
+	)
 
 
 def _folder() -> Path:

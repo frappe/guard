@@ -26,6 +26,9 @@ class Message:
 	tool_call_id: str | None = None
 	# Ask the gateway to cache the prompt up to and including this message.
 	cache: bool = False
+	# Thinking blocks of the Anthropic front, as the model sent them. They go back unchanged, because
+	# the API needs them in a tool turn.
+	thinking: list[dict[str, Any]] = field(default_factory=list)
 
 
 @dataclass
@@ -49,9 +52,12 @@ class ChatResult:
 	usage: Usage
 	stop_reason: str = ""
 	model: str = ""
+	thinking: list[dict[str, Any]] = field(default_factory=list)
 
 	def as_message(self) -> Message:
-		return Message(role="assistant", content=self.content, tool_calls=list(self.tool_calls))
+		return Message(
+			role="assistant", content=self.content, tool_calls=list(self.tool_calls), thinking=self.thinking
+		)
 
 
 class LLMError(Exception):

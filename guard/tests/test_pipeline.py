@@ -1430,7 +1430,8 @@ class TestCheckpoint(UnitTestCase):
 		calls = [ToolCall("t1", "read_file", {"path": "a.py"}), ToolCall("t2", "report_finding", PROBLEM)]
 		agent.messages.append(Message("user", "task", cache=True))
 		agent.request()
-		agent.receive(ChatResult("thinking", calls, Usage(10, 1, 4)))
+		thinking = [{"type": "thinking", "thinking": "", "signature": "s1"}]
+		agent.receive(ChatResult("thinking", calls, Usage(10, 1, 4), thinking=thinking))
 		again = self.agent()
 		checkpoint.restore_agent(again, checkpoint.dump_agent(agent))
 		self.assertEqual(again.messages, agent.messages)
