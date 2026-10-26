@@ -173,6 +173,30 @@ class TestCrossRepository(IntegrationTestCase):
 		adapter = self.open_pull_request(self.consumer_repo, self.consumer, {"pilot/server.py": server}, 5)
 		self.assertFalse(self.bodies(adapter, "No route in"))
 
+	def test_own_route_tables_and_tests_are_not_calls(self):
+		# suite#881: about 25 P1s. Its own `Route("PUT", "uploads/{id}/chunk", ...)` table, calls to
+		# the routes that the pull request adds, and tests that ask for a wrong path on purpose
+		# were all checked against the routes of other repositories.
+		table = 'ROUTES = (\n    Route(\n        "POST",\n        "virtual-machines/{vm}/actions/hibernate",\n        "hibernate",\n    ),\n)\n'
+		caller = (
+			'def hibernate(name):\n    return api("POST", f"virtual-machines/{name}/actions/hibernate")\n'
+		)
+		test = 'def test_unknown():\n    call("POST", "virtual-machines/vm-1/actions/nope")\n'
+		files = {"pilot/table.py": table, "pilot/drive.py": caller, "pilot/tests/test_drive.py": test}
+		adapter = self.open_pull_request(self.consumer_repo, self.consumer, files, 6)
+		self.assertFalse(self.bodies(adapter, "No route in"))
+
+	def test_a_frappe_method_url_is_not_a_route_call(self):
+		# suite#881: `/api/v2/method/login` was checked against a `login` route of pilot.
+		from guard.indexing import routes
+		from guard.review import crossrepo
+
+		other = crossrepo.OtherRepository("acme/pilot", "r", "i")
+		other.__dict__.update(routes=[("POST", "auth/login/otp", "pilot/auth.py", 1)], newer_head=None)
+		for text, expected in (("/api/v2/method/login/otp", 0), ("/api/v2/auth/login/start", 1)):
+			[call] = routes.client_calls([f'requests.post("{text}")'], set())
+			self.assertEqual(len(crossrepo._missing_route("a.py", call, [other], [])), expected, text)
+
 	def bodies(self, adapter: FakeAdapter, text: str) -> list[str]:
 		posted = [c.body for review in adapter.named("create_review") for c in review]
 		return [body for body in posted + adapter.named("post_comment") if text in body]

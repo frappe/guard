@@ -12,7 +12,7 @@ import tree_sitter_language_pack as pack
 from guard.indexing import languages, routes
 from guard.indexing.languages import ImportRef
 
-PARSER_VERSION = 2
+PARSER_VERSION = 3
 KINDS = {
 	"class": "class",
 	"struct": "class",
@@ -301,7 +301,7 @@ def _http(parsed: ParsedFile, source: str) -> None:
 				qualified_name=qualified,
 				parent_key=parsed.file_entity.key,
 				start_line=route.line,
-				end_line=route.line,
+				end_line=max(route.end_line, route.line),
 				# The router name and raw path. The full path is resolved when the graph is read.
 				signature=f"{route.router}|{route.path}",
 				is_entry_point=True,
@@ -320,7 +320,7 @@ def _http(parsed: ParsedFile, source: str) -> None:
 				signature=f"{router.parent}|{router.segment}",
 			)
 		)
-	for call in routes.client_calls(lines, {r.line for r in defined}):
+	for call in routes.client_calls(lines, routes.defined_lines(defined)):
 		owner = parsed.innermost(call.line)
 		target = f"http:{call.verb} {call.normalized}"
 		parsed.edges.append(RawEdge(owner.key, "references", target, call.text, call.line))

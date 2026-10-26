@@ -330,6 +330,36 @@ class TestRoutes(UnitTestCase):
 			],
 		)
 
+	def test_route_table_entries_are_definitions(self):
+		# suite#881: `Route("GET", "users/{user}/drive-transfer", ...)` was read as a call to guard.
+		from guard.indexing import routes
+
+		lines = [
+			"ROUTES = (",
+			"    Route(",
+			'        "GET",',
+			'        "users/{user}/drive-transfer",',
+			'        "user_transfer_preview",',
+			"    ),",
+			'    Route("PUT", "uploads/{upload_id}/chunk", "upload_chunk"),',
+			'    APIRoute("/users", list_users, methods=["POST"]),',
+			'    Route("/health", health),',
+			")",
+			"class Route(NamedTuple):",
+			"route = Route(method, path)",
+		]
+		found = routes.definitions(lines)
+		self.assertEqual(
+			[(r.verb, r.path, r.line, r.end_line) for r in found],
+			[
+				("GET", "users/{user}/drive-transfer", 2, 4),
+				("PUT", "uploads/{upload_id}/chunk", 7, 7),
+				("POST", "/users", 8, 8),
+				("ANY", "/health", 9, 9),
+			],
+		)
+		self.assertEqual(routes.client_calls(lines, routes.defined_lines(found)), [])
+
 	def test_strength(self):
 		from guard.indexing import routes
 

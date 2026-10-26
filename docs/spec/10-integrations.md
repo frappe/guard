@@ -89,7 +89,7 @@ The index records how repositories use each other:
 
 - Python imports, with one edge for each imported name: `from a.b import c` is `a.b.c`.
 - Frappe method paths in strings, and in URLs: `/api/method/a.b.c`.
-- HTTP routes and their routers. A route keeps the name of its router. Guard resolves the full path when it reads the graph, because a router can be defined in another file.
+- HTTP routes and their routers. A route keeps the name of its router. Guard resolves the full path when it reads the graph, because a router can be defined in another file. An entry of a route table, as `Route("GET", "users/{user}", ...)` over one or more lines, is a route too, not a client call.
 - HTTP client calls: the path argument after an HTTP verb, also when the path is in a variable that is set a few lines before.
 
 Paths are normalized: parameters become `*`. A client path matches a route when their ends agree, because clients and routers add different prefixes.
@@ -105,6 +105,9 @@ Paths are normalized: parameters become `*`. A client path matches a route when 
 
 - A method path in the package of another repository must exist there. If not, Guard posts a P1 finding.
 - A route call that belongs to a route family of another repository must match one of its routes. If not, Guard posts a P1 finding with the close routes.
+  - A call that matches a route of the repository itself is not checked. Those routes come from its index and from the files of the pull request, so a route that the pull request adds counts.
+  - Calls in test files and under `e2e/` are not checked. Tests call their own app, and some ask for a wrong path on purpose.
+  - `/api/method/<name>` is a Frappe method URL. The method check covers it, not the route check.
 
 ### Repository clusters
 

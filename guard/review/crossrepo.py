@@ -18,7 +18,7 @@ from functools import cached_property
 import frappe
 
 from guard.git.diff import FileDiff
-from guard.graph.overlay import ChangedEntity, ExternalCaller
+from guard.graph.overlay import TEST_PATH, ChangedEntity, ExternalCaller
 from guard.indexing import languages, routes
 from guard.indexing.parser import DOTTED_STRING
 from guard.review.findings import Finding
@@ -33,6 +33,10 @@ MIN_FAMILY_LENGTH = 4
 # Files whose strings can call a method of another repository. A JSON contract or a doc can hold
 # names like `admin.invites.get` that only look like Python paths.
 CALLER_LANGUAGES = {"python", "javascript", "typescript", "tsx", "vue"}
+# Tests call their own app, and some call a wrong path on purpose to get a 404.
+NO_ROUTE_CHECK = re.compile(rf"{TEST_PATH.pattern}|(^|/)e2e/")
+# `/api/method/<name>` is a Frappe method URL, which the method check covers, not a route.
+METHOD_SEGMENTS = ("method",)
 
 
 @dataclass
@@ -349,24 +353,45 @@ def missing_targets(
 	if not others:
 		return []
 	own_packages = OtherRepository("", "", own_index).packages if own_index else set()
+	sources = {
+		diff.path: str(head(diff.path) or "").splitlines()
+		for diff in files
+		if diff.status != "deleted" and not diff.is_binary
+	}
+	own_routes = _own_routes(own_index, sources)
 	findings = []
 	for diff in files:
-		if diff.status == "deleted" or diff.is_binary:
-			continue
-		added = diff.added_lines()
+		added = diff.added_lines() if diff.path in sources else set()
 		if not added:
 			continue
-		lines: list[str] = str(head(diff.path) or "").splitlines()
+		lines = sources[diff.path]
 		if languages.detect(diff.path) in CALLER_LANGUAGES:
 			for number in sorted(added):
 				if 0 < number <= len(lines):
 					findings += _missing_methods(diff.path, number, lines[number - 1], others, own_packages)
+		if NO_ROUTE_CHECK.search(diff.path):
+			continue
 		# A line that defines a route is not a call to one.
-		defined = {route.line for route in routes.definitions(lines)}
+		defined = routes.defined_lines(routes.definitions(lines))
 		for call in routes.client_calls(lines, defined):
 			if call.covers(added):
-				findings += _missing_route(diff.path, call, others, own_index)
+				findings += _missing_route(diff.path, call, others, own_routes)
 	return findings
+
+
+def _own_routes(own_index: str | None, sources: dict[str, list[str]]) -> list[tuple[str, str, str, int]]:
+	"""The routes of the repository under review: those of its index, and those that the pull
+	request adds. A call to a route that the pull request adds is no call to another repository."""
+	indexed = routes_of(own_index) if own_index else []
+	table = routers_of(own_index) if own_index else {}
+	for lines in sources.values():
+		table.update({r.name: (r.parent, r.segment) for r in routes.routers(lines)})
+	added = [
+		(route.verb, routes.full_path(route, table), path, route.line)
+		for path, lines in sources.items()
+		for route in routes.definitions(lines)
+	]
+	return indexed + added
 
 
 def _dotted_names(path: str, line: str) -> list[str]:
@@ -424,17 +449,22 @@ def _is_module(owner: OtherRepository, name: str) -> bool:
 
 
 def _missing_route(
-	path: str, call: routes.ClientCall, others: list[OtherRepository], own_index: str | None
+	path: str,
+	call: routes.ClientCall,
+	others: list[OtherRepository],
+	own_routes: list[tuple[str, str, str, int]],
 ) -> list[Finding]:
 	"""A call that belongs to a route family of another repository but matches none of its routes."""
 	literals = [s for s in call.normalized.split("/") if s != "*"]
+	if literals[:1] and literals[0] in METHOD_SEGMENTS:
+		return []
 	family = next(
 		(s for s in literals if s not in GENERIC_SEGMENTS and len(s) >= MIN_FAMILY_LENGTH and "*" not in s),
 		None,
 	)
 	if family is None or len(literals) < routes.STRONG:
 		return []
-	if own_index and _reaches(routes_of(own_index), call):
+	if _reaches(own_routes, call):
 		return []
 	for other in others:
 		in_family = [r for r in other.routes if family in r[1].split("/")]

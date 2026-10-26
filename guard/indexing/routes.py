@@ -2,6 +2,8 @@
 
 - Route definitions: `@router.post("<id>/actions/start")`, `@app.get("/users")`,
   `router.get("/users", ...)`, `mux.HandleFunc("/users", ...)`.
+- Entries of a route table, over one or more lines: `Route("GET", "users/{user}", ...)`,
+  `Route("/users", endpoint, methods=["GET"])`.
 - Routers with a path prefix: `vms = api.subrouter("virtual-machines")`,
   `router = APIRouter(prefix="/users")`, `bp = Blueprint("x", __name__, url_prefix="/x")`.
   A route keeps the name of its router. The full path is resolved when the graph is read,
@@ -24,6 +26,14 @@ ROUTE_DEF = re.compile(
 	r"""(?:^\s*@\s*([\w.]*?)\.|\b(app|router|api|mux|group)\.)"""
 	r"""(get|post|put|patch|delete|head|route|api_route|handle|handlefunc)\(\s*f?(['"`])([^'"`\n]*)\4""",
 	re.I,
+)
+# `Route(`, `APIRoute(` or `web.Route(`, not `def Route(` or `class Route(`.
+TABLE_ENTRY = re.compile(r"""(?<![\w.])(?:\w+\.)?(?:[A-Z]\w*)?Route\(""")
+ENTRY_DEFINED = re.compile(r"""^\s*(?:def|class)\s""")
+ENTRY_VERB = re.compile(r"""^\s*(['"])(GET|POST|PUT|PATCH|DELETE|HEAD)\1\s*,\s*f?(['"])([^'"\n]*)\3""", re.I)
+ENTRY_PATH = re.compile(r"""^\s*f?(['"])([^'"\n]*)\1""")
+ENTRY_METHODS = re.compile(
+	r"""\bmethods\s*=\s*[\[({]\s*(['"])(GET|POST|PUT|PATCH|DELETE|HEAD)\1\s*,?\s*[\])}]""", re.I
 )
 ROUTER_CHILD = re.compile(r"""^\s*(\w+)\s*=\s*([\w.]+)\.(?:subrouter|child|group|router)\(""")
 FIRST_STRING = re.compile(r"""^\s*f?(['"])([^'"\n]*)\1""")
@@ -59,6 +69,8 @@ class RouteDef:
 	router: str
 	path: str
 	line: int
+	# The last line of a route table entry that spans lines.
+	end_line: int = 0
 
 
 @dataclass
@@ -149,7 +161,41 @@ def definitions(lines: list[str]) -> list[RouteDef]:
 			if NOT_A_PATH.search(path.strip()) and path.strip():
 				continue
 			found.append(RouteDef(word if word in VERBS else ANY, router, path, number))
+		if not ENTRY_DEFINED.match(line):
+			found += [e for m in TABLE_ENTRY.finditer(line) if (e := _table_entry(lines, number, m.end()))]
 	return found
+
+
+def defined_lines(found: list[RouteDef]) -> set[int]:
+	"""Every line of the definitions. The lines hold no client calls."""
+	return {n for route in found for n in range(route.line, max(route.end_line, route.line) + 1)}
+
+
+def _table_entry(lines: list[str], number: int, start: int) -> RouteDef | None:
+	"""The route of a table entry whose arguments start at `start` on line `number`.
+
+	The verb comes first (`"GET", "users"`), or the path comes first and the verb is in
+	`methods=["GET"]`. Without one verb, the route takes any verb.
+	"""
+	text = lines[number - 1][start:]
+	for end in range(number, min(number + LOOKAHEAD, len(lines)) + 1):
+		if end > number:
+			text += " " + lines[end - 1].strip()
+		if match := ENTRY_VERB.match(text):
+			verb, path = match.group(2).upper(), match.group(4)
+		elif (match := ENTRY_PATH.match(text)) and match.group(2).upper() not in VERBS:
+			window = " ".join([text, *lines[end : number + LOOKAHEAD]])
+			methods = ENTRY_METHODS.search(window)
+			verb, path = (methods.group(2).upper() if methods else ANY), match.group(2)
+		elif text.strip() and not text.strip().startswith(('"', "'")):
+			# The first argument is no string: this is no route table entry.
+			return None
+		else:
+			continue
+		if not path.strip() or NOT_A_PATH.search(path.strip()):
+			return None
+		return RouteDef(verb, "", path, number, end)
+	return None
 
 
 def routers(lines: list[str]) -> list[RouterDef]:
@@ -176,7 +222,7 @@ def client_calls(lines: list[str], defined: set[int]) -> list[ClientCall]:
 	for number, line in enumerate(lines, 1):
 		if number in defined or number <= consumed:
 			continue
-		text, consumed = _logical_line(lines, number)
+		text, consumed = _logical_line(lines, number, defined)
 		for verb, start, strict in _verb_positions(text):
 			path = _argument(lines, number, text, start)
 			if path is None:
@@ -194,11 +240,12 @@ def method_urls(lines: list[str]) -> list[tuple[str, int]]:
 	return [(m.group(1), n) for n, line in enumerate(lines, 1) for m in METHOD_URL.finditer(line)]
 
 
-def _logical_line(lines: list[str], number: int) -> tuple[str, int]:
-	"""The line, joined with the next ones while it ends inside an open call, and the last line used."""
+def _logical_line(lines: list[str], number: int, defined: set[int]) -> tuple[str, int]:
+	"""The line, joined with the next ones while it ends inside an open call, and the last line used.
+	A line that defines a route is not joined: `ROUTES = (` opens a table of definitions."""
 	text, last = lines[number - 1].rstrip(), number
 	for extra in lines[number : number + CONTINUED]:
-		if not text.endswith(("(", ",")):
+		if not text.endswith(("(", ",")) or last + 1 in defined:
 			break
 		text += " " + extra.strip()
 		last += 1
