@@ -41,6 +41,7 @@ scheduler_events = {
 			"guard.webhooks.handler.requeue_lost_deliveries",
 		],
 		"17 * * * *": ["guard.review.jobs.close_stuck_checks"],
+		"41 * * * *": ["guard.indexing.jobs.catch_up"],
 		"*/15 * * * *": [
 			"guard.learning.addressed.poll_reactions",
 			"guard.api.health.check_failure_rate",

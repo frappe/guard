@@ -10,7 +10,7 @@ from guard.git.repository import store_for
 from guard.git.store import GitError, GitStore
 from guard.graph.overlay import PullRequestGraph
 from guard.graph.queries import CodeGraph
-from guard.indexing import indexer
+from guard.indexing import indexer, jobs
 from guard.indexing.indexer import IndexBusy, Indexer, index_lock
 from guard.indexing.jobs import index_for
 from guard.tests.utils import TempRepo, make_repository
@@ -249,6 +249,47 @@ class TestGraph(IntegrationTestCase):
 		radius = overlay.blast_radius(list(changed.values()))
 		self.assertEqual(radius.not_updated, 1)
 		self.assertIn("app/tests/test_service.py", radius.tests)
+
+
+class TestCatchUp(IntegrationTestCase):
+	def setUp(self):
+		self.repo = TempRepo({"a.py": "x = 1\n"})
+		self.addCleanup(self.repo.cleanup)
+		self.repository = make_repository(self.repo, full_name=f"acme/{frappe.generate_hash(length=6)}")
+		self.index = index_for(self.repository)
+		Indexer(self.index).run()
+		# Only this repository: the site can hold others whose clone URL is on GitHub.
+		for target, value in (
+			("guard.indexing.jobs.store_for", self.store_for),
+			("guard.indexing.jobs.frappe.log_error", None),
+		):
+			patcher = patch(target, value) if value else patch(target)
+			patcher.start()
+			self.addCleanup(patcher.stop)
+
+	def store_for(self, repository: str) -> GitStore:
+		if repository != self.repository:
+			raise GitError("not this test")
+		return store_for(repository)
+
+	def test_a_missed_push_is_indexed(self):
+		# grove: a deploy lost the push of a merge, and the index stayed 2 commits behind.
+		head = self.repo.commit({"b.py": "y = 2\n"}, "missed push")
+		jobs.catch_up()
+		self.assertEqual(db.value("Repository Index", self.index, "sha"), head)
+		self.assertEqual(db.value("Repository Index", self.index, "status"), "completed")
+
+	def test_an_index_at_the_head_is_left_alone(self):
+		with patch("guard.indexing.jobs.enqueue_index") as enqueue:
+			jobs.catch_up()
+		self.assertNotIn(self.repository, [c.args[0] for c in enqueue.call_args_list])
+
+	def test_a_running_index_is_left_alone(self):
+		self.repo.commit({"b.py": "y = 2\n"}, "push")
+		frappe.db.set_value("Repository Index", self.index, "status", "processing")
+		with patch("guard.indexing.jobs.enqueue_index") as enqueue:
+			jobs.catch_up()
+		self.assertNotIn(self.repository, [c.args[0] for c in enqueue.call_args_list])
 
 
 class TestGitStore(IntegrationTestCase):

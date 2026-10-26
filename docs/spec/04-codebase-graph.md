@@ -46,6 +46,7 @@ The indexer reads `git ls-tree -r -l <sha>`. It skips:
 - The indexer deletes the rows of changed and removed paths and parses only changed and added paths.
 - After the parse, it resolves edges again for the files that import or call the changed files.
 - A full rebuild runs when the parser version changes or when an admin asks for it.
+- A push to the default branch queues an update. A push can get lost, for example when a deploy loses its delivery. So every hour, `catch_up` fetches the default branch of each repository whose index is completed, and queues an update when the head is not the indexed sha. A review does not do this: it uses any completed index.
 
 ### 4. Parsing
 
