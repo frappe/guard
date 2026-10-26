@@ -85,6 +85,10 @@ class ReviewPipeline:
 		# What the checkpoint of this run must match, and the agents it saves: a phase and its agents.
 		self.checkpoint_key: str | None = None
 		self.watched: tuple[str, list[Agent]] = ("", [])
+		# Seconds in each stage, over all attempts, and the stage that runs now with its start.
+		self.stage_seconds: dict[str, float] = {}
+		self.stage_name = ""
+		self.stage_started = 0.0
 
 	@classmethod
 	def run(cls, review: str, attempt: int = 0) -> "ReviewPipeline":
@@ -235,6 +239,7 @@ class ReviewPipeline:
 			)
 		)
 		run.turns = int(self.review.agent_turns or 0)
+		run.rounds = int(self.review.agent_rounds or 0)
 		self.current = run
 		publisher = Publisher(run)
 		self.stage("start")
@@ -348,6 +353,9 @@ class ReviewPipeline:
 			raise Cancelled
 		db.commit()
 		self.review.reload()
+		saved = frappe.parse_json(self.review.stage_seconds or "{}")
+		self.stage_seconds = {str(k): float(v) for k, v in saved.items()} if isinstance(saved, dict) else {}
+		self.stage_name, self.stage_started = "prepare", time.time()
 		if self.review.source == "cli":
 			from guard.review.cli_review import prepare_cli
 
@@ -624,6 +632,8 @@ class ReviewPipeline:
 				"output_tokens": run.usage.output_tokens,
 				"cached_tokens": run.usage.cached_tokens,
 				"agent_turns": run.turns,
+				"agent_rounds": run.rounds,
+				"stage_seconds": frappe.as_json(self.stage_times()),
 				"review_number": number,
 			},
 			("Running",),
@@ -660,6 +670,17 @@ class ReviewPipeline:
 		self.check_cancel(lock=True)
 		self.review.db_set("stage", name, update_modified=False)
 		db.commit()
+		self.stage_times()
+		self.stage_name = name
+
+	def stage_times(self) -> dict[str, float]:
+		"""Add the time of the current stage so far, and start its clock again."""
+		now = time.time()
+		if self.stage_name:
+			spent = self.stage_seconds.get(self.stage_name, 0.0) + now - self.stage_started
+			self.stage_seconds[self.stage_name] = round(spent, 1)
+		self.stage_started = now
+		return self.stage_seconds
 
 	def between_turns(self) -> None:
 		"""Before each round: stop when a newer review or job replaced this one, else keep the usage
@@ -679,6 +700,8 @@ class ReviewPipeline:
 				"output_tokens": usage.output_tokens,
 				"cached_tokens": usage.cached_tokens,
 				"agent_turns": self.current.turns,
+				"agent_rounds": self.current.rounds,
+				"stage_seconds": frappe.as_json(self.stage_times()),
 			},
 			update_modified=False,
 		)

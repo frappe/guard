@@ -13,6 +13,7 @@ class CodeReview(Document):
 	if TYPE_CHECKING:
 		from frappe.types import DF
 
+		agent_rounds: DF.Int
 		agent_turns: DF.Int
 		attempt: DF.Int
 		base_sha: DF.Data | None
@@ -55,6 +56,7 @@ class CodeReview(Document):
 		risk_reason: DF.SmallText | None
 		source: DF.Literal["pull_request", "cli", "api"]
 		stage: DF.Data | None
+		stage_seconds: DF.JSON | None
 		started_at: DF.Datetime | None
 		status: DF.Literal["Queued", "Running", "Completed", "Failed", "Cancelled", "Skipped"]
 		strictness: DF.Int

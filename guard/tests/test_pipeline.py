@@ -70,6 +70,10 @@ class TestPipeline(PullRequestCase):
 		self.assertEqual(review["posted_count"], 1)
 		self.assertEqual(review["confidence_score"], 3)  # capped by the P1
 		self.assertEqual(review["credits"], 3)  # a first review is at least plus
+		timing = db.values("Code Review", str(name), ("agent_turns", "agent_rounds", "stage_seconds")) or {}
+		self.assertEqual((timing["agent_turns"], timing["agent_rounds"]), (2, 2))  # one agent: a turn a round
+		stages = frappe.parse_json(timing["stage_seconds"])
+		self.assertLessEqual({"prepare", "index", "review", "publish", "after"}, set(stages))
 		posted = self.adapter.named("create_review")[0]
 		self.assertEqual(posted[0].path, "app/models.py")
 		self.assertIn("**P1**", posted[0].body)
@@ -323,6 +327,9 @@ class TestPipeline(PullRequestCase):
 		self.assertGreaterEqual(data["reviews"].get("Failed", 0), health.ALERT_MIN + 1)
 		self.assertIn("LLMError: Gateway answered 404", [f["cause"] for f in data["failures"]])
 		self.assertGreater(data["failure_rate"]["rate"], health.ALERT_RATE)
+		self.assertGreaterEqual(data["metrics"]["summary"]["failed"], health.ALERT_MIN + 1)
+		self.assertEqual(len(data["metrics"]["series"]), 24)
+		self.assertEqual(len(health.status(days=7)["metrics"]["series"]), 7)
 
 		target = "frappe.desk.doctype.notification_log.notification_log.enqueue_create_notification"
 		with (

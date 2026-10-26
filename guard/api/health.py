@@ -1,4 +1,5 @@
-"""The state of Guard in one view: queues, workers, reviews, the AI gateway and the indexes.
+"""The state of Guard in one view: queues, workers, reviews, the AI gateway and the indexes, and
+how reviews ran over a period (`guard.review.metrics`).
 
 The `guard-health` page shows `status()`. `check_failure_rate()` runs every 15 minutes and
 notifies admins when many reviews fail.
@@ -11,6 +12,7 @@ from frappe.utils import add_to_date, cint, now_datetime
 
 from guard.indexing.indexer import RUNNING
 from guard.llm import breaker
+from guard.review import metrics
 from guard.utils import cache, db, notify
 
 QUEUES = ("short", "default", "long")
@@ -20,15 +22,18 @@ ALERT_MIN = 5  # reviews in the hour before the rate counts
 
 
 @frappe.whitelist()
-def status() -> dict[str, Any]:
+def status(days: int = 1) -> dict[str, Any]:
+	"""The state now, and the reviews of the last `days` days: 1, 7 or 30."""
 	frappe.only_for(["Guard Admin", "System Manager"])
+	days = cint(days) if cint(days) in metrics.PERIODS else metrics.PERIODS[0]
 	return {
 		"queues": _queues(),
-		"reviews": _reviews(),
-		"failures": _failures(),
+		"reviews": _reviews(hours=days * 24),
+		"failures": _failures(hours=days * 24),
 		"gateway": _gateway(),
 		"indexes": _indexes(),
 		"failure_rate": failure_rate(),
+		"metrics": metrics.metrics(days),
 	}
 
 

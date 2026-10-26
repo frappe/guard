@@ -363,6 +363,7 @@ def run_together(
 			check()
 		if deadline and time.time() > deadline:
 			break
+		run.rounds += 1
 		results = client.chat_many([a.request() for a in busy], tools=specs)
 		for agent, result in zip(busy, results, strict=True):
 			agent.receive(result)

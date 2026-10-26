@@ -163,8 +163,10 @@ The indexer writes these with bulk inserts. Names are content hashes, so a re-in
 | `credits`, `input_tokens`, `output_tokens` | Int | `input_tokens` is the whole prompt of every call. Token and turn counts add up over all attempts, also the ones that failed, were cancelled or were killed. Guard writes them before each agent turn. |
 | `cached_tokens` | Int | The part of `input_tokens` that the gateway read from its prompt cache |
 | `agent_turns` | Int | Model turns of the review agents |
+| `agent_rounds` | Int | Rounds of the review agents. In a round, each busy agent takes one turn, so an apex review has fewer rounds than turns. |
 | `review_number` | Int | 1 for the first review of a pull request. |
 | `started_at`, `completed_at`, `error`, `body` | mixed | `body` is the rendered summary comment. |
+| `duration`, `stage_seconds` | Float, JSON | Seconds of the last attempt, and the seconds in each stage (`prepare` to `after`) over all attempts. |
 | `stage`, `cancel_requested`, `attempt`, `retry_at` | mixed | Progress, cancellation, and the retry time after a busy gateway. A job every minute queues reviews whose `retry_at` has passed. |
 | `cancelled_by` | Link User | The user who cancelled the review. Blank when a newer review or a closed pull request cancelled it. |
 | `check_run_id`, `eyes_reaction` | Data | The provider ids of the Guard check on the head and of the 👀 on the pull request ([05-review-engine.md](05-review-engine.md#status)). |

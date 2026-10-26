@@ -46,11 +46,13 @@
   "output_tokens",
   "cached_tokens",
   "agent_turns",
+  "agent_rounds",
   "timing_section",
   "started_at",
   "completed_at",
   "timing_col",
   "duration",
+  "stage_seconds",
   "job_id",
   "check_run_id",
   "eyes_reaction",
@@ -329,6 +331,12 @@
    "label": "Agent Turns"
   },
   {
+   "description": "Rounds of the review agents. In a round, each busy agent takes one turn",
+   "fieldname": "agent_rounds",
+   "fieldtype": "Int",
+   "label": "Agent Rounds"
+  },
+  {
    "fieldname": "timing_section",
    "fieldtype": "Section Break",
    "idx": 41,
@@ -358,6 +366,12 @@
    "fieldtype": "Float",
    "idx": 45,
    "label": "Duration"
+  },
+  {
+   "description": "Seconds in each stage, over all attempts",
+   "fieldname": "stage_seconds",
+   "fieldtype": "JSON",
+   "label": "Stage Seconds"
   },
   {
    "fieldname": "job_id",
@@ -470,7 +484,7 @@
    "link_fieldname": "code_review"
   }
  ],
- "modified": "2026-10-26 19:10:20.121806",
+ "modified": "2026-10-26 23:00:00.000000",
  "modified_by": "Administrator",
  "module": "Guard",
  "name": "Code Review",
