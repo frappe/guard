@@ -120,7 +120,7 @@ Admins approve (status Active), edit, or ignore (status Ignored) each suggestion
 | `usage_count` | Posted findings that name this rule |
 | `merged_count` | Those findings on merged pull requests |
 | `addressed_count` | Those of `merged_count` that were addressed |
-| `addressed_rate` | `addressed_count / merged_count`, blank while `merged_count` is 0 |
+| `addressed_rate` | `addressed_count / merged_count`, 0 while `merged_count` is 0 (a Percent column cannot be blank) |
 
 ## Auto-approve
 

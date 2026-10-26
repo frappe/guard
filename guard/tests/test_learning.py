@@ -5,7 +5,7 @@ import frappe
 from guard.api import ui
 from guard.conversation import threads
 from guard.indexing.vectors import VectorRow, VectorStore
-from guard.learning import addressed, feedback, memories, memory_writer
+from guard.learning import addressed, feedback, memories, memory_writer, suggestions
 from guard.llm.client import ChatRequest, use_responder
 from guard.llm.embeddings import Embedder
 from guard.providers.base import ProviderComment, Reaction
@@ -109,6 +109,23 @@ class TestLearning(PullRequestCase):
 	def test_finding_that_cites_a_memory_links_to_it(self):
 		memory = self.make_memory()
 		self.assertEqual(len(self.cite(memory, 1)), 1)
+
+	def test_rule_metrics_count_addressed_findings_on_merged_pull_requests(self):
+		memory = self.make_memory()
+		findings = self.cite(memory, 2)
+		fields = ("usage_count", "merged_count", "addressed_count", "addressed_rate")
+		suggestions.update_rule_metrics()
+		self.assertEqual(
+			db.values("Custom Context", memory, fields),
+			{"usage_count": 2, "merged_count": 0, "addressed_count": 0, "addressed_rate": 0},
+		)
+		frappe.db.set_value("Pull Request", self.pr, "state", "merged")
+		frappe.db.set_value("Review Finding", findings[0], "status", "Addressed")
+		suggestions.update_rule_metrics()
+		self.assertEqual(
+			db.values("Custom Context", memory, fields),
+			{"usage_count": 2, "merged_count": 2, "addressed_count": 1, "addressed_rate": 50},
+		)
 
 	def test_guard_retires_a_memory_the_team_rejects(self):
 		memory = self.make_memory()

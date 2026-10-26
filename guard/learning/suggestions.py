@@ -143,7 +143,8 @@ def update_rule_metrics() -> None:
 			"merged_count": merged,
 			"addressed_count": int(row["addressed"] or 0),
 		}
-		values["addressed_rate"] = round(100 * values["addressed_count"] / merged, 1) if merged else None
+		# A Percent column is NOT NULL. With no merged PRs, the rate is 0 and merged_count shows why.
+		values["addressed_rate"] = round(100 * values["addressed_count"] / merged, 1) if merged else 0
 		if frappe.db.exists("Custom Context", row["name"]):
 			db.set_values("Custom Context", row["name"], values)
 
