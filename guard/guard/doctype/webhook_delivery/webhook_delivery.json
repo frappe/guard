@@ -13,7 +13,8 @@
   "repository_full_name",
   "status",
   "payload",
-  "error"
+  "error",
+  "attempt"
  ],
  "fields": [
   {
@@ -75,11 +76,19 @@
    "fieldtype": "Long Text",
    "idx": 8,
    "label": "Error"
+  },
+  {
+   "default": "0",
+   "description": "How many times a lost job of this delivery was queued again.",
+   "fieldname": "attempt",
+   "fieldtype": "Int",
+   "label": "Attempt",
+   "read_only": 1
   }
  ],
  "index_web_pages_for_search": 0,
  "links": [],
- "modified": "2026-10-20 10:00:00.000000",
+ "modified": "2026-10-26 20:34:49.986952",
  "modified_by": "Administrator",
  "module": "Guard",
  "name": "Webhook Delivery",

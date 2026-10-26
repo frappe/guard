@@ -45,12 +45,9 @@ def github_webhook(**kwargs: Any) -> dict[str, Any]:
 	if event == "ping":
 		doc.db_set("status", "Processed")
 		return {"ok": True, "pong": True}
-	frappe.enqueue(
-		"guard.webhooks.handler.process",
-		queue="short",
-		enqueue_after_commit=True,
-		delivery=doc.name,
-	)
+	from guard.webhooks.handler import enqueue_delivery
+
+	enqueue_delivery(str(doc.name))
 	return {"ok": True}
 
 

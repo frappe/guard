@@ -14,6 +14,7 @@ class WebhookDelivery(Document):
 		from frappe.types import DF
 
 		action: DF.Data | None
+		attempt: DF.Int
 		code_provider: DF.Link | None
 		delivery_id: DF.Data | None
 		error: DF.LongText | None

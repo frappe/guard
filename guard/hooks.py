@@ -38,6 +38,7 @@ scheduler_events = {
 			"guard.webhooks.polling.poll",
 			"guard.review.jobs.fail_dead_reviews",
 			"guard.knowledge.builder.recover_stuck",
+			"guard.webhooks.handler.requeue_lost_deliveries",
 		],
 		"17 * * * *": ["guard.review.jobs.close_stuck_checks"],
 		"*/15 * * * *": [

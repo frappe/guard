@@ -75,7 +75,7 @@ Thread replies and addressed checks wait for a busy or failing gateway, as revie
 
 Job keys stop duplicate work: one review job for each pull request and head commit, one index job for each repository and branch.
 
-A job that writes a Pull Request and its Code Review in one transaction writes the Pull Request first. The webhook handler commits the Pull Request before its git work, and the review commits before its provider calls, so neither holds a row lock for long. The webhook handler lets a deadlock or a lock timeout go up, and Frappe runs the job again. A review that fails logs its traceback in the Error Log, with the Code Review as the reference.
+A job that writes a Pull Request and its Code Review in one transaction writes the Pull Request first. The webhook handler commits the Pull Request before its git work, and the review commits before its provider calls, so neither holds a row lock for long. The webhook handler lets a deadlock or a lock timeout go up, and Frappe runs the job again. The Webhook Delivery is the truth, not the queue: every 5 minutes, `requeue_lost_deliveries` queues again a delivery that is still Received after 5 minutes and has no job, for example after a deploy lost it. It skips deliveries older than 6 hours, because a review or a reply that late does more harm than good. A delivery whose job stops 3 times without a result is Failed. A review that fails logs its traceback in the Error Log, with the Code Review as the reference.
 
 ## Main data flow: a review
 

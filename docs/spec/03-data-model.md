@@ -248,7 +248,7 @@ Every comment on a pull request, human or bot. Learning, thread replies and comm
 
 ### Webhook Delivery
 
-`code_provider`, `delivery_id` (unique), `event`, `action`, `repository_full_name`, `status` (Received, Processed, Ignored, Failed), `payload`, `error`. A daily job deletes rows older than 30 days.
+`code_provider`, `delivery_id` (unique), `event`, `action`, `repository_full_name`, `status` (Received, Processed, Ignored, Failed), `payload`, `error`, `attempt`. A daily job deletes rows older than 30 days. `attempt` counts how many times a lost job of the delivery was queued again ([02-architecture.md](02-architecture.md)).
 
 ## Indexes
 

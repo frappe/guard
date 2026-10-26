@@ -1320,6 +1320,46 @@ class TestWebhookDeadlock(IntegrationTestCase):
 			handler.process(str(delivery.name))
 		self.assertEqual(db.value("Webhook Delivery", str(delivery.name), "status"), "Received")
 
+	def test_a_delivery_that_lost_its_job_is_handled_again(self):
+		# guard 26 Oct: a deploy lost the jobs of about 300 deliveries, and they stayed Received.
+		from frappe.utils import add_to_date, now_datetime
+
+		from guard.webhooks import handler
+
+		def delivery(minutes_ago: int, attempt: int = 0) -> str:
+			name = str(
+				frappe.get_doc(
+					{"doctype": "Webhook Delivery", "event": "ping", "payload": "{}", "attempt": attempt}
+				)
+				.insert(ignore_permissions=True)
+				.name
+			)
+			created = add_to_date(now_datetime(), minutes=-minutes_ago)
+			frappe.db.set_value("Webhook Delivery", name, "creation", created, update_modified=False)
+			return name
+
+		lost, queued, fresh, old, stuck = (
+			delivery(10),
+			delivery(10),
+			delivery(1),
+			delivery(7 * 60),
+			delivery(10, 3),
+		)
+		with (
+			patch.object(
+				handler, "is_job_enqueued", side_effect=lambda job: job == handler.delivery_job_id(queued)
+			),
+			patch.object(handler, "enqueue_delivery") as enqueue,
+		):
+			handler.requeue_lost_deliveries()
+		self.assertEqual(
+			[c.args[0] for c in enqueue.call_args_list if c.args[0] in (lost, queued, fresh, old, stuck)],
+			[lost],
+		)
+		self.assertEqual(db.value("Webhook Delivery", lost, "attempt"), 1)
+		self.assertEqual(db.value("Webhook Delivery", stuck, "status"), "Failed")
+		self.assertEqual(db.value("Webhook Delivery", old, "status"), "Received")
+
 
 class TestCheckpoint(UnitTestCase):
 	def agent(self) -> Agent:

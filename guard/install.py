@@ -36,6 +36,8 @@ COMPOSITE_INDEXES = (
 	# Feature tips count the replies of one author in a repository.
 	("Pull Request Comment", "repository_author", ("repository", "author")),
 	("Knowledge Base Document", "repository_path", ("repository", "path")),
+	# Deliveries whose job was lost.
+	("Webhook Delivery", "status_creation", ("status", "creation")),
 )
 
 

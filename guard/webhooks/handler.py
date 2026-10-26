@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING, cast
 
 import frappe
 from frappe.utils import add_to_date, now_datetime
+from frappe.utils.background_jobs import is_job_enqueued
 
 from guard import settings as guard_settings
 from guard.learning import addressed
@@ -27,6 +28,61 @@ OPEN_ACTIONS = {"opened", "reopened", "ready"}
 COMMENT_TIMEOUT = 1800
 # Seconds before each new attempt of a comment that met a busy or failing gateway.
 COMMENT_RETRY_DELAYS = (120, 600, 1800)
+# A delivery with no job after 5 minutes lost it: a short job waits seconds in a healthy queue.
+LOST_DELIVERY_AFTER = 300
+# Events older than 6 hours are not handled late. Guard polls open pull requests when polling is on.
+LOST_DELIVERY_MAX_AGE = 6 * 3600
+MAX_DELIVERY_ATTEMPTS = 3
+
+
+def enqueue_delivery(delivery: str) -> None:
+	frappe.enqueue(
+		"guard.webhooks.handler.process",
+		queue="short",
+		job_id=delivery_job_id(delivery),
+		deduplicate=True,
+		enqueue_after_commit=True,
+		delivery=delivery,
+	)
+
+
+def delivery_job_id(delivery: str) -> str:
+	return f"guard-delivery-{delivery}"
+
+
+def requeue_lost_deliveries() -> None:
+	"""Every 5 minutes: queue again a delivery that is still Received and has no job.
+
+	The Webhook Delivery is the truth, not the queue. A deploy or a dead Redis can lose the job, and
+	then nobody handles the event. Old events are not handled: a review or a reply hours late does
+	more harm than good. A delivery whose job stops every time, for example at the job timeout,
+	fails after MAX_DELIVERY_ATTEMPTS.
+	"""
+	now = now_datetime()
+	rows = db.dict_rows(
+		"""SELECT name, attempt FROM `tabWebhook Delivery`
+		WHERE status = 'Received' AND creation BETWEEN %s AND %s ORDER BY creation LIMIT %s""",
+		(
+			add_to_date(now, seconds=-LOST_DELIVERY_MAX_AGE),
+			add_to_date(now, seconds=-LOST_DELIVERY_AFTER),
+			500,
+		),
+	)
+	for row in rows:
+		name = str(row["name"])
+		if is_job_enqueued(delivery_job_id(name)):
+			continue
+		attempt = int(row["attempt"] or 0) + 1
+		if attempt > MAX_DELIVERY_ATTEMPTS:
+			db.set_values(
+				"Webhook Delivery",
+				name,
+				{"status": "Failed", "error": "The job of this delivery stopped each time before it ended."},
+			)
+			continue
+		db.set_values("Webhook Delivery", name, {"attempt": attempt})
+		enqueue_delivery(name)
+	db.commit()
 
 
 def process(delivery: str) -> None:
