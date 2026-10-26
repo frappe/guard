@@ -6,6 +6,7 @@
 # Patches added in this section will be executed after doctypes are migrated
 guard.patches.set_review_limits
 guard.patches.reset_knowledge_base_status
+guard.patches.mark_guard_comments
 
 [post_fixture_sync]
 # Patches added in this section will be executed after fixtures and customizations

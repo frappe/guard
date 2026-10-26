@@ -1065,6 +1065,26 @@ class TestPipeline(PullRequestCase):
 			result = chat.send(self.pr, "Why this signature?")
 		self.assertEqual(result["answer"], "It adds `notify`.")
 
+	def test_replies_of_the_github_app_are_guard_comments(self):
+		from guard.patches import mark_guard_comments
+		from guard.webhooks import handler
+		from guard.webhooks.events import WebhookEvent
+
+		provider = db.value("Code Repository", self.repository, "code_provider")
+		db.set_values("Code Provider", provider, {"app_slug": "guard-test", "enabled": 1})
+		self.addCleanup(db.set_values, "Code Provider", provider, {"app_slug": None})
+
+		def reply(comment_id: str) -> ProviderComment:
+			# A plain reply has no `<!-- guard:` marker.
+			return ProviderComment(comment_id, "inline", "guard-test[bot]", "Checked.", is_bot=True, number=7)
+
+		handler._comment(self.repository, WebhookEvent("comment", "created", number=7, comment=reply("g1")))
+		handler.store_comment(self.pr, self.repository, reply("g2"), False)  # stored before the fix
+		mark_guard_comments.execute()
+		for comment_id in ("g1", "g2"):
+			filters = {"pull_request": self.pr, "provider_comment_id": comment_id}
+			self.assertEqual(db.value("Pull Request Comment", filters, "is_guard"), 1)
+
 	def on_comment(self, comment_id):
 		"""Reactions on one comment, in order: added contents and "removed"."""
 		return [r[2] for r in self.adapter.named("reaction") if r[1] == comment_id]

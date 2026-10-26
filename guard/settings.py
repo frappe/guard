@@ -103,7 +103,17 @@ def trigger_handles() -> list[str]:
 
 
 def bot_logins() -> set[str]:
-	return {line.lower() for line in _lines(settings().bot_logins or "")}
+	"""Configured logins, plus the login of each provider: `<slug>[bot]` for a GitHub App, which is
+	how GitHub names the author of its comments, and the bot username for a token."""
+	logins = _lines(settings().bot_logins or "")
+	for provider in frappe.get_all(
+		"Code Provider", filters={"enabled": 1}, fields=["app_slug", "bot_username"]
+	):
+		if provider.app_slug:
+			logins.append(f"{provider.app_slug}[bot]")
+		if provider.bot_username:
+			logins.append(provider.bot_username)
+	return {login.lower() for login in logins}
 
 
 def public_url(path: str = "") -> str:
