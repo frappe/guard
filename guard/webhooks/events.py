@@ -15,7 +15,7 @@ class ReactionEvent:
 
 @dataclass
 class WebhookEvent:
-	kind: str  # pull_request, comment, reaction, push, installation, rerun, ignored
+	kind: str  # pull_request, comment, thread, reaction, push, installation, rerun, ignored
 	action: str = ""
 	repository: RepositoryInfo | None = None
 	namespace: str = ""
@@ -25,6 +25,7 @@ class WebhookEvent:
 	after: str | None = None
 	comment: ProviderComment | None = None
 	reaction: ReactionEvent | None = None
+	thread_id: str | None = None  # the id of the first comment of a review thread
 	sender: str = ""
 	label: str | None = None
 	ref: str | None = None

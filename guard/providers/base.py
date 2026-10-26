@@ -84,6 +84,13 @@ class ProviderComment:
 
 
 @dataclass
+class ReviewThread:
+	thread_id: str  # the id of its first comment, as ProviderComment.thread_id
+	resolved: bool
+	resolved_by: str = ""
+
+
+@dataclass
 class Reaction:
 	content: str  # +1, -1, eyes, confused, ...
 	user: str
@@ -170,6 +177,10 @@ class ProviderAdapter:
 		raise NotImplementedError
 
 	def list_reactions(self, repo: str, comment: ProviderComment) -> list[Reaction]:
+		return []
+
+	def list_review_threads(self, repo: str, number: int) -> list[ReviewThread]:
+		"""A provider without resolvable threads has none."""
 		return []
 
 	def is_member(self, namespace: str, login: str) -> bool:

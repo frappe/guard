@@ -7,6 +7,7 @@ turn what changed into the same events that webhooks give.
 import frappe
 
 from guard import settings as guard_settings
+from guard.learning import feedback
 from guard.providers import adapter_for_repository
 from guard.providers.base import ProviderAdapter, ProviderError
 from guard.utils import db
@@ -64,6 +65,7 @@ def poll_repository(repository: str) -> None:
 
 			pull_requests.upsert(repository, info)
 		_poll_comments(repository, full_name, info.number, adapter)
+		_poll_threads(repository, full_name, info.number, adapter)
 	_closed(repository, open_numbers, adapter, full_name)
 
 
@@ -83,6 +85,31 @@ def _poll_comments(repository: str, full_name: str, number: int, adapter: Provid
 			continue
 		event = WebhookEvent(kind="comment", action="created", number=number, comment=comment)
 		handler._comment(repository, event)
+
+
+def _poll_threads(repository: str, full_name: str, number: int, adapter: ProviderAdapter) -> None:
+	"""Resolved and reopened threads of findings that a thread can change. Webhooks send these as events."""
+	pull_request = db.value("Pull Request", {"repository": repository, "number": number}, "name")
+	if not pull_request:
+		return
+	findings = {
+		str(r[0]): str(r[1])
+		for r in db.rows(
+			"""SELECT provider_thread_id, status FROM `tabReview Finding`
+			WHERE pull_request = %s AND provider_thread_id IS NOT NULL AND provider_thread_id != ''
+			AND (status = 'Open' OR (status = 'Dismissed' AND status_reason LIKE %s))""",
+			(pull_request, f"{feedback.RESOLVED_BY}%"),
+		)
+	}
+	if not findings:
+		return
+	for thread in adapter.list_review_threads(full_name, number):
+		status = findings.get(thread.thread_id)
+		if thread.resolved and status == "Open":
+			feedback.thread_changed(str(pull_request), thread.thread_id, thread.resolved_by, resolved=True)
+		elif not thread.resolved and status == "Dismissed":
+			# The provider does not say who reopened it.
+			feedback.thread_changed(str(pull_request), thread.thread_id, "", resolved=False)
 
 
 def _closed(repository: str, open_numbers: set[int], adapter: ProviderAdapter, full_name: str) -> None:

@@ -144,6 +144,19 @@ def _review(payload: dict[str, Any]) -> list[WebhookEvent]:
 	return [event]
 
 
+def _review_thread(payload: dict[str, Any]) -> list[WebhookEvent]:
+	action = payload.get("action") or ""
+	comments = (payload.get("thread") or {}).get("comments") or []
+	if action not in ("resolved", "unresolved") or not comments:
+		return [IGNORED]
+	# Guard names a thread by its first comment, as `_review_comment` does.
+	first = next((c for c in comments if not c.get("in_reply_to_id")), comments[0])
+	event = _base(payload, "thread", action)
+	event.number = int((payload.get("pull_request") or {}).get("number") or 0)
+	event.thread_id = str(first.get("in_reply_to_id") or first["id"])
+	return [event]
+
+
 def _push(payload: dict[str, Any]) -> list[WebhookEvent]:
 	event = _base(payload, "push", "push")
 	event.ref = (payload.get("ref") or "").removeprefix("refs/heads/")
@@ -188,6 +201,7 @@ PARSERS = {
 	"issue_comment": _issue_comment,
 	"pull_request_review_comment": _review_comment,
 	"pull_request_review": _review,
+	"pull_request_review_thread": _review_thread,
 	"push": _push,
 	"installation": _installation,
 	"installation_repositories": _installation,

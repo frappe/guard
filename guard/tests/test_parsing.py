@@ -238,6 +238,18 @@ class TestWebhookHeaders(UnitTestCase):
 		self.assertTrue(
 			github.wanted("check_run", {"action": "rerequested", "check_run": run, "repository": repo})
 		)
+		# Resolving a thread is an event. A thread with no comments is not.
+		thread = {"comments": [{"id": 5, "in_reply_to_id": None}]}
+		self.assertTrue(
+			github.wanted(
+				"pull_request_review_thread", {"action": "resolved", "thread": thread, "repository": repo}
+			)
+		)
+		self.assertFalse(
+			github.wanted(
+				"pull_request_review_thread", {"action": "resolved", "thread": {}, "repository": repo}
+			)
+		)
 		# A payload the parser cannot read goes on to the handler, which stores the error.
 		self.assertTrue(
 			github.wanted("check_run", {"action": "rerequested", "check_run": {"pull_requests": [{}]}})

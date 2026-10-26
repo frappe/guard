@@ -10,13 +10,13 @@ from guard.learning import addressed, feedback, memories, memory_writer, suggest
 from guard.llm.client import ChatRequest, use_responder
 from guard.llm.embeddings import Embedder
 from guard.llm.types import GatewayBusy
-from guard.providers.base import ProviderComment, Reaction
+from guard.providers.base import ProviderComment, Reaction, ReviewThread
 from guard.review import jobs, trigger
 from guard.tests.cases import PullRequestCase
 from guard.tests.fakes import scripted
 from guard.tests.utils import TempRepo, make_repository
 from guard.utils import db
-from guard.webhooks import handler
+from guard.webhooks import github, handler, polling
 
 FINDING = {
 	"path": "app/models.py",
@@ -455,3 +455,65 @@ class TestGatewayRetries(LearningCase):
 			handler.enqueue_comment(self.pr, ProviderComment("c1", "issue", "bob", "hi"))
 			addressed.enqueue("on_close", pull_request=self.pr)
 		self.assertEqual([c.kwargs["timeout"] for c in enqueue.call_args_list], [1800, 1800])
+
+
+class TestResolvedThreads(LearningCase):
+	"""A person resolves the thread of a finding to close it without a fix."""
+
+	def thread_event(self, thread_id: str, action: str, sender: str):
+		payload = {
+			"action": action,
+			"thread": {
+				"node_id": "PRRT_1",
+				"comments": [
+					{"id": int(thread_id), "in_reply_to_id": None},
+					{"id": 9, "in_reply_to_id": int(thread_id)},
+				],
+			},
+			"pull_request": {"number": 7},
+			"sender": {"login": sender},
+		}
+		[event] = github.parse("pull_request_review_thread", payload)
+		return event
+
+	def resolve(self, thread_id: str, sender: str, action: str = "resolved") -> bool:
+		return handler._thread(self.repository, self.thread_event(thread_id, action, sender))
+
+	def status(self, finding: str) -> tuple[str, str]:
+		row = db.values("Review Finding", finding, ("status", "status_reason")) or {}
+		return row["status"], row["status_reason"]
+
+	def test_resolving_the_thread_dismisses_the_finding_and_reopening_restores_it(self):
+		finding, thread_id = self.posted_finding()
+		self.assertTrue(self.resolve(thread_id, "ada"))
+		self.assertEqual(self.status(finding), ("Dismissed", "thread resolved by ada"))
+		self.assertIn("0 open finding(s)", self.adapter.checks[-1][2])
+		# The thread is already resolved on the provider: Guard does not resolve it again.
+		self.assertFalse(self.adapter.named("resolve"))
+		self.assertTrue(self.resolve(thread_id, "ada", "unresolved"))
+		self.assertEqual(self.status(finding), ("Open", "thread reopened by ada"))
+		self.assertIn("1 open finding(s)", self.adapter.checks[-1][2])
+		self.assertFalse(self.adapter.named("unresolve"))
+
+	def test_guard_and_people_without_teach_permission_do_not_close_findings(self):
+		finding, thread_id = self.posted_finding()
+		frappe.db.set_single_value("Guard Settings", "bot_logins", "guard-bot")
+		self.assertFalse(self.resolve(thread_id, "guard-bot"))
+		frappe.db.set_single_value("Guard Settings", "teach_permission", "Guard users")
+		self.assertFalse(self.resolve(thread_id, "stranger"))
+		self.assertEqual(self.status(finding)[0], "Open")
+
+	def test_reopening_a_thread_does_not_reopen_a_finding_closed_another_way(self):
+		finding, thread_id = self.posted_finding()
+		ui.set_finding_status(finding, "Dismissed")
+		self.assertFalse(self.resolve(thread_id, "ada", "unresolved"))
+		self.assertEqual(self.status(finding)[0], "Dismissed")
+
+	def test_polling_reads_resolved_threads(self):
+		finding, thread_id = self.posted_finding()
+		self.adapter.threads = [ReviewThread(thread_id, resolved=True, resolved_by="ada")]
+		polling._poll_threads(self.repository, "acme/app", 7, self.adapter)
+		self.assertEqual(self.status(finding), ("Dismissed", "thread resolved by ada"))
+		self.adapter.threads = [ReviewThread(thread_id, resolved=False)]
+		polling._poll_threads(self.repository, "acme/app", 7, self.adapter)
+		self.assertEqual(self.status(finding), ("Open", "thread reopened"))

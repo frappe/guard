@@ -2,6 +2,7 @@
 
 import base64
 import time
+from collections.abc import Iterator
 from typing import Any
 
 import jwt
@@ -15,6 +16,7 @@ from guard.providers.base import (
 	PullRequestInfo,
 	Reaction,
 	RepositoryInfo,
+	ReviewThread,
 )
 from guard.utils import cache, db
 
@@ -193,6 +195,17 @@ class GitHubAdapter(ProviderAdapter):
 		path = REACTION_PATHS[kind].format(id=comment.id, number=0)
 		data = self.paginate(f"/repos/{repo}/{path}/reactions")
 		return [Reaction(r["content"], _login(r), str(r["id"])) for r in data]
+
+	def list_review_threads(self, repo: str, number: int) -> list[ReviewThread]:
+		return [
+			ReviewThread(
+				thread_id=str(first[0]["databaseId"]),
+				resolved=bool(node["isResolved"]),
+				resolved_by=(node.get("resolvedBy") or {}).get("login") or "",
+			)
+			for node in self._review_threads(repo, number)
+			if (first := node["comments"]["nodes"])
+		]
 
 	def is_member(self, namespace: str, login: str) -> bool:
 		try:
@@ -378,23 +391,28 @@ class GitHubAdapter(ProviderAdapter):
 			)
 
 	def _thread_node(self, repo: str, number: int, comment_id: str) -> str | None:
+		for node in self._review_threads(repo, number):
+			first = node["comments"]["nodes"]
+			if first and str(first[0]["databaseId"]) == str(comment_id):
+				return node["id"]
+		return None
+
+	def _review_threads(self, repo: str, number: int) -> Iterator[dict[str, Any]]:
+		"""The review threads of a pull request, up to 10 pages of 100."""
 		owner, name = repo.split("/", 1)
 		query = """query($owner: String!, $name: String!, $number: Int!, $after: String) {
 			repository(owner: $owner, name: $name) { pullRequest(number: $number) {
 				reviewThreads(first: 100, after: $after) { pageInfo { hasNextPage endCursor }
-					nodes { id comments(first: 1) { nodes { databaseId } } } } } } }"""
+					nodes { id isResolved resolvedBy { login }
+						comments(first: 1) { nodes { databaseId } } } } } } }"""
 		after = None
 		for _ in range(10):
 			data = self.graphql(query, {"owner": owner, "name": name, "number": number, "after": after})
 			threads = data["repository"]["pullRequest"]["reviewThreads"]
-			for node in threads["nodes"]:
-				first = node["comments"]["nodes"]
-				if first and str(first[0]["databaseId"]) == str(comment_id):
-					return node["id"]
+			yield from threads["nodes"]
 			if not threads["pageInfo"]["hasNextPage"]:
-				return None
+				return
 			after = threads["pageInfo"]["endCursor"]
-		return None
 
 	def approve(self, repo: str, number: int, sha: str, body: str = "") -> str | None:
 		data = self.request(

@@ -26,7 +26,7 @@ An adapter raises `UnsupportedAction` for an action that the provider does not h
 ### GitHub App
 
 1. The admin creates a GitHub App with these permissions: contents read, pull requests write, issues write, checks write, commit statuses write, members read, metadata read.
-2. Events: pull request, pull request review, pull request review comment, issue comment, push, check run, installation, installation repositories.
+2. Events: pull request, pull request review, pull request review comment, pull request review thread, issue comment, push, check run, installation, installation repositories.
 3. The webhook URL is `<site>/api/method/guard.webhooks.endpoint.github_webhook?provider=<Code Provider>`.
 4. The admin stores the app id, the slug, the private key and the webhook secret on the Code Provider.
 5. Guard signs a JWT with the private key and gets one installation token for each team. It caches each token for 50 minutes. When GitHub answers 401 to a request with a cached token, Guard drops the token, gets a new one and sends the request once more.
@@ -48,6 +48,7 @@ The endpoint finds the Code Provider from the `provider` query parameter, checks
 | push or rebase | `pull_request` synchronize |
 | closed | `pull_request` closed (merged or not) |
 | comment | `issue_comment` on a pull request, `pull_request_review_comment`, `pull_request_review` with a body |
+| thread resolved or reopened | `pull_request_review_thread` resolved, unresolved |
 | reaction | none: Guard polls reactions |
 | default branch push | `push` |
 | re-run | `check_run` rerequested |

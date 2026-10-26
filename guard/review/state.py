@@ -176,8 +176,11 @@ def _show_queued(review: str) -> None:
 		frappe.db.set_value("Code Review", review, "check_run_id", check_id, update_modified=False)
 
 
-def finding_changed(finding: str) -> None:
-	"""A user dismissed or reopened a finding. Resolve or reopen its thread, and count it on the check."""
+def finding_changed(finding: str, sync_thread: bool = True) -> None:
+	"""A user dismissed or reopened a finding. Resolve or reopen its thread, and count it on the check.
+
+	`sync_thread` is False when the change came from the thread on the provider.
+	"""
 	pull_request = db.value("Review Finding", finding, "pull_request")
 	if not pull_request:
 		return
@@ -188,10 +191,10 @@ def finding_changed(finding: str) -> None:
 		docname=pull_request,
 		after_commit=True,
 	)
-	db.after_commit(lambda: _show_finding(finding, str(pull_request)))
+	db.after_commit(lambda: _show_finding(finding, str(pull_request), sync_thread))
 
 
-def _show_finding(finding: str, pull_request: str) -> None:
+def _show_finding(finding: str, pull_request: str, sync_thread: bool = True) -> None:
 	from guard.providers.base import ProviderError
 
 	try:
@@ -200,7 +203,7 @@ def _show_finding(finding: str, pull_request: str) -> None:
 			return
 		adapter, full_name, number = provider
 		row = db.values("Review Finding", finding, ("status", "provider_thread_id")) or {}
-		if row.get("provider_thread_id"):
+		if sync_thread and row.get("provider_thread_id"):
 			try:
 				if row["status"] == "Open":
 					adapter.unresolve_thread(full_name, number, str(row["provider_thread_id"]))

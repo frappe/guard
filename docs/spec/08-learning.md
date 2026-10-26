@@ -17,7 +17,7 @@ Guard keeps one Upvote or Downvote row for each person and finding. A removed re
 
 The fast model reads each reply with the finding and the earlier replies of the thread. One call gives the class that decides how Guard answers ([07-conversations.md](07-conversations.md#thread-replies)) and a sentiment: Agree, Disagree, Context, Question or Neutral. "Good catch, fixed" is Agree. "We do this on purpose because the webhook needs a quick answer" is Context.
 
-The `upvotes` and `downvotes` of a finding count people. A person with a 👎 or 😕, or a reply with sentiment Disagree or Context, is one downvote. A rejecting reply does not close the finding, so the pull request author cannot clear a finding by replying.
+The `upvotes` and `downvotes` of a finding count people. A person with a 👎 or 😕, or a reply with sentiment Disagree or Context, is one downvote. A rejecting reply does not close the finding, so the pull request author cannot clear a finding by replying. To close a finding that the team accepts without a fix, a person resolves its thread ([07-conversations.md](07-conversations.md#resolved-threads)).
 
 ## Addressed detection
 

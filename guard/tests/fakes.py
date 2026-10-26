@@ -15,6 +15,7 @@ from guard.providers.base import (
 	PullRequestInfo,
 	Reaction,
 	RepositoryInfo,
+	ReviewThread,
 )
 
 
@@ -40,6 +41,7 @@ class FakeAdapter(ProviderAdapter):
 		self.calls: list[tuple[str, Any]] = []
 		self.comments: dict[str, str] = {}
 		self.reactions: dict[str, list[Reaction]] = {}
+		self.threads: list[ReviewThread] = []
 		self.closed: list[tuple[str, str]] = []  # (repo, sha)
 		self.checks: list[tuple[str, str, str, str]] = []  # (sha, state, description, check id)
 		self._next = 100
@@ -124,6 +126,9 @@ class FakeAdapter(ProviderAdapter):
 
 	def list_reactions(self, repo: str, comment: ProviderComment) -> list[Reaction]:
 		return self.reactions.get(comment.id, [])
+
+	def list_review_threads(self, repo: str, number: int) -> list[ReviewThread]:
+		return self.threads
 
 	def resolve_thread(self, repo: str, number: int, thread_id: str) -> None:
 		self.calls.append(("resolve", thread_id))

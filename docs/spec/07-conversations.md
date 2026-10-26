@@ -37,6 +37,8 @@ If Guard does not accept a review command, for example because reviews are off f
 
 `guard.conversation.agent.ConversationAgent` answers questions. It has the read tools of the review agent ([05-review-engine.md](05-review-engine.md)) and the pull request diff. For an inline comment it also gets the file, the line, and the finding of the thread. It replies in the same thread. It can write tests, explain code and suggest code.
 
+It cannot change a finding, the summary or the check. When someone asks it to close a finding, it tells them to resolve the thread ([Resolved threads](#resolved-threads)).
+
 The reply ends with **Sources** when the answer used tickets or knowledge base pages.
 
 ## Thread replies
@@ -59,6 +61,15 @@ A finding can carry a question. When the author answers, Guard checks the answer
 
 - If the answer removes the concern, Guard replies with a short note and sets the finding to Dismissed with reason "clarified".
 - If not, Guard replies with what is still open.
+
+### Resolved threads
+
+A person who resolves the thread of an open finding on the provider closes it. This is the explicit way to close a finding that the team accepts without a fix, for example a risk that a deploy step handles.
+
+- Guard sets the finding to Dismissed with reason "thread resolved by `<login>`", and counts the open findings on the check again.
+- The person must pass `teach_permission`. Guard skips threads that its bot logins resolve: Guard resolves a thread after it closes the finding.
+- Reopening the thread sets the finding to Open again, but only when a resolved thread dismissed it.
+- Webhooks send `pull_request_review_thread` resolved and unresolved. In polling mode, Guard reads the review threads of a pull request that has such findings.
 
 ## Desk review page
 

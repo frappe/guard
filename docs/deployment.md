@@ -75,6 +75,7 @@ On a hosted platform, add the app to the bench and install it on the site from t
    - Pull request
    - Pull request review
    - Pull request review comment
+   - Pull request review thread
    - Push
 8. Under **Where can this GitHub App be installed?**, select **Only on this account**.
 9. Click **Create GitHub App**.

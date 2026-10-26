@@ -8,7 +8,7 @@ from frappe.utils import add_to_date, now_datetime
 from frappe.utils.background_jobs import is_job_enqueued
 
 from guard import settings as guard_settings
-from guard.learning import addressed
+from guard.learning import addressed, feedback
 from guard.llm import breaker
 from guard.llm.types import GatewayBusy
 from guard.providers import sync
@@ -120,6 +120,8 @@ def dispatch(provider: str, event: WebhookEvent) -> bool:
 		return _pull_request(repository, event)
 	if event.kind == "comment" and event.comment and event.number:
 		return _comment(repository, event)
+	if event.kind == "thread" and event.thread_id and event.number:
+		return _thread(repository, event)
 	if event.kind == "rerun" and event.number:
 		pr = pull_requests.refresh(repository, event.number)
 		return bool(trigger.consider(str(pr.name), "retrigger", True, event.sender))
@@ -199,6 +201,16 @@ def _comment(repository: str, event: WebhookEvent) -> bool:
 		return True
 	enqueue_comment(str(pr.name), comment)
 	return True
+
+
+def _thread(repository: str, event: WebhookEvent) -> bool:
+	assert event.thread_id is not None
+	pull_request = db.value("Pull Request", {"repository": repository, "number": event.number}, "name")
+	if not pull_request:
+		return False
+	return feedback.thread_changed(
+		str(pull_request), event.thread_id, event.sender, resolved=event.action == "resolved"
+	)
 
 
 def enqueue_comment(pull_request: str, comment: ProviderComment, attempt: int = 0) -> None:
