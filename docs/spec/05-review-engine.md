@@ -30,6 +30,12 @@ A new push to a pull request cancels a queued or running review for an older hea
 - A busy code graph index puts the job back with a delay of 1, 5, then 15 minutes.
 - Any other error ends the review as Failed. Guard adds 😕, sets the status to `error`, and stores the error on the Code Review.
 
+### Checkpoints
+
+A deploy, a dead worker or a busy gateway ends the job of a review, and a new job runs it again. The stages before the agents take seconds. The agents take minutes and most of the tokens. So before each round of agent turns, the job writes a checkpoint to `private/guard/checkpoints/<review>.json.gz`: the phase (the diff parts, or the final agent), the conversation and state of each agent, and the findings so far. When the agents end, the job writes the findings and the verdict as the `done` phase.
+
+The next job runs the stages before the agents as usual. Then it reads the checkpoint if its key matches: the same head, tier, system prompt, tools and diff parts. It goes on from the last round, or, after `done`, goes straight to verify. When the key does not match, the review starts over. The round that the job did not finish runs again. A review with the sandbox does not use checkpoints, because the sandbox does not keep the files that the agents wrote. The job deletes the checkpoint when the review ends, and a daily job deletes checkpoints older than two days.
+
 ## Stage 1: Prepare
 
 1. Fetch the head into the mirror. Compute the merge base with the base branch.

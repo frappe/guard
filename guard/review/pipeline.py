@@ -1,5 +1,6 @@
 """Run one Code Review from start to end. See docs/spec/05-review-engine.md."""
 
+import dataclasses
 import time
 from typing import TYPE_CHECKING, Any, cast
 
@@ -23,6 +24,7 @@ from guard.llm import breaker
 from guard.llm.types import GatewayBusy, GatewayDown, Usage
 from guard.providers import adapter_for_repository
 from guard.review import (
+	checkpoint,
 	checks,
 	context,
 	crossrepo,
@@ -33,7 +35,7 @@ from guard.review import (
 	stale,
 	verify,
 )
-from guard.review.agent import Agent, run_together
+from guard.review.agent import Agent, run_together, tools
 from guard.review.findings import FindingFilter, score_cap
 from guard.review.publish import Publisher, set_status
 from guard.review.run import ReviewRun, Verdict
@@ -77,6 +79,9 @@ class ReviewPipeline:
 		# same review, with the same RQ job id, while the first still runs. The newest claim wins.
 		self.claim: str | None = None
 		self.job_replaced = False
+		# What the checkpoint of this run must match, and the agents it saves: a phase and its agents.
+		self.checkpoint_key: str | None = None
+		self.watched: tuple[str, list[Agent]] = ("", [])
 
 	@classmethod
 	def run(cls, review: str, attempt: int = 0) -> "ReviewPipeline":
@@ -86,7 +91,13 @@ class ReviewPipeline:
 		finally:
 			if not pipeline.job_replaced:
 				pipeline.acknowledge()
+				pipeline.drop_checkpoint()
 		return pipeline
+
+	def drop_checkpoint(self) -> None:
+		"""A review that ended does not start again. A queued one keeps its checkpoint."""
+		if db.value("Code Review", str(self.review.name), "status") not in ("Queued", "Running"):
+			checkpoint.delete(str(self.review.name))
 
 	def acknowledge(self) -> None:
 		"""Finish the mentions that wait for a review: 👍 when this one completed, 😕 when it did not.
@@ -270,6 +281,9 @@ class ReviewPipeline:
 		finally:
 			if run.sandbox is not None:
 				run.sandbox.cleanup()
+		# A job that stops after this point does not run the agents again.
+		self.watched = ("done", [])
+		self.save_checkpoint()
 		self.stage("verify")
 		verify.verify(run)
 		self.stage("filter")
@@ -446,47 +460,102 @@ class ReviewPipeline:
 		system = prompts.system_prompt(int(run.settings.get("strictness") or 2), "", risk)
 		turns = guard_settings.max_turns(run.tier)
 		deadline = self.deadline(run.tier)
-		if run.tier != "apex" or len(run.files) <= AREA_FILES:
-			Agent(run, system, turns).run_loop(compose(run, built), deadline, self.between_turns)
+		single = run.tier != "apex" or len(run.files) <= AREA_FILES
+		ranked = [] if single else by_risk(run)
+		areas = [ranked[i : i + AREA_FILES] for i in range(0, len(ranked), AREA_FILES)][:MAX_AREAS]
+		saved = self.open_checkpoint(run, system, [[f.path for f in files] for files in areas])
+		phase = saved["phase"] if saved else ""
+		if saved and phase == "done":
+			run.verdict = Verdict(**saved["verdict"])
+			return
+		if single:
+			final = Agent(run, system, turns)
+			task = None if self.restore(final, saved, "final") else compose(run, built)
+			self.watched = ("final", [final])
+			final.run_loop(task, deadline, self.between_turns)
 			return
 		# Each part, and the pass across the parts, reviews less than the whole: half the turns.
 		turns = max(turns // 2, guard_settings.max_turns("base"))
 		all_files = run.files
-		ranked = by_risk(run)
-		areas = [ranked[i : i + AREA_FILES] for i in range(0, len(ranked), AREA_FILES)][:MAX_AREAS]
-		tasks = []
-		for number, files in enumerate(areas, 1):
-			run.files = files
-			tasks.append(
-				compose(
-					run,
-					built,
-					f"Review only the files in this diff part ({number}). Submit a verdict for this part.",
-				)
-			)
-		parts = [Agent(run, system, turns, final=False) for _ in areas]
-		# The pass across the parts needs time too: the parts may use two thirds of what is left.
-		areas_until = time.time() + (deadline - time.time()) * 2 / 3
-		results = run_together(parts, tasks, self.between_turns, areas_until)
 		in_areas = {f.path for files in areas for f in files}
 		rest = [f for f in ranked if f.path not in in_areas]
+		extra = ""
+		if phase != "final":
+			tasks: list[str | None] = []
+			parts = [Agent(run, system, turns, final=False) for _ in areas]
+			for number, (part, files) in enumerate(zip(parts, areas, strict=True), 1):
+				run.files = files
+				what = f"Review only the files in this diff part ({number}). Submit a verdict for this part."
+				restored = self.restore(part, saved, "parts", number - 1)
+				tasks.append(None if restored else compose(run, built, what))
+			self.watched = ("parts", parts)
+			# The pass across the parts needs time too: the parts may use two thirds of what is left.
+			areas_until = time.time() + (deadline - time.time()) * 2 / 3
+			results = run_together(parts, tasks, self.between_turns, areas_until)
+			reported = "\n".join(f"- {f.path}:{f.start_line} {f.title}" for f in run.findings)
+			verdicts = "\n".join(
+				f"- part {n} (score {r.verdict.confidence_score}): {r.verdict.summary[:600]}"
+				for n, r in enumerate(results, 1)
+				if r.verdict.submitted
+			)
+			extra = prompts.CROSS_CUTTING + "\n\nVerdicts of the parts:\n" + (verdicts or "- none")
+			extra += "\n\nAlready reported:\n" + (reported or "- none")
+			if rest:
+				extra += "\n\nNo part reviewed these files. Review them here:\n" + "\n".join(
+					f"- {f.path}" for f in rest[:MAX_REST_NAMES]
+				)
 		# The files that no part reviewed come first, so the diff limit cuts the reviewed ones.
 		run.files = rest + [f for f in ranked if f.path in in_areas]
-		reported = "\n".join(f"- {f.path}:{f.start_line} {f.title}" for f in run.findings)
-		verdicts = "\n".join(
-			f"- part {n} (score {r.verdict.confidence_score}): {r.verdict.summary[:600]}"
-			for n, r in enumerate(results, 1)
-			if r.verdict.submitted
-		)
-		extra = prompts.CROSS_CUTTING + "\n\nVerdicts of the parts:\n" + (verdicts or "- none")
-		extra += "\n\nAlready reported:\n" + (reported or "- none")
-		if rest:
-			extra += "\n\nNo part reviewed these files. Review them here:\n" + "\n".join(
-				f"- {f.path}" for f in rest[:MAX_REST_NAMES]
-			)
+		final = Agent(run, system, turns)
+		task = None if self.restore(final, saved, "final") else compose(run, built, extra)
+		self.watched = ("final", [final])
 		self.check_cancel()
-		Agent(run, system, turns).run_loop(compose(run, built, extra), deadline, self.between_turns)
+		final.run_loop(task, deadline, self.between_turns)
 		run.files = all_files
+
+	def open_checkpoint(self, run: ReviewRun, system: str, areas: list[list[str]]) -> dict[str, Any] | None:
+		"""Start the checkpoints of this run. Return the saved one when it matches, with its findings in the run."""
+		self.checkpoint_key = None
+		self.watched = ("", [])
+		# The sandbox does not keep the files that the agents wrote, so a review with it starts over.
+		if run.review is None or run.sandbox is not None:
+			return None
+		self.checkpoint_key = checkpoint.key(run, system, tools(run), areas)
+		saved = checkpoint.load(str(run.review.name), self.checkpoint_key)
+		if saved:
+			# The checks before the agents found the same at the same head: these replace them.
+			run.findings = checkpoint.load_findings(saved["findings"])
+			frappe.logger("guard").info(
+				f"review {run.review.name}: going on from the {saved['phase']} checkpoint"
+			)
+		return saved
+
+	@staticmethod
+	def restore(agent: Agent, saved: dict[str, Any] | None, phase: str, index: int = 0) -> bool:
+		"""Put the saved agent back when the checkpoint is of this phase. It then has its task already."""
+		if not saved or saved["phase"] != phase:
+			return False
+		checkpoint.restore_agent(agent, saved["agents"][index])
+		return True
+
+	def save_checkpoint(self) -> None:
+		"""Write the agents of this run, so that the next job of the review goes on from here."""
+		run = self.current
+		if not self.checkpoint_key or run is None or run.review is None:
+			return
+		phase, agents = self.watched
+		data = {
+			"key": self.checkpoint_key,
+			"phase": phase,
+			"agents": [checkpoint.dump_agent(a) for a in agents],
+			"findings": checkpoint.dump_findings(run.findings),
+			"verdict": dataclasses.asdict(run.verdict),
+		}
+		try:
+			checkpoint.save(str(run.review.name), data)
+		except OSError as error:
+			# A review without a checkpoint still runs. Only a restart costs more.
+			frappe.log_error(redact(str(error)), "Guard review checkpoint")
 
 	def deadline(self, tier: str) -> float:
 		"""The time after which the agents must submit, so that the job ends before its timeout.
@@ -569,9 +638,11 @@ class ReviewPipeline:
 		db.commit()
 
 	def between_turns(self) -> None:
-		"""Before each agent turn: stop when a newer review or job replaced this one, else keep the usage."""
+		"""Before each round: stop when a newer review or job replaced this one, else keep the usage
+		and the agents, so that a new job of the review goes on from here."""
 		self.check_cancel()
 		self.save_usage()
+		self.save_checkpoint()
 
 	def save_usage(self) -> None:
 		"""Write the tokens and turns used so far. A failed, cancelled or killed job also costs tokens."""

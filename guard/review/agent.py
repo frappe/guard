@@ -233,7 +233,7 @@ class Agent:
 		self.breakpoint: Message | None = None
 
 	def run_loop(
-		self, task: str, deadline: float = 0, check: Callable[[], None] | None = None
+		self, task: str | None, deadline: float = 0, check: Callable[[], None] | None = None
 	) -> AgentResult:
 		[result] = run_together([self], [task], check, deadline)
 		return result
@@ -336,7 +336,7 @@ class Agent:
 
 def run_together(
 	agents: list[Agent],
-	tasks: list[str],
+	tasks: list[str | None],
 	check: Callable[[], None] | None = None,
 	deadline: float = 0,
 ) -> list[AgentResult]:
@@ -345,7 +345,8 @@ def run_together(
 	Each round sends one turn of every busy agent at once. The model calls run on threads, and the
 	tool calls run here, one after the other, because they read `frappe.db`. `check` runs before
 	each round, for example to stop a cancelled review. After `deadline` (a `time.time()`), no new
-	round starts, and each agent must submit what it has.
+	round starts, and each agent must submit what it has. A task of None goes on with an agent
+	that a checkpoint restored: it has its task already.
 	"""
 	from guard.llm.client import LLMClient
 
@@ -355,7 +356,8 @@ def run_together(
 	client = LLMClient(tier=run.tier, purpose="review", usage=run.usage)
 	specs = tools(run)
 	for agent, task in zip(agents, tasks, strict=True):
-		agent.messages.append(Message("user", task, cache=True))
+		if task is not None:
+			agent.messages.append(Message("user", task, cache=True))
 	while busy := [a for a in agents if a.busy]:
 		if check:
 			check()

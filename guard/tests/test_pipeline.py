@@ -10,7 +10,7 @@ from guard.git.diff import parse_diff
 from guard.graph.overlay import ChangedEntity
 from guard.graph.queries import Link
 from guard.llm.client import ChatRequest, LLMClient, use_responder
-from guard.llm.types import ChatResult, GatewayBilling, GatewayBusy, ToolCall, Usage
+from guard.llm.types import ChatResult, GatewayBilling, GatewayBusy, Message, ToolCall, Usage
 from guard.providers.base import ProviderComment, ProviderError
 from guard.review import jobs, trigger
 from guard.review import pipeline as pipeline_module
@@ -31,6 +31,14 @@ PROBLEM = {
 	"title": "Name is vague",
 	"body": "x",
 	"confidence": 0.9,
+}
+MISSED_NOTIFY: dict[str, Any] = {
+	"path": "app/models.py",
+	"start_line": 5,
+	"severity": "P1",
+	"comment_type": "logic",
+	"title": "Callers of update_user_email miss the notify argument",
+	"body": "`app/service.py:6` still calls it with two arguments.",
 }
 
 
@@ -1081,6 +1089,54 @@ class TestPipeline(PullRequestCase):
 		self.assertEqual(self.on_comment("c6"), ["eyes", "removed", "+1"])
 		self.assertEqual(self.on_comment("c7"), ["eyes", "removed", "+1"])
 
+	def test_review_goes_on_from_its_checkpoint_after_a_busy_gateway(self):
+		from guard.review import checkpoint
+
+		# suite #1081: a 429 after 57 turns sent the review back to the start.
+		answer = scripted(
+			[
+				[("read_file", {"path": "app/models.py"}), ("report_finding", MISSED_NOTIFY)],
+				[("submit_review", {"summary": "s", "confidence_score": 3})],
+			]
+		)
+		sent: list[int] = []
+
+		def busy_on_turn_two(request: ChatRequest) -> ChatResult:
+			if request.purpose == "review" and request.tools:
+				sent.append(len(request.messages))
+				if len(sent) == 2:
+					raise GatewayBusy("429", 5)
+			return answer(request)
+
+		with use_responder(busy_on_turn_two):
+			name = trigger.consider(self.pr, "open")
+		self.assertEqual(self.row(name)["status"], "Completed")
+		# System and task, then the answer and two tool outputs. The next job sends those 5 again.
+		self.assertEqual(sent, [2, 5, 5])
+		titles = frappe.get_all("Review Finding", filters={"code_review": name}, pluck="title")
+		self.assertIn(MISSED_NOTIFY["title"], titles)
+		self.assertFalse(checkpoint._path(str(name)).exists(), "an ended review keeps no checkpoint")
+
+	def test_review_that_stops_after_the_agents_does_not_run_them_again(self):
+		submit = ("submit_review", {"summary": "s", "confidence_score": 3})
+		answer = scripted([[("report_finding", MISSED_NOTIFY), submit]])
+		purposes: list[str] = []
+
+		def respond(request: ChatRequest) -> ChatResult:
+			purposes.append(request.purpose)
+			return answer(request)
+
+		with (
+			use_responder(respond),
+			patch("guard.review.pipeline.verify.verify", side_effect=[GatewayBusy("429", 5), None]) as check,
+		):
+			name = trigger.consider(self.pr, "open")
+		self.assertEqual(self.row(name)["status"], "Completed")
+		self.assertEqual(check.call_count, 2)
+		self.assertEqual(purposes.count("review"), 1, "the second job used the saved findings and verdict")
+		titles = frappe.get_all("Review Finding", filters={"code_review": name}, pluck="title")
+		self.assertIn(MISSED_NOTIFY["title"], titles)
+
 	def test_cancelled_review_does_not_wait_for_a_slot(self):
 		waiting = self.running_review("")
 		db.set_values("Code Review", waiting, {"status": "Queued", "cancel_requested": 1})
@@ -1118,6 +1174,61 @@ class TestPipeline(PullRequestCase):
 
 
 class TestApexAreas(IntegrationTestCase):
+	def test_a_stopped_apex_review_goes_on_with_the_pass_across_the_parts(self):
+		from guard.review import checkpoint
+
+		name = f"test-{frappe.generate_hash(length=8)}"
+		self.addCleanup(checkpoint.delete, name)
+		diff = "".join(
+			f"diff --git a/app/f{n}.py b/app/f{n}.py\n--- a/app/f{n}.py\n+++ b/app/f{n}.py\n"
+			+ f"@@ -1 +1 @@\n-a = {n}\n+a = {n + 1}\n"
+			for n in range(20)
+		)
+		sent: list[str] = []
+
+		def respond(request: ChatRequest) -> ChatResult:
+			across = "Verdicts of the parts" in request.messages[1].content
+			sent.append("across" if across else "part")
+			if across and sent.count("across") == 1:
+				raise GatewayBusy("429", 5)
+			summary = "whole" if across else "part"
+			return ChatResult(
+				"",
+				[ToolCall("t", "submit_review", {"summary": summary, "confidence_score": 5})],
+				Usage(10, 1),
+			)
+
+		def job() -> tuple[ReviewPipeline, ReviewRun]:
+			run = ReviewRun(
+				SimpleNamespace(name=name),
+				None,
+				"",
+				lambda path: "a = 1",
+				lambda path: None,
+				lambda path: [],
+				"",
+				"",
+			)
+			run.tier = "apex"
+			run.files = parse_diff(diff)
+			pipeline = ReviewPipeline.__new__(ReviewPipeline)
+			pipeline.check_cancel = lambda: None
+			pipeline.save_usage = lambda: None
+			pipeline.current = run
+			pipeline.started = time.time()
+			return pipeline, run
+
+		with use_responder(respond):
+			first, run = job()
+			with self.assertRaises(GatewayBusy):
+				first.agent(run, BuiltContext(ContextPack()))
+			second, run = job()
+			second.agent(run, BuiltContext(ContextPack()))
+		# 20 files make 3 parts. The second job does not review them again.
+		self.assertEqual(sent, ["part", "part", "part", "across", "across"])
+		self.assertEqual(run.verdict.summary, "whole")
+		self.assertEqual(len(run.files), 20)
+
 	def test_each_part_gets_its_own_turns_and_the_riskiest_files_come_first(self):
 		files = 60
 		diff = "".join(
@@ -1203,3 +1314,44 @@ class TestWebhookDeadlock(IntegrationTestCase):
 		):
 			handler.process(str(delivery.name))
 		self.assertEqual(db.value("Webhook Delivery", str(delivery.name), "status"), "Received")
+
+
+class TestCheckpoint(UnitTestCase):
+	def agent(self) -> Agent:
+		run = ReviewRun(None, None, "", lambda path: "a = 1", lambda path: None, lambda path: [], "h", "b")
+		return Agent(run, "system", 8)
+
+	def test_an_agent_comes_back_as_it_was(self):
+		from guard.review import checkpoint
+
+		agent = self.agent()
+		calls = [ToolCall("t1", "read_file", {"path": "a.py"}), ToolCall("t2", "report_finding", PROBLEM)]
+		agent.messages.append(Message("user", "task", cache=True))
+		agent.request()
+		agent.receive(ChatResult("thinking", calls, Usage(10, 1, 4)))
+		again = self.agent()
+		checkpoint.restore_agent(again, checkpoint.dump_agent(agent))
+		self.assertEqual(again.messages, agent.messages)
+		self.assertEqual(
+			(again.turns, again.reported, again.tool_turns, again.caching),
+			(1, agent.reported, [[3, 4]], True),
+		)
+		# The cache mark is on the same message, and only there: the next turn moves it.
+		self.assertIs(again.breakpoint, again.messages[-1])
+		again.receive(ChatResult("", [ToolCall("t3", "list_directory", {"path": ""})], Usage(1, 1)))
+		self.assertEqual([m.cache for m in again.messages].count(True), 3)  # system, task, newest
+
+	def test_a_checkpoint_of_another_head_or_prompt_is_not_used(self):
+		from guard.review import checkpoint
+
+		agent = self.agent()
+		key = checkpoint.key(agent.run, "system", [], [])
+		self.assertNotEqual(key, checkpoint.key(agent.run, "another system", [], []))
+		agent.run.head_sha = "newer"
+		self.assertNotEqual(key, checkpoint.key(agent.run, "system", [], []))
+		name = f"test-{frappe.generate_hash(length=8)}"
+		self.addCleanup(checkpoint.delete, name)
+		checkpoint.save(name, {"key": key, "phase": "final"})
+		self.assertEqual(checkpoint.load(name, key), {"key": key, "phase": "final"})
+		self.assertIsNone(checkpoint.load(name, "other"))
+		self.assertIsNone(checkpoint.load("no-such-review", key))

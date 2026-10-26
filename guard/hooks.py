@@ -50,6 +50,7 @@ scheduler_events = {
 		"guard.webhooks.endpoint.cleanup_deliveries",
 		"guard.learning.suggestions.update_rule_metrics",
 		"guard.learning.memories.retire_unhelpful",
+		"guard.review.checkpoint.remove_old",
 	],
 	"daily_long": ["guard.git.maintenance.run"],
 	"weekly": ["guard.learning.suggestions.weekly_suggestions"],
