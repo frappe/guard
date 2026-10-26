@@ -361,9 +361,7 @@ class TestIndexCheck(IntegrationTestCase):
 
 
 class TestScopedKnowledgeBase(IntegrationTestCase):
-	def test_large_repository_covers_the_busiest_areas(self):
-		from guard.knowledge import builder
-
+	def indexed_repository(self) -> str:
 		files = {
 			f"{area}/m{n}.py": f"def f{n}():\n    return {n}\n"
 			for area in ("billing", "stock")
@@ -375,6 +373,12 @@ class TestScopedKnowledgeBase(IntegrationTestCase):
 		index = index_for(repository)
 		Indexer(index).run()
 		frappe.db.set_value("Code Repository", repository, "default_index", index)
+		return repository
+
+	def test_large_repository_covers_the_busiest_areas(self):
+		from guard.knowledge import builder
+
+		repository = self.indexed_repository()
 		frappe.get_doc(
 			{
 				"doctype": "Code Review",
@@ -404,3 +408,45 @@ class TestScopedKnowledgeBase(IntegrationTestCase):
 		self.assertEqual(written, 2)
 		flows.assert_not_called()
 		reverts.assert_not_called()
+
+	def test_stale_sync_queues_a_long_job_for_each_repository(self):
+		from guard.knowledge import builder
+
+		repositories = [self.indexed_repository() for _ in range(2)]
+		for repository in repositories:
+			for n in range(12):
+				frappe.get_doc(
+					{
+						"doctype": "Knowledge Base Document",
+						"repository": repository,
+						"path": f"docs/a{n:02}.md",
+						"stale": 1,
+					}
+				).insert(ignore_permissions=True)
+		with patch("frappe.enqueue") as enqueue:
+			builder.sync_stale()
+		calls = {c.kwargs["repository"]: c.kwargs for c in enqueue.call_args_list}
+		for repository in repositories:
+			job = calls[repository]
+			self.assertEqual(job["queue"], "long")
+			self.assertEqual(job["job_id"], f"guard-kb-{repository}")
+			self.assertEqual(job["only"], [f"docs/a{n:02}.md" for n in range(10)])
+
+	def test_failed_stale_rebuild_keeps_the_knowledge_base_ready(self):
+		from guard.knowledge import builder
+
+		repository = self.indexed_repository()
+		frappe.db.set_value("Code Repository", repository, "kb_status", "Ready")
+		with (
+			patch.object(builder.KnowledgeBuilder, "_area", side_effect=RuntimeError("gateway")),
+			self.assertRaises(RuntimeError),
+		):
+			builder.build(repository, ["docs/stock.md"])
+		self.assertEqual(db.value("Code Repository", repository, "kb_status"), "Ready")
+
+		with (
+			patch.object(builder.KnowledgeBuilder, "_area", side_effect=RuntimeError("gateway")),
+			self.assertRaises(RuntimeError),
+		):
+			builder.build(repository)
+		self.assertEqual(db.value("Code Repository", repository, "kb_status"), "Failed")

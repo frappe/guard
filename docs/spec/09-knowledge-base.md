@@ -44,7 +44,7 @@ Each build has a `version_id`: `<date>-<epoch ms>-<short hash>`. All documents o
 
 1. A push to the default branch updates the index.
 2. Guard maps the changed paths to areas and flows and marks them stale.
-3. A job every 6 hours rebuilds stale documents, at most 10 for each repository each run.
+3. A job every 6 hours queues a rebuild of stale documents on the `long` queue, at most 10 for each repository each run. The rebuild shares the job key of a full build, so it does not run while a full build of the repository is queued. A failed rebuild of some documents does not change the status of the knowledge base.
 4. If the set of areas changes, Guard rebuilds `index.md`.
 
 ## Human edits

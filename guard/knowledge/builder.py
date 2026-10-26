@@ -60,8 +60,14 @@ class KnowledgeBuilder:
 		self.version = f"{now_datetime():%Y-%m-%d}-{int(time.time() * 1000)}-{frappe.generate_hash(length=6)}"
 
 	def build(self, only: set[str] | None = None) -> int:
-		frappe.db.set_value("Code Repository", self.repository, "kb_status", "Building")
-		db.commit()
+		"""Write every document, or only the paths in `only`.
+
+		A build of only some documents does not change `kb_status` when it starts or fails: the other
+		documents stay valid. Pushes mark documents stale and MCP reads them only while it is Ready.
+		"""
+		if only is None:
+			frappe.db.set_value("Code Repository", self.repository, "kb_status", "Building")
+			db.commit()
 		try:
 			files = [
 				r[0]
@@ -121,8 +127,9 @@ class KnowledgeBuilder:
 			return written
 		except Exception:
 			db.rollback()
-			frappe.db.set_value("Code Repository", self.repository, "kb_status", "Failed")
-			db.commit()
+			if only is None:
+				frappe.db.set_value("Code Repository", self.repository, "kb_status", "Failed")
+				db.commit()
 			raise
 
 	# ---------------------------------------------------------------- docs
@@ -379,11 +386,15 @@ def _node(slug: str) -> str:
 # ----------------------------------------------------------------------- jobs
 
 
-def build(repository: str) -> int:
-	return KnowledgeBuilder(repository).build()
+def build(repository: str, only: list[str] | None = None) -> int:
+	return KnowledgeBuilder(repository).build(set(only) if only is not None else None)
 
 
-def enqueue_build(repository: str) -> None:
+def enqueue_build(repository: str, only: list[str] | None = None) -> None:
+	"""Queue a build of every document, or of the paths in `only`.
+
+	One job id for both: a stale sync does not run while a full build of the repository is queued.
+	"""
 	frappe.enqueue(
 		"guard.knowledge.builder.build",
 		queue="long",
@@ -392,6 +403,7 @@ def enqueue_build(repository: str) -> None:
 		deduplicate=True,
 		enqueue_after_commit=True,
 		repository=repository,
+		only=only,
 	)
 
 
@@ -407,21 +419,23 @@ def mark_stale(repository: str, paths: list[str]) -> None:
 
 
 def sync_stale() -> None:
-	"""Every 6 hours: rebuild stale documents, at most 10 for each repository."""
+	"""Every 6 hours: queue a rebuild of the stale documents, at most 10 for each repository.
+
+	A rebuild calls the model for each document, so it runs on the long queue and not in this
+	scheduled job, which has 5 minutes for all repositories.
+	"""
 	for repository in {
 		r[0] for r in db.rows("SELECT DISTINCT repository FROM `tabKnowledge Base Document` WHERE stale = 1")
 	}:
-		paths = {
+		paths = [
 			r[0]
 			for r in db.rows(
-				"SELECT path FROM `tabKnowledge Base Document` WHERE repository = %s AND stale = 1 LIMIT 10",
+				"""SELECT path FROM `tabKnowledge Base Document` WHERE repository = %s AND stale = 1
+				ORDER BY path LIMIT 10""",
 				(repository,),
 			)
-		}
-		try:
-			KnowledgeBuilder(repository).build(only=paths)
-		except Exception as error:
-			frappe.log_error(str(error), "Guard knowledge base")
+		]
+		enqueue_build(repository, paths)
 
 
 def on_push(repository: str, before: str | None, after: str | None) -> None:
