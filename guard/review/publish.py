@@ -8,7 +8,7 @@ from guard.review import links, render
 from guard.review.findings import Finding
 from guard.review.rule_files import RULE_PREFIX
 from guard.review.run import ReviewRun
-from guard.utils import cache, db
+from guard.utils import db
 
 
 class Publisher:
@@ -165,14 +165,20 @@ class Publisher:
 	def start(self) -> None:
 		if not self.adapter or self.run.pr is None:
 			return
-		self._react("eyes")
+		if eyes := self._react("eyes"):
+			self.run.review.db_set("eyes_reaction", eyes, update_modified=False)
 		if self.run.settings.get("status_check", True):
 			self._status("pending", "Guard is reviewing")
+		elif self._check_id():
+			# Queued before the config of the repository was read, which turns the check off.
+			self._status("skipped", "This repository turned the Guard check off.")
+		# A cancel from now on reads the ids to end the check and remove the 👀.
+		db.commit()
 
 	def finish(self, failed: bool = False) -> None:
 		if not self.adapter or self.run.pr is None:
 			return
-		self._unreact("eyes")
+		remove_eyes(self.gh, self.repo, self.number, str(self.run.review.name))
 		self._react("confused" if failed else "+1")
 		if failed:
 			self._status("error", "Guard could not finish the review")
@@ -196,50 +202,64 @@ class Publisher:
 
 	def skip(self, reason: str) -> None:
 		if self._shows_check():
-			report_skip(self.gh, self.repo, self.run.head_sha, reason, self._url())
+			self._keep_check(
+				report_skip(self.gh, self.repo, self.run.head_sha, reason, self._url(), self._check_id())
+			)
 
 	def _shows_check(self) -> bool:
 		return bool(self.adapter and self.run.pr is not None and self.run.settings.get("status_check", True))
 
 	def _status(self, state: str, text: str) -> None:
-		set_status(self.gh, self.repo, self.run.head_sha, state, text, self._url())
+		self._keep_check(
+			set_status(self.gh, self.repo, self.run.head_sha, state, text, self._url(), self._check_id())
+		)
+
+	def _check_id(self) -> str:
+		return str(self.run.review.check_run_id or "")
+
+	def _keep_check(self, check_id: str) -> None:
+		"""Keep the id of the check, so that a cancel or a dismissed finding can update it at once."""
+		if check_id and check_id != self._check_id():
+			self.run.review.db_set("check_run_id", check_id, update_modified=False)
 
 	def _url(self) -> str:
 		return links.code_review(str(self.run.review.name))
 
-	def _react(self, content: str) -> None:
+	def _react(self, content: str) -> str:
 		try:
-			reaction = self.gh.add_reaction(self.repo, self.number, "pr", "", content)
+			return self.gh.add_reaction(self.repo, self.number, "pr", "", content) or ""
 		except ProviderError:
-			return
-		if reaction:
-			cache.set(self._reaction_key(content), reaction, 86400)
-
-	def _unreact(self, content: str) -> None:
-		reaction = cache.get(self._reaction_key(content))
-		if not reaction:
-			return
-		try:
-			self.gh.remove_reaction(self.repo, self.number, "pr", "", str(reaction))
-		except ProviderError:
-			pass
-		cache.delete(self._reaction_key(content))
-
-	def _reaction_key(self, content: str) -> str:
-		return f"guard:reaction:{self.repo}:{self.number}:{content}"
+			return ""
 
 
-def set_status(adapter: ProviderAdapter, repo: str, sha: str, state: str, text: str, url: str = "") -> None:
-	"""Set the Guard check. A provider error is only logged."""
+def remove_eyes(adapter: ProviderAdapter, repo: str, number: int, review: str) -> None:
+	"""Remove the 👀 that the review put on the pull request when it started."""
+	reaction = db.value("Code Review", review, "eyes_reaction")
+	if not reaction:
+		return
 	try:
-		adapter.set_status(repo, sha, state, text, url)
+		adapter.remove_reaction(repo, number, "pr", "", str(reaction))
+	except ProviderError:
+		pass
+	frappe.db.set_value("Code Review", review, "eyes_reaction", "", update_modified=False)
+
+
+def set_status(
+	adapter: ProviderAdapter, repo: str, sha: str, state: str, text: str, url: str = "", check_id: str = ""
+) -> str:
+	"""Set the Guard check and return its id. A provider error is only logged."""
+	try:
+		return adapter.set_status(repo, sha, state, text, url, check_id) or check_id
 	except ProviderError as error:
 		frappe.log_error(str(error), "Guard status")
+		return check_id
 
 
-def report_skip(adapter: ProviderAdapter, repo: str, sha: str, reason: str, url: str = "") -> None:
+def report_skip(
+	adapter: ProviderAdapter, repo: str, sha: str, reason: str, url: str = "", check_id: str = ""
+) -> str:
 	"""Show on the commit that Guard will not review it, so nobody waits for a review."""
-	set_status(adapter, repo, sha, "skipped", f"Guard skipped this review: {reason}", url)
+	return set_status(adapter, repo, sha, "skipped", f"Guard skipped this review: {reason}", url, check_id)
 
 
 def open_finding_count(pull_request: str) -> int:

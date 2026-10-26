@@ -151,9 +151,22 @@ def rereview(pull_request: str, tier: str = "") -> str | None:
 
 
 @frappe.whitelist(methods=["POST"])
-def cancel_review(review: str) -> None:
+def cancel_review(review: str) -> str:
+	"""Cancel the review now: its status, the check on the provider and Desk all show it at once.
+
+	Return the new status.
+	"""
 	frappe.has_permission("Code Review", "write", review, throw=True)
-	frappe.db.set_value("Code Review", review, "cancel_requested", 1)
+	from guard.review import state
+
+	user = str(frappe.session.user)
+	try:
+		state.cancel(review, state.cancel_reason(user), by=user)
+	except state.NotActive:
+		if db.value("Code Review", review, "status") in state.ACTIVE:
+			frappe.throw(_("Guard is posting this review now. It is too late to cancel it."))
+		frappe.throw(_("This review has already ended."))
+	return "Cancelled"
 
 
 @frappe.whitelist(methods=["POST"])
@@ -184,7 +197,11 @@ def retry_reviews(reviews: str | list[str]) -> list[str]:
 		order_by="creation asc",
 	)
 	pull_requests = dict.fromkeys(str(row.pull_request) for row in rows)
-	return [review for pr in pull_requests if (review := rereview(pr))]
+	frappe.flags.guard_provider_in_job = True
+	try:
+		return [review for pr in pull_requests if (review := rereview(pr))]
+	finally:
+		frappe.flags.guard_provider_in_job = False
 
 
 @frappe.whitelist(methods=["POST"])
@@ -194,6 +211,9 @@ def set_finding_status(finding: str, status: str) -> None:
 	doc = frappe.get_doc("Review Finding", finding)
 	doc.check_permission("write")
 	doc.db_set({"status": status, "status_reason": f"set by {frappe.session.user}"})
+	from guard.review import state
+
+	state.finding_changed(finding)
 
 
 @frappe.whitelist(methods=["POST"])

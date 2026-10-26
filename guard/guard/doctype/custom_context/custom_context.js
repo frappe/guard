@@ -31,10 +31,14 @@ frappe.ui.form.on("Custom Context", {
 	},
 });
 
+// Show the new status at once. On an error, load the saved record again.
 function set_status(frm, status) {
-	return frappe
-		.xcall("guard.api.ui.set_context_status", { context: frm.doc.name, status })
-		.then(() => frm.reload_doc());
+	Object.assign(frm.doc, { status });
+	frm.refresh();
+	return frappe.xcall("guard.api.ui.set_context_status", { context: frm.doc.name, status }).then(
+		() => frm.reload_doc(),
+		() => frm.reload_doc()
+	);
 }
 
 async function render_evidence(frm) {

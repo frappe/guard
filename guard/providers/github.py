@@ -263,19 +263,21 @@ class GitHubAdapter(ProviderAdapter):
 	def update_description(self, repo: str, number: int, body: str) -> None:
 		self.request("PATCH", f"/repos/{repo}/pulls/{number}", json={"body": body})
 
-	def set_status(self, repo: str, sha: str, state: str, description: str, url: str = "") -> None:
+	def set_status(
+		self, repo: str, sha: str, state: str, description: str, url: str = "", check_id: str = ""
+	) -> str:
 		if self.doc.get("auth_mode") == "App":
-			self._check_run(repo, sha, state, description, url)
-			return
-		# A commit status has no skipped state.
+			return self._check_run(repo, sha, state, description, url, check_id)
+		# A commit status has no queued, skipped or cancelled state. A skip or cancel must not block.
 		payload = {
-			"state": "success" if state == "skipped" else state,
+			"state": {"queued": "pending", "skipped": "success", "cancelled": "success"}.get(state, state),
 			"description": description[:140],
 			"context": "Guard",
 		}
 		if url:
 			payload["target_url"] = url
 		self.request("POST", f"/repos/{repo}/statuses/{sha}", json=payload)
+		return ""
 
 	def close_open_checks(self, repo: str, sha: str, description: str) -> int:
 		"""Complete Guard's check runs on `sha` that are still in progress, as neutral. Create none."""
@@ -310,9 +312,7 @@ class GitHubAdapter(ProviderAdapter):
 		runs.sort(key=lambda run: run.get("started_at") or "", reverse=True)
 		return [str(run["id"]) for run in runs]
 
-	def _check_run(self, repo: str, sha: str, state: str, description: str, url: str) -> None:
-		key = f"guard:check-run:{repo}:{sha}"
-		run_id = cache.get(key)
+	def _check_run(self, repo: str, sha: str, state: str, description: str, url: str, check_id: str) -> str:
 		payload: dict[str, Any] = {
 			"name": CHECK_NAME,
 			"head_sha": sha,
@@ -322,6 +322,8 @@ class GitHubAdapter(ProviderAdapter):
 			payload["details_url"] = url
 		if state == "pending":
 			payload["status"] = "in_progress"
+		elif state == "queued":
+			payload["status"] = "queued"
 		else:
 			payload["status"] = "completed"
 			payload["conclusion"] = {
@@ -329,18 +331,26 @@ class GitHubAdapter(ProviderAdapter):
 				"failure": "failure",
 				"error": "neutral",
 				"skipped": "skipped",
+				# Not GitHub's "cancelled": a required check fails on it, and a cancel must not block.
+				"cancelled": "neutral",
 			}.get(state, "neutral")
-		# The cache can lose the id, for example when a deploy clears it. Then look for the run on
-		# GitHub: a second run on the commit would leave the first in progress for ever.
-		open_ids = [str(run_id)] if run_id else self._open_check_runs(repo, sha)
+		if check_id:
+			try:
+				self.request("PATCH", f"/repos/{repo}/check-runs/{check_id}", json=payload)
+				return check_id
+			except ProviderError as error:
+				# The run is gone, for example after the app was installed again. Use or make another.
+				if error.status not in (404, 422):
+					raise
+		# Without the id, for example on a commit that no review has checked yet, look for the run
+		# on GitHub: a second run on the commit would leave the first in progress for ever.
+		open_ids = self._open_check_runs(repo, sha)
 		if open_ids:
-			for open_id in open_ids if state != "pending" else open_ids[:1]:
+			for open_id in open_ids if state not in ("pending", "queued") else open_ids[:1]:
 				self.request("PATCH", f"/repos/{repo}/check-runs/{open_id}", json=payload)
-			if state == "pending":
-				cache.set(key, open_ids[0], 86400)
-			return
+			return open_ids[0]
 		data = self.request("POST", f"/repos/{repo}/check-runs", json=payload)
-		cache.set(key, data["id"], 86400)
+		return str(data["id"])
 
 	def add_reaction(self, repo: str, number: int, target: str, target_id: str, content: str) -> str | None:
 		path = REACTION_PATHS[target].format(id=target_id, number=number)

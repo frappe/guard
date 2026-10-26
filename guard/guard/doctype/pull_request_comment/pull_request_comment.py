@@ -17,6 +17,7 @@ class PullRequestComment(Document):
 		author: DF.Data | None
 		body: DF.LongText | None
 		commented_at: DF.Datetime | None
+		eyes_reaction: DF.Data | None
 		finding: DF.Link | None
 		in_reply_to: DF.Data | None
 		is_bot: DF.Check
@@ -30,6 +31,7 @@ class PullRequestComment(Document):
 		repository: DF.Link | None
 		retry_at: DF.Datetime | None
 		thread_id: DF.Data | None
+		waits_for_review: DF.Check
 	# end: auto-generated types
 
 	pass

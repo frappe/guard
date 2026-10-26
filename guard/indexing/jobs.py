@@ -26,6 +26,9 @@ def enqueue_index(repository: str, branch: str | None = None, full: bool = False
 		frappe.db.set_value("Repository Index", index, "status", "submitted")
 	if branch is None or branch == db.value("Code Repository", repository, "default_branch"):
 		frappe.db.set_value("Code Repository", repository, "index_status", "Queued")
+		from guard.knowledge.builder import repository_changed
+
+		repository_changed(repository)
 	frappe.enqueue(
 		"guard.indexing.jobs.run_index",
 		queue="long",

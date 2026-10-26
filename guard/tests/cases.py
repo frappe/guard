@@ -33,6 +33,7 @@ AUTO_APPROVE = '[auto_approve]\nenabled = true\nrisk_ceiling = "low"\n'
 
 PATCHED = (
 	"guard.review.pipeline",
+	"guard.review.state",
 	"guard.review.trigger",
 	"guard.learning.approve",
 	"guard.conversation.threads",

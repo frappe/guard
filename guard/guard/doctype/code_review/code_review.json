@@ -52,7 +52,10 @@
   "timing_col",
   "duration",
   "job_id",
+  "check_run_id",
+  "eyes_reaction",
   "cancel_requested",
+  "cancelled_by",
   "attempt",
   "retry_at",
   "data_section",
@@ -328,58 +331,79 @@
   {
    "fieldname": "timing_section",
    "fieldtype": "Section Break",
-   "idx": 39,
+   "idx": 41,
    "label": "Timing"
   },
   {
    "fieldname": "started_at",
    "fieldtype": "Datetime",
-   "idx": 40,
+   "idx": 42,
    "label": "Started At"
   },
   {
    "fieldname": "completed_at",
    "fieldtype": "Datetime",
-   "idx": 41,
+   "idx": 43,
    "label": "Completed At",
    "search_index": 1
   },
   {
    "fieldname": "timing_col",
    "fieldtype": "Column Break",
-   "idx": 42
+   "idx": 44
   },
   {
    "description": "Seconds",
    "fieldname": "duration",
    "fieldtype": "Float",
-   "idx": 43,
+   "idx": 45,
    "label": "Duration"
   },
   {
    "fieldname": "job_id",
    "fieldtype": "Data",
-   "idx": 44,
+   "idx": 46,
    "label": "Job Id"
+  },
+  {
+   "description": "The provider's id of the Guard check on the head commit",
+   "fieldname": "check_run_id",
+   "fieldtype": "Data",
+   "label": "Check Run Id",
+   "read_only": 1
+  },
+  {
+   "description": "The provider's id of the 👀 reaction on the pull request, to remove it when the review ends",
+   "fieldname": "eyes_reaction",
+   "fieldtype": "Data",
+   "label": "Eyes Reaction",
+   "read_only": 1
   },
   {
    "default": "0",
    "fieldname": "cancel_requested",
    "fieldtype": "Check",
-   "idx": 45,
+   "idx": 49,
    "label": "Cancel Requested"
+  },
+  {
+   "fieldname": "cancelled_by",
+   "fieldtype": "Link",
+   "label": "Cancelled By",
+   "options": "User",
+   "read_only": 1
   },
   {
    "fieldname": "attempt",
    "fieldtype": "Int",
-   "idx": 46,
+   "idx": 51,
    "label": "Attempt",
    "read_only": 1
   },
   {
    "fieldname": "retry_at",
    "fieldtype": "Datetime",
-   "idx": 47,
+   "idx": 52,
    "label": "Retry At",
    "read_only": 1
   },
@@ -387,49 +411,49 @@
    "collapsible": 1,
    "fieldname": "data_section",
    "fieldtype": "Section Break",
-   "idx": 48,
+   "idx": 53,
    "label": "Data"
   },
   {
    "fieldname": "important_files",
    "fieldtype": "JSON",
-   "idx": 49,
+   "idx": 54,
    "label": "Important Files"
   },
   {
    "fieldname": "context_used",
    "fieldtype": "JSON",
-   "idx": 50,
+   "idx": 55,
    "label": "Context Used"
   },
   {
    "fieldname": "changed_files",
    "fieldtype": "JSON",
-   "idx": 51,
+   "idx": 56,
    "label": "Changed Files"
   },
   {
    "fieldname": "config_snapshot",
    "fieldtype": "JSON",
-   "idx": 52,
+   "idx": 57,
    "label": "Config Snapshot"
   },
   {
    "fieldname": "cli_payload",
    "fieldtype": "JSON",
-   "idx": 53,
+   "idx": 58,
    "label": "Cli Payload"
   },
   {
    "fieldname": "body",
    "fieldtype": "Long Text",
-   "idx": 54,
+   "idx": 59,
    "label": "Body"
   },
   {
    "fieldname": "error",
    "fieldtype": "Long Text",
-   "idx": 55,
+   "idx": 60,
    "label": "Error"
   }
  ],
@@ -446,7 +470,7 @@
    "link_fieldname": "code_review"
   }
  ],
- "modified": "2026-10-25 17:06:56.000000",
+ "modified": "2026-10-26 19:10:20.121806",
  "modified_by": "Administrator",
  "module": "Guard",
  "name": "Code Review",

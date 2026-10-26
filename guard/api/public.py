@@ -2,10 +2,10 @@
 
 import frappe
 from frappe import _
-from frappe.utils import escape_html
+from frappe.utils import escape_html, now_datetime, time_diff_in_seconds
 
 from guard.review import links
-from guard.utils import cache, db
+from guard.utils import db
 
 RATE_SECONDS = 120
 
@@ -20,11 +20,14 @@ def retrigger(pull_request: str, sig: str = "") -> None:
 	if frappe.request.method != "POST":
 		_confirm(pull_request, sig)
 		return
-	key = f"guard:retrigger:{pull_request}"
-	if cache.get(key):
+	# Under the row lock, and saved before the review gate: two clicks at once start one review,
+	# and a link that the gate skips cannot be sent again and again.
+	last = db.value_for_update("Pull Request", pull_request, "retriggered_at")
+	if last and time_diff_in_seconds(now_datetime(), last) < RATE_SECONDS:
 		_page(_("A review started less than two minutes ago. Try again soon."))
 		return
-	cache.set(key, 1, RATE_SECONDS)
+	frappe.db.set_value("Pull Request", pull_request, "retriggered_at", now_datetime(), update_modified=False)
+	db.commit()
 	frappe.set_user("Administrator")  # nosemgrep: frappe-setuser -- after the signature check
 	from guard.review.trigger import consider
 

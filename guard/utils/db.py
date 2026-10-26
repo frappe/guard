@@ -1,6 +1,6 @@
 """Typed helpers around `frappe.db.sql` for raw queries."""
 
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from typing import Any, cast
 
 import frappe
@@ -65,9 +65,15 @@ def value(doctype: str, name: str | dict, field: str) -> Any:
 	return frappe.db.get_value(doctype, name, field)
 
 
-def values(doctype: str, name: str | dict, fields: Sequence[str]) -> dict[str, Any] | None:
-	"""Field values of one record as a dict, or None when it does not exist."""
-	result = frappe.db.get_value(doctype, name, list(fields), as_dict=True)
+def values(
+	doctype: str, name: str | dict, fields: Sequence[str], for_update: bool = False
+) -> dict[str, Any] | None:
+	"""Field values of one record as a dict, or None when it does not exist.
+
+	`for_update` locks the row until the transaction ends, so that a change based on these values
+	cannot race with another one.
+	"""
+	result = frappe.db.get_value(doctype, name, list(fields), as_dict=True, for_update=for_update)
 	return cast(dict[str, Any], result) if result else None
 
 
@@ -79,10 +85,32 @@ def due(field: str) -> list[list[Any]]:
 	return [[field, "is", "set"], [field, "<=", now_datetime()]]
 
 
+def value_for_update(doctype: str, name: str, field: str) -> Any:
+	"""One field of a record, with the row locked until the transaction ends."""
+	return frappe.db.get_value(doctype, name, field, for_update=True)
+
+
 def commit() -> None:
 	"""Commit in background jobs. Tests run in one transaction, so skip there."""
 	if not frappe.flags.in_test:
 		frappe.db.commit()  # nosemgrep: frappe-manual-commit -- background jobs commit their progress
+
+
+def after_commit(action: Callable[[], None]) -> None:
+	"""Run `action` when the transaction commits, so it acts only on state that is saved. Its own
+	writes are committed after it: the request has no later commit.
+
+	Tests run in one transaction that never commits, so there it runs at once.
+	"""
+	if frappe.flags.in_test:
+		action()
+		return
+
+	def run() -> None:
+		action()
+		commit()
+
+	frappe.db.after_commit.add(run)
 
 
 def rollback() -> None:

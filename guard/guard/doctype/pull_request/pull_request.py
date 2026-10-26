@@ -40,6 +40,7 @@ class PullRequest(Document):
 		opened_at: DF.Datetime | None
 		provider_node_id: DF.Data | None
 		repository: DF.Link
+		retriggered_at: DF.Datetime | None
 		review_count: DF.Int
 		risk_level: DF.Literal["", "low", "medium", "high", "critical"]
 		state: DF.Literal["open", "closed", "merged"]

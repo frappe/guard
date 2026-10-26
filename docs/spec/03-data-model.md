@@ -93,7 +93,7 @@ One record for each Frappe user. Name = user id.
 | `index_status` | Select | `Not Indexed`, `Queued`, `Indexing`, `Indexed`, `Failed` |
 | `default_index` | Link Repository Index | |
 | `languages` | JSON | Bytes for each language. |
-| `kb_status` | Select | `None`, `Building`, `Ready`, `Failed` |
+| `kb_status` | Select | `None`, `Queued`, `Building`, `Ready`, `Failed`. Queued from the request that asks for a build until its job starts. |
 
 The record name is a random hash. MCP and the API call it the namespace id.
 
@@ -135,7 +135,9 @@ The indexer writes these with bulk inserts. Names are content hashes, so a re-in
 
 ### Pull Request
 
-`repository`, `number`, `title`, `description`, `author`, `state` (open, closed, merged), `is_draft`, `base_branch`, `head_branch`, `base_sha`, `head_sha`, `first_commit_sha`, `head_clone_url`, `web_url`, `labels` (JSON), `opened_at`, `merged_at`, `closed_at`, `additions`, `deletions`, `changed_files`, `review_count`, `last_reviewed_sha`, `summary_comment_id`, `latest_review`, `confidence_score`, `risk_level`, `guard_approved`, `approval_id`, `tour` (JSON), `tour_sha`, `provider_node_id`, `addressed_attempt`, `addressed_retry_at`, `addressed_since`.
+`repository`, `number`, `title`, `description`, `author`, `state` (open, closed, merged), `is_draft`, `base_branch`, `head_branch`, `base_sha`, `head_sha`, `first_commit_sha`, `head_clone_url`, `web_url`, `labels` (JSON), `opened_at`, `merged_at`, `closed_at`, `additions`, `deletions`, `changed_files`, `review_count`, `last_reviewed_sha`, `summary_comment_id`, `latest_review`, `confidence_score`, `risk_level`, `guard_approved`, `approval_id`, `tour` (JSON), `tour_sha`, `provider_node_id`, `addressed_attempt`, `addressed_retry_at`, `addressed_since`, `retriggered_at`.
+
+`retriggered_at` is when a signed re-trigger link last started a review ([12-security.md](12-security.md)).
 
 `addressed_attempt` and `addressed_retry_at` hold the next try of an addressed check that met a busy or failing gateway. `addressed_since` is the `before` commit of the first push that was not checked.
 
@@ -164,6 +166,8 @@ The indexer writes these with bulk inserts. Names are content hashes, so a re-in
 | `review_number` | Int | 1 for the first review of a pull request. |
 | `started_at`, `completed_at`, `error`, `body` | mixed | `body` is the rendered summary comment. |
 | `stage`, `cancel_requested`, `attempt`, `retry_at` | mixed | Progress, cancellation, and the retry time after a busy gateway. A job every minute queues reviews whose `retry_at` has passed. |
+| `cancelled_by` | Link User | The user who cancelled the review. Blank when a newer review or a closed pull request cancelled it. |
+| `check_run_id`, `eyes_reaction` | Data | The provider ids of the Guard check on the head and of the 👀 on the pull request ([05-review-engine.md](05-review-engine.md#status)). |
 
 ### Review Finding
 
@@ -189,9 +193,9 @@ The indexer writes these with bulk inserts. Names are content hashes, so a re-in
 
 Every comment on a pull request, human or bot. Learning, thread replies and comment search use it.
 
-`pull_request`, `repository`, `provider_comment_id`, `kind` (issue, review, inline), `thread_id`, `in_reply_to`, `author`, `is_bot`, `is_guard`, `body`, `path`, `line`, `commented_at`, `finding`, `processed`, `attempt`, `retry_at`.
+`pull_request`, `repository`, `provider_comment_id`, `kind` (issue, review, inline), `thread_id`, `in_reply_to`, `author`, `is_bot`, `is_guard`, `body`, `path`, `line`, `commented_at`, `finding`, `processed`, `waits_for_review`, `eyes_reaction`, `attempt`, `retry_at`.
 
-`attempt` and `retry_at` hold the next try of a comment that met a busy or failing gateway.
+`attempt` and `retry_at` hold the next try of a comment that met a busy or failing gateway. `waits_for_review` marks a mention that asked for a review, and `eyes_reaction` holds the id of its 👀 ([07-conversations.md](07-conversations.md)).
 
 ### Review Feedback
 

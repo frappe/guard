@@ -25,6 +25,22 @@ Guard has no separate front end. One site serves one company, and every employee
 | Code Provider | Buttons: Test connection, Sync repositories, Show webhook URL. |
 | Guard Settings | Button: Fetch models from the gateway. |
 
+### Actions show at once
+
+A button changes the record in its request, and the form shows the new state before the answer comes back. On an error, the form loads the saved record again. The provider follows when the request commits, and background jobs never undo the change ([05-review-engine.md](05-review-engine.md#status)).
+
+| Action | At once |
+| - | - |
+| Cancel | Status Cancelled. The check ends, 👀 goes, and mentions get 😕. |
+| Retry, Re-review | A new Queued review, a queued check on the head, and the older reviews cancelled. |
+| Dismiss, Reopen | The finding status. The provider thread is resolved or reopened, and the check counts the open findings again. |
+| Index now, Full rebuild, Build knowledge base | Index or knowledge base status Queued. |
+| Use this, Discard, Approve, Ignore, Retire, Restore | The new status. |
+
+Bulk Retry in the Code Review list changes the rows in its request, as above, but a `short` job makes the provider calls: up to 100 reviews make too many calls for one request.
+
+Forms reload when the realtime events `guard_review_updated`, `guard_index_updated` and `guard_repository_updated` arrive.
+
 ### Connections
 
 The Connections tab of a form lists the documents that link to it. The `links` in the DocType JSON define them.

@@ -19,9 +19,24 @@
 
 Before stage 1, Guard checks the monthly credit cap. If the review would pass the cap, the review ends as Skipped, the status is `skipped`, and Guard posts one note on the pull request.
 
+### Status
+
+The Code Review row is the one source of truth for the status of a review. Guard does not keep it in Redis or in the state of an RQ job. `guard.review.state` owns the changes:
+
+- A job sets a status only through `state.move`. It reads the status under a row lock and writes only when the review is still in a status that allows the change, for example Queued or Running for Completed. A job that comes late, after a user cancelled or a newer review replaced the review, writes nothing.
+- A user action changes the row in the request. The provider and Desk show the change when the request commits, not when a worker is free. The background job catches up later.
+
+A new review shows at once. `create_review` posts a `queued` check on the head (Check run status `queued`, or a `pending` commit status) and sends the realtime event `guard_review_updated`. The id of the check is in `check_run_id` on the Code Review. A newer review of the same commit takes that id, so the commit keeps one check. When a queued review starts on a newer head, it ends its queued check on the old commit. When the config of the repository turns the check off, the review marks its queued check skipped.
+
 ### Cancellation
 
-A new push to a pull request cancels a queued or running review for an older head. The running job checks a cancel flag between stages and before each agent turn. A queued review checks it before it waits for the gateway or a free slot, so a cancelled review does not stay Queued. A deploy can start a second job of a review while the first still runs. The job that starts the review writes a claim to `job_id`. A job that finds a newer claim at a check stops, and writes nothing more to the review. Only one review runs for each pull request at a time.
+A user cancels from the Code Review form or the API. `state.cancel` sets Cancelled, `cancelled_by` and `completed_at` at once. When the request commits, Guard ends the check as neutral ("Guard stopped this review: ..."), removes the 👀 of the review, and gives 😕 to the mentions that asked for it. A review that posts its result (the publish and after stages) cannot be cancelled. The job writes each stage under the row lock, and the cancel reads the stage under the same lock, so a cancel either stops the job before it posts or sees that it is too late.
+
+A new push or a manual re-review cancels the queued and running reviews of the pull request the same way, and the new review takes over the check. Closing the pull request cancels its reviews too. The running job checks the status between stages and before each agent turn, and stops. It does not set a check, a reaction or a status after the cancel. If it set the check between two steps, it ends the check again.
+
+A stopped review ends its check only when no newer review of the commit exists and no other review of it runs: else the check belongs to that review. When an earlier review of the commit completed, the check gets that result back, not "stopped". The 👀 on the pull request is one reaction that the reviews share, so a stopped review removes it only when no other review of the pull request runs.
+
+The Code Review is the truth, not the RQ queue. Every minute, `resume_waiting` also queues again a Queued review that has had no job for 5 minutes: a request can die before its commit hooks queue the job, and Redis can lose its jobs. A deploy can start a second job of a review while the first still runs. The job that starts the review writes a claim to `job_id`. A job that finds a newer claim at a check stops, and writes nothing more to the review. Only one review runs for each pull request at a time.
 
 ### Failure
 
@@ -63,6 +78,8 @@ Less than 2 points gives base, or plus on the first review of a pull request: a 
 ## Stage 3: Fresh index
 
 If the base index is older than the merge base, Guard runs an incremental index for the files that changed between the two commits. A repository with no index gets a full index first. A large first index runs on the `long` queue and the review waits for it.
+
+For one hour after an index run fails, reviews go on without the graph and do not wait for the index again. The Repository Index keeps the error and the end time of the failed run until a later run completes.
 
 ## Stage 4: Context
 
@@ -286,8 +303,8 @@ Severity marks: 🔴 P0, 🟠 P1, 🟡 P2.
 | - | - |
 | Summary | Issue comment, edited on later reviews |
 | Inline comments | One review with all comments. If GitHub rejects a line, Guard posts the rest one by one and lists the rejected ones in the summary. |
-| Status | Check run (App) or commit status (token) |
-| Reactions | Issue reaction on the pull request |
+| Status | Check run (App) or commit status (token). The id of the check run is in `check_run_id` on the Code Review, so a cancel or a dismissed finding updates it without a lookup. Without an id, Guard updates the run in progress on the commit, if there is one. |
+| Reactions | Issue reaction on the pull request. The id of the 👀 is in `eyes_reaction` on the Code Review, so a cancel or a failure can remove it. |
 | Approve | Review with event `APPROVE` |
 
 ## Stage 10: After

@@ -31,7 +31,7 @@ Guard reacts on the comment that mentions it, so the author knows where the comm
 
 When the AI gateway is busy or down, the comment keeps 👀 and Guard reads it again later ([02-architecture.md](02-architecture.md#processes-and-queues)). It gets 😕 only when the last attempt fails. A new attempt does not record the same feedback again.
 
-If Guard does not accept a review command, for example because reviews are off for the repository, it removes 👀. A review runs later in a job, so the mention waits in the cache for 24 hours under the pull request and the comment. The last review of the pull request finishes every mention that waits. A push can cancel the review that a mention asked for. Then the mention keeps 👀, and the newer review gives it 👍 or 😕.
+If Guard does not accept a review command, for example because reviews are off for the repository, it removes 👀. A review runs later in a job, so the mention waits: its Pull Request Comment has `waits_for_review` set. The next review of the pull request that ends finishes every mention that waits. It takes them under a row lock, so when two reviews end at the same time, only one reacts. A push can cancel the review that a mention asked for. Then the mention keeps 👀, and the newer review gives it 👍 or 😕.
 
 ### Answers
 

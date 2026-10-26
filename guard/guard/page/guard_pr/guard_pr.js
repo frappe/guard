@@ -570,6 +570,8 @@ class GuardReviewPage {
 	// --------------------------------------------------------------- actions
 
 	async rereview() {
+		// At once: the new review reaches this page over realtime when the request commits.
+		frappe.show_alert({ message: __("Queuing a review"), indicator: "blue" });
 		const name = await frappe.xcall("guard.api.ui.rereview", { pull_request: this.name });
 		frappe.show_alert({
 			message: name ? __("Review {0} queued", [name]) : __("Review skipped"),

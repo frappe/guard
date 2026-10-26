@@ -21,6 +21,8 @@
   "commented_at",
   "finding",
   "processed",
+  "waits_for_review",
+  "eyes_reaction",
   "attempt",
   "retry_at"
  ],
@@ -131,6 +133,22 @@
    "label": "Processed"
   },
   {
+   "default": "0",
+   "description": "A mention that asked for a review. The next review of the pull request that ends answers it.",
+   "fieldname": "waits_for_review",
+   "fieldtype": "Check",
+   "label": "Waits For Review",
+   "read_only": 1,
+   "search_index": 1
+  },
+  {
+   "description": "The provider's id of the 👀 reaction on this comment",
+   "fieldname": "eyes_reaction",
+   "fieldtype": "Data",
+   "label": "Eyes Reaction",
+   "read_only": 1
+  },
+  {
    "fieldname": "attempt",
    "fieldtype": "Int",
    "label": "Attempt",
@@ -146,7 +164,7 @@
  ],
  "index_web_pages_for_search": 0,
  "links": [],
- "modified": "2026-10-26 19:00:00.000000",
+ "modified": "2026-10-26 19:10:20.121806",
  "modified_by": "Administrator",
  "module": "Guard",
  "name": "Pull Request Comment",

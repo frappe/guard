@@ -40,6 +40,7 @@ class FakeAdapter(ProviderAdapter):
 		self.comments: dict[str, str] = {}
 		self.reactions: dict[str, list[Reaction]] = {}
 		self.closed: list[tuple[str, str]] = []  # (repo, sha)
+		self.checks: list[tuple[str, str, str, str]] = []  # (sha, state, description, check id)
 		self._next = 100
 
 	def _id(self) -> str:
@@ -98,8 +99,12 @@ class FakeAdapter(ProviderAdapter):
 		self.calls.append(("create_review", comments))
 		return [PostedComment(cid := self._id(), f"https://github.test/r/{cid}", cid) for _ in comments]
 
-	def set_status(self, repo: str, sha: str, state: str, description: str, url: str = "") -> None:
+	def set_status(
+		self, repo: str, sha: str, state: str, description: str, url: str = "", check_id: str = ""
+	) -> str:
 		self.calls.append(("status", state))
+		self.checks.append((sha, state, description, check_id))
+		return check_id or f"check-{self._id()}"
 
 	def close_open_checks(self, repo: str, sha: str, description: str) -> int:
 		self.calls.append(("close_checks", description))
@@ -121,6 +126,9 @@ class FakeAdapter(ProviderAdapter):
 
 	def resolve_thread(self, repo: str, number: int, thread_id: str) -> None:
 		self.calls.append(("resolve", thread_id))
+
+	def unresolve_thread(self, repo: str, number: int, thread_id: str) -> None:
+		self.calls.append(("unresolve", thread_id))
 
 	def approve(self, repo: str, number: int, sha: str, body: str = "") -> str | None:
 		self.calls.append(("approve", sha))

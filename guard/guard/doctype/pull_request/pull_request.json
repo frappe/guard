@@ -47,6 +47,7 @@
   "addressed_attempt",
   "addressed_retry_at",
   "addressed_since",
+  "retriggered_at",
   "description",
   "tour"
  ],
@@ -324,15 +325,22 @@
    "read_only": 1
   },
   {
+   "description": "When a signed re-trigger link last started a review. The link waits two minutes between reviews.",
+   "fieldname": "retriggered_at",
+   "fieldtype": "Datetime",
+   "label": "Retriggered At",
+   "read_only": 1
+  },
+  {
    "fieldname": "description",
    "fieldtype": "Long Text",
-   "idx": 42,
+   "idx": 43,
    "label": "Description"
   },
   {
    "fieldname": "tour",
    "fieldtype": "JSON",
-   "idx": 43,
+   "idx": 44,
    "label": "Tour",
    "read_only": 1
   }
@@ -365,7 +373,7 @@
    "link_fieldname": "pull_request"
   }
  ],
- "modified": "2026-10-26 19:00:00.000000",
+ "modified": "2026-10-26 19:46:02.331629",
  "modified_by": "Administrator",
  "module": "Guard",
  "name": "Pull Request",

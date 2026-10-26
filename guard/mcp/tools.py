@@ -482,7 +482,12 @@ def create_custom_context(
 
 @tool("list_knowledge_bases", "Repositories with a knowledge base.")
 def list_knowledge_bases() -> dict[str, Any]:
-	rows = frappe.get_list("Code Repository", filters={"kb_status": "Ready"}, fields=["name", "full_name"])
+	# A queued build still has the documents of the last one.
+	rows = frappe.get_list(
+		"Code Repository",
+		filters={"kb_status": ["in", ["Ready", "Queued"]], "kb_version": ["is", "set"]},
+		fields=["name", "full_name"],
+	)
 	return {
 		"repositories": [{"namespace_id": r.name, "repo_name": r.full_name} for r in rows],
 		"returned": len(rows),

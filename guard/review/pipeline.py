@@ -28,16 +28,18 @@ from guard.review import (
 	checks,
 	context,
 	crossrepo,
+	links,
 	prompts,
 	rule_checks,
 	rule_files,
 	sandbox,
 	stale,
+	state,
 	verify,
 )
 from guard.review.agent import Agent, run_together, tools
 from guard.review.findings import FindingFilter, score_cap
-from guard.review.publish import Publisher, set_status
+from guard.review.publish import Publisher, remove_eyes, set_status
 from guard.review.run import ReviewRun, Verdict
 from guard.review.task import compose
 from guard.utils import db
@@ -46,6 +48,7 @@ from guard.utils.redact import redact
 if TYPE_CHECKING:
 	from guard.guard.doctype.code_review.code_review import CodeReview
 	from guard.guard.doctype.pull_request.pull_request import PullRequest
+	from guard.providers.base import ProviderAdapter
 
 AREA_FILES = 8
 # Parts of an apex review. A larger pull request gets parts for its riskiest files, and the pass
@@ -105,23 +108,16 @@ class ReviewPipeline:
 		A push can replace the review that a mention asked for. Then the newer review finishes them.
 		"""
 		status = db.value("Code Review", str(self.review.name), "status")
-		if status in ("Queued", "Running") or not self.review.pull_request:
+		if status in state.ACTIVE or not self.review.pull_request:
 			return
-		if status != "Completed" and self.replaced():
+		pull_request = str(self.review.pull_request)
+		if status != "Completed" and state.newer_review_runs(
+			pull_request, str(self.review.name), self.review.creation
+		):
 			return
 		from guard.conversation import acks
 
-		acks.review_finished(str(self.review.pull_request), failed=status != "Completed")
-
-	def replaced(self) -> bool:
-		"""A newer review of the pull request is queued or runs, and nothing cancelled it."""
-		return bool(
-			db.scalar(
-				"""SELECT COUNT(*) FROM `tabCode Review` WHERE pull_request = %s AND name != %s
-				AND creation > %s AND status IN ('Queued', 'Running') AND cancel_requested = 0""",
-				(str(self.review.pull_request), str(self.review.name), self.review.creation),
-			)
-		)
+		acks.review_finished(pull_request, failed=status != "Completed")
 
 	def attempt(self, attempt: int) -> None:
 		try:
@@ -139,8 +135,15 @@ class ReviewPipeline:
 			self.job_replaced = True
 			frappe.logger("guard").info(f"review {self.review.name}: a newer job took it over")
 		except Cancelled:
-			self.review.db_set({"status": "Cancelled", "completed_at": now_datetime()})
-			self.close_checks("Guard stopped this review: a newer review replaced it.")
+			db.rollback()
+			name = str(self.review.name)
+			# A cancel saves the status itself. Only a cancel from before that sets it here.
+			if state.move(name, {"status": "Cancelled", "completed_at": now_datetime(), "retry_at": None}):
+				state.notify(name)
+			db.commit()
+			# Again: this job can have set the check between two steps after the cancel.
+			if db.value("Code Review", name, "status") == "Cancelled":
+				state.show_cancelled(name)
 		except GatewayDown as down:
 			breaker.record_failure(str(down))
 			if wait := breaker.wait_seconds():
@@ -187,7 +190,9 @@ class ReviewPipeline:
 
 	def park(self, attempt: int, wait: int, stage: str) -> None:
 		"""Wait without using up a retry: the gateway is down, or every review slot is taken."""
-		self.review.db_set({"status": "Queued", "stage": stage})
+		if not state.move(str(self.review.name), {"status": "Queued", "stage": stage}):
+			db.commit()  # Let go of the row lock.
+			return
 		db.commit()
 		from guard.review.jobs import enqueue_review
 
@@ -205,7 +210,11 @@ class ReviewPipeline:
 		if attempt >= len(delays):
 			self.fail(failure)
 			return
-		self.review.db_set({"status": "Queued", "stage": f"waiting {delay}s for {waiting_for}"})
+		if not state.move(
+			str(self.review.name), {"status": "Queued", "stage": f"waiting {delay}s for {waiting_for}"}
+		):
+			db.commit()  # Let go of the row lock.
+			return
 		db.commit()
 		from guard.review.jobs import enqueue_review
 
@@ -329,10 +338,16 @@ class ReviewPipeline:
 
 	def prepare(self) -> ReviewRun | None:
 		self.claim = frappe.generate_hash(length=12)
-		self.review.db_set(
-			{"status": "Running", "started_at": now_datetime(), "stage": "prepare", "job_id": self.claim}
-		)
+		running = {
+			"status": "Running",
+			"started_at": now_datetime(),
+			"stage": "prepare",
+			"job_id": self.claim,
+		}
+		if not state.move(str(self.review.name), running):
+			raise Cancelled
 		db.commit()
+		self.review.reload()
 		if self.review.source == "cli":
 			from guard.review.cli_review import prepare_cli
 
@@ -382,6 +397,8 @@ class ReviewPipeline:
 		)
 		run.notes = list(config.errors)
 		run.fresh_lines = self.get_fresh_lines(store, pr.last_reviewed_sha or "", head)
+		if adapter and self.review.head_sha and self.review.head_sha != head:
+			self.leave_old_check(adapter, full_name, str(self.review.head_sha), head)
 		self.review.db_set(
 			{
 				"head_sha": head,
@@ -392,9 +409,11 @@ class ReviewPipeline:
 			}
 		)
 		if not run.files:
-			self.review.db_set(
-				{"status": "Skipped", "error": "no reviewable files", "completed_at": now_datetime()}
-			)
+			if not state.move(
+				str(self.review.name),
+				{"status": "Skipped", "error": "no reviewable files", "completed_at": now_datetime()},
+			):
+				raise Cancelled
 			self.skip_check(run, "it has no files to review")
 			return None
 		return run
@@ -440,9 +459,11 @@ class ReviewPipeline:
 		)
 		if used + guard_settings.CREDITS[run.tier] <= cap:
 			return True
-		self.review.db_set(
-			{"status": "Skipped", "error": "monthly credit cap reached", "completed_at": now_datetime()}
-		)
+		if not state.move(
+			str(self.review.name),
+			{"status": "Skipped", "error": "monthly credit cap reached", "completed_at": now_datetime()},
+		):
+			raise Cancelled
 		self.skip_check(run, "the monthly credit cap is reached")
 		if run.adapter and run.pr is not None:
 			run.adapter.post_comment(
@@ -577,16 +598,9 @@ class ReviewPipeline:
 		posted = [f for f in run.findings if f.kept]
 		# The Pull Request row first, as the webhook handler locks it: the other order deadlocks.
 		if run.pr is not None:
-			run.pr.db_set(
-				{
-					"review_count": number,
-					"last_reviewed_sha": run.head_sha,
-					"latest_review": self.review.name,
-					"confidence_score": run.verdict.confidence_score,
-					"risk_level": run.verdict.risk_level,
-				}
-			)
-		self.review.db_set(
+			db.value_for_update("Pull Request", str(run.pr.name), "name")
+		completed = state.move(
+			str(self.review.name),
 			{
 				"status": "Completed",
 				"completed_at": now_datetime(),
@@ -611,9 +625,23 @@ class ReviewPipeline:
 				"cached_tokens": run.usage.cached_tokens,
 				"agent_turns": run.turns,
 				"review_number": number,
-			}
+			},
+			("Running",),
 		)
+		if not completed:
+			# Another job ended the review, for example as dead. Its result stands.
+			db.commit()
+			return
 		if run.pr is not None:
+			run.pr.db_set(
+				{
+					"review_count": number,
+					"last_reviewed_sha": run.head_sha,
+					"latest_review": self.review.name,
+					"confidence_score": run.verdict.confidence_score,
+					"risk_level": run.verdict.risk_level,
+				}
+			)
 			frappe.enqueue(
 				"guard.review.jobs.after_review",
 				queue="short",
@@ -621,19 +649,15 @@ class ReviewPipeline:
 				review=self.review.name,
 				now=bool(frappe.flags.in_test),
 			)
+		state.notify(str(self.review.name))
 		db.commit()
-		data = {"review": self.review.name, "pull_request": self.review.pull_request}
-		# Document rooms: only people who have the review or the pull request open get the event.
-		frappe.publish_realtime("guard_review_updated", data, doctype="Code Review", docname=self.review.name)
-		if self.review.pull_request:
-			frappe.publish_realtime(
-				"guard_review_updated", data, doctype="Pull Request", docname=self.review.pull_request
-			)
 
 	# --------------------------------------------------------------- helpers
 
 	def stage(self, name: str) -> None:
-		self.check_cancel()
+		# Under the row lock: a cancel between the check and the write would lose its reason. A cancel
+		# that waits for the lock sees the new stage, and refuses once Guard posts.
+		self.check_cancel(lock=True)
 		self.review.db_set("stage", name, update_modified=False)
 		db.commit()
 
@@ -660,11 +684,14 @@ class ReviewPipeline:
 		)
 		db.commit()
 
-	def check_cancel(self) -> None:
-		row = db.values("Code Review", str(self.review.name), ("cancel_requested", "job_id")) or {}
+	def check_cancel(self, lock: bool = False) -> None:
+		row = (
+			db.values("Code Review", str(self.review.name), ("cancel_requested", "job_id", "status"), lock)
+			or {}
+		)
 		if self.claim and row.get("job_id") != self.claim:
 			raise JobReplaced
-		if row.get("cancel_requested"):
+		if row.get("cancel_requested") or row.get("status") == "Cancelled":
 			raise Cancelled
 
 	def existing_findings(self) -> list[dict[str, Any]]:
@@ -695,36 +722,36 @@ class ReviewPipeline:
 			or 1
 		)
 
+	def leave_old_check(self, adapter: "ProviderAdapter", full_name: str, old: str, head: str) -> None:
+		"""The pull request moved on while this review waited. End its queued check on the old commit,
+		and take the check of the new one."""
+		name = str(self.review.name)
+		pull_request = str(self.review.pull_request)
+		if self.review.check_run_id and not state.other_review_runs(pull_request, old, name):
+			text = f"Guard reviews the newer commit {head[:7]} instead."
+			state.end_check(adapter, full_name, pull_request, old, text, name, str(self.review.check_run_id))
+		self.review.db_set("check_run_id", state.check_of(pull_request, head), update_modified=False)
+
 	def skip_check(self, run: ReviewRun, reason: str) -> None:
 		"""Mark the check skipped, so nobody waits for a review. This also ends a check that an earlier
 		attempt started before it was sent back to the queue.
 
 		Not while another review of the commit runs: the check is shared, and that review ends it.
 		"""
-		if other_review_runs(str(self.review.pull_request), run.head_sha, str(self.review.name)):
+		if state.other_review_runs(str(self.review.pull_request), run.head_sha, str(self.review.name)):
 			return
 		Publisher(run).skip(reason)
 
-	def close_checks(self, description: str) -> None:
-		"""Complete the checks that this review left in progress on its commit.
-
-		Not while another review of the commit runs: the check is shared, and that review ends it.
-		"""
-		if not (self.review.pull_request and self.review.head_sha):
-			return
-		if other_review_runs(str(self.review.pull_request), str(self.review.head_sha), str(self.review.name)):
-			return
-		try:
-			repository = str(db.value("Pull Request", str(self.review.pull_request), "repository"))
-			adapter = adapter_for_repository(repository)
-			if adapter:
-				full_name = str(db.value("Code Repository", repository, "full_name"))
-				adapter.close_open_checks(full_name, str(self.review.head_sha), description)
-		except Exception as error:
-			frappe.log_error(redact(str(error)), "Guard checks")
-
 	def fail(self, message: str) -> None:
-		self.review.db_set({"status": "Failed", "error": message[:5000], "completed_at": now_datetime()})
+		if not state.move(
+			str(self.review.name),
+			{"status": "Failed", "error": message[:5000], "completed_at": now_datetime()},
+		):
+			db.commit()  # Let go of the row lock.
+			return
+		state.notify(str(self.review.name))
+		# Before the provider calls: a cancel must not wait for them on the row lock.
+		db.commit()
 		try:
 			self._report_failure()
 		except Exception:
@@ -739,21 +766,16 @@ class ReviewPipeline:
 		if not adapter:
 			return
 		full_name = str(db.value("Code Repository", str(pr.repository), "full_name"))
+		name = str(self.review.name)
 		# The status first: a failed reaction must not leave the check in progress.
 		if self.review.head_sha:
-			set_status(adapter, full_name, self.review.head_sha, "error", "Guard could not finish the review")
+			check = str(db.value("Code Review", name, "check_run_id") or "")
+			text = "Guard could not finish the review"
+			set_status(
+				adapter, full_name, self.review.head_sha, "error", text, links.code_review(name), check
+			)
+		remove_eyes(adapter, full_name, int(pr.number), name)
 		adapter.add_reaction(full_name, int(pr.number), "pr", "", "confused")
-
-
-def other_review_runs(pull_request: str, head_sha: str, review: str) -> bool:
-	"""Another review of the commit is queued or running."""
-	return bool(
-		db.scalar(
-			"""SELECT COUNT(*) FROM `tabCode Review` WHERE pull_request = %s AND head_sha = %s
-			AND name != %s AND status IN ('Queued', 'Running')""",
-			(pull_request, head_sha, review),
-		)
-	)
 
 
 def by_risk(run: ReviewRun) -> list[FileDiff]:

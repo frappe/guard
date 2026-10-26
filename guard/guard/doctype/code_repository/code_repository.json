@@ -172,7 +172,7 @@
    "fieldtype": "Select",
    "idx": 20,
    "label": "Knowledge Base Status",
-   "options": "None\nBuilding\nReady\nFailed",
+   "options": "None\nQueued\nBuilding\nReady\nFailed",
    "read_only": 1
   },
   {
@@ -236,7 +236,7 @@
    "table_fieldname": "members"
   }
  ],
- "modified": "2026-10-25 16:55:29.000000",
+ "modified": "2026-10-26 19:10:20.121806",
  "modified_by": "Administrator",
  "module": "Guard",
  "name": "Code Repository",

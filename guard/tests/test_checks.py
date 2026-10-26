@@ -44,30 +44,49 @@ class TestCheckRuns(UnitTestCase):
 		self.assertEqual((payload or {})["conclusion"], "neutral")
 		self.assertFalse([1 for method, _, _ in github.sent if method == "POST"])
 
-	def test_a_lost_cache_reuses_the_run_in_progress(self):
-		# A deploy clears the cache. Before, the next status made a second run, and the first one
-		# said "Guard is reviewing" for ever.
+	def test_without_an_id_the_run_in_progress_is_used(self):
+		# Before, the next status made a second run, and the first one said "Guard is reviewing"
+		# for ever.
 		github = FakeGitHub([run(1, started="2026-10-24T08:00:00Z"), run(2, started="2026-10-24T09:00:00Z")])
-		with (
-			patch("guard.providers.github.cache.get", return_value=None),
-			patch("guard.providers.github.cache.set"),
-		):
-			github.set_status("acme/app", "abc", "pending", "Guard is reviewing")
-			self.assertEqual(github.patched(), ["2"])
-			github.sent.clear()
-			github.set_status("acme/app", "abc", "success", "5/5")
+		self.assertEqual(github.set_status("acme/app", "abc", "pending", "Guard is reviewing"), "2")
+		self.assertEqual(github.patched(), ["2"])
+		github.sent.clear()
+		github.set_status("acme/app", "abc", "success", "5/5")
 		self.assertEqual(sorted(github.patched()), ["1", "2"])
 		self.assertFalse([1 for method, _, _ in github.sent if method == "POST"])
 
+	def test_the_known_id_is_updated_without_a_lookup(self):
+		github = FakeGitHub([run(1)])
+		self.assertEqual(github.set_status("acme/app", "abc", "cancelled", "Stopped.", check_id="9"), "9")
+		self.assertEqual([method for method, _, _ in github.sent], ["PATCH"])
+		payload = github.sent[0][2] or {}
+		# Not "cancelled": a required check fails on it.
+		self.assertEqual((payload["status"], payload["conclusion"]), ("completed", "neutral"))
+
+	def test_a_lost_run_id_falls_back_to_a_new_run(self):
+		# For example after the app was installed again: the stored id answers 404.
+		github = FakeGitHub([])
+		gone = ProviderError("PATCH: 404 Not Found", 404)
+		original = github.request
+
+		def request(method: str, path: str, auth: bool = True, **kwargs: Any) -> Any:
+			if method == "PATCH" and path.endswith("/9"):
+				github.sent.append((method, path, kwargs.get("json")))
+				raise gone
+			return original(method, path, auth, **kwargs)
+
+		with patch.object(github, "request", side_effect=request):
+			self.assertEqual(
+				github.set_status("acme/app", "abc", "pending", "Guard is reviewing", check_id="9"), "500"
+			)
+		self.assertEqual([method for method, _, _ in github.sent], ["PATCH", "GET", "POST"])
+
 	def test_a_new_commit_gets_a_new_run(self):
 		github = FakeGitHub([])
-		with (
-			patch("guard.providers.github.cache.get", return_value=None),
-			patch("guard.providers.github.cache.set") as remember,
-		):
-			github.set_status("acme/app", "abc", "pending", "Guard is reviewing")
+		check = github.set_status("acme/app", "abc", "queued", "Guard will review this commit soon")
 		self.assertEqual([method for method, _, _ in github.sent], ["GET", "POST"])
-		remember.assert_called_once()
+		self.assertEqual((github.sent[1][2] or {})["status"], "queued")
+		self.assertTrue(check)
 
 
 class TestInstallationToken(UnitTestCase):

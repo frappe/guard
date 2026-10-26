@@ -212,8 +212,14 @@ class ProviderAdapter:
 	def update_description(self, repo: str, number: int, body: str) -> None:
 		raise NotImplementedError
 
-	def set_status(self, repo: str, sha: str, state: str, description: str, url: str = "") -> None:
-		"""`state` is pending, success, failure, error or skipped."""
+	def set_status(
+		self, repo: str, sha: str, state: str, description: str, url: str = "", check_id: str = ""
+	) -> str:
+		"""Create or update Guard's check on `sha`. Return its id, or "" when the provider has none.
+
+		`state` is queued, pending, success, failure, error, skipped or cancelled. `check_id` is the id that an
+		earlier call returned for the commit: Guard keeps it on the Code Review.
+		"""
 		raise NotImplementedError
 
 	def close_open_checks(self, repo: str, sha: str, description: str) -> int:

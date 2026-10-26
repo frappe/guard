@@ -1,25 +1,22 @@
 frappe.ui.form.on("Code Repository", {
+	setup(frm) {
+		for (const event of ["guard_index_updated", "guard_repository_updated"])
+			frappe.realtime.on(
+				event,
+				(data) => data.repository === frm.doc.name && frm.reload_doc()
+			);
+	},
 	refresh(frm) {
-		frm.add_custom_button(
-			__("Index now"),
-			() =>
-				frappe
-					.xcall("guard.api.ui.index_now", { repository: frm.doc.name })
-					.then(() => frappe.show_alert(__("Indexing queued"))),
-			__("Index")
-		);
-		frm.add_custom_button(
-			__("Full rebuild"),
-			() =>
-				frappe
-					.xcall("guard.api.ui.index_now", { repository: frm.doc.name, full: 1 })
-					.then(() => frappe.show_alert(__("Rebuild queued"))),
-			__("Index")
-		);
+		const index = (full) =>
+			optimistic(frm, { index_status: "Queued" }, () =>
+				frappe.xcall("guard.api.ui.index_now", { repository: frm.doc.name, full })
+			);
+		frm.add_custom_button(__("Index now"), () => index(0), __("Index"));
+		frm.add_custom_button(__("Full rebuild"), () => index(1), __("Index"));
 		frm.add_custom_button(__("Build knowledge base"), () =>
-			frappe
-				.xcall("guard.api.ui.build_knowledge_base", { repository: frm.doc.name })
-				.then(() => frappe.show_alert(__("Knowledge base build queued")))
+			optimistic(frm, { kb_status: "Queued" }, () =>
+				frappe.xcall("guard.api.ui.build_knowledge_base", { repository: frm.doc.name })
+			)
 		);
 		frm.add_custom_button(__("Explain config"), () => {
 			frappe.prompt(
@@ -68,9 +65,15 @@ frappe.ui.form.on("Code Repository", {
 			);
 		});
 		frm.add_custom_button(__("Codebase chat"), () => frappe.set_route("guard-chat"));
-		frappe.realtime.on(
-			"guard_index_updated",
-			(data) => data.repository === frm.doc.name && frm.reload_doc()
-		);
 	},
 });
+
+// Show `values` on the form at once, then make the call. Then load the saved record, also on an error.
+function optimistic(frm, values, call) {
+	Object.assign(frm.doc, values);
+	frm.refresh();
+	return call().then(
+		() => frm.reload_doc(),
+		() => frm.reload_doc()
+	);
+}

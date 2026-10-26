@@ -20,7 +20,9 @@ class CodeReview(Document):
 		branch: DF.Data | None
 		cached_tokens: DF.Int
 		cancel_requested: DF.Check
+		cancelled_by: DF.Link | None
 		changed_files: DF.JSON | None
+		check_run_id: DF.Data | None
 		cli_payload: DF.JSON | None
 		completed_at: DF.Datetime | None
 		confidence_reason: DF.SmallText | None
@@ -32,6 +34,7 @@ class CodeReview(Document):
 		diagram_type: DF.Literal["", "sequence", "er", "class", "flow"]
 		duration: DF.Float
 		error: DF.LongText | None
+		eyes_reaction: DF.Data | None
 		files_reviewed: DF.Int
 		findings_count: DF.Int
 		head_sha: DF.Data | None

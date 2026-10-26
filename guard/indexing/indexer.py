@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
 import frappe
-from frappe.utils import now_datetime
+from frappe.utils import now_datetime, time_diff_in_seconds
 
 from guard.git.repository import store_for
 from guard.git.store import GitStore, TreeEntry
@@ -20,7 +20,7 @@ from guard.indexing.selection import FileSelector, is_minified, is_text
 from guard.indexing.symbols import EntityRow, SymbolTable
 from guard.indexing.vectors import VectorRow, VectorStore
 from guard.llm.embeddings import Embedder
-from guard.utils import cache, db
+from guard.utils import db
 from guard.utils.locks import file_lock
 
 if TYPE_CHECKING:
@@ -110,12 +110,17 @@ def index_lock(index: str) -> AbstractContextManager[bool]:
 
 
 def recent_failure(index: str) -> str:
-	"""The error of a run that failed in the last hour, else an empty string."""
-	return str(cache.get(_failed_key(index)) or "")
+	"""The error of a run that failed in the last hour, else an empty string.
 
-
-def _failed_key(index: str) -> str:
-	return f"guard:index-failed:{index}"
+	A failed run keeps its error and end time until a later run completes, also while that run is
+	in progress.
+	"""
+	row = db.values("Repository Index", index, ("status", "error", "completed_at")) or {}
+	if row.get("status") == "completed" or not row.get("error") or not row.get("completed_at"):
+		return ""
+	if time_diff_in_seconds(now_datetime(), row["completed_at"]) > FAILED_FOR:
+		return ""
+	return str(row["error"])[:500]
 
 
 class Indexer:
@@ -140,19 +145,18 @@ class Indexer:
 				# Without a sha, the next run indexes every file again. A run that failed before it
 				# wrote, for example in the fetch, left the rows of the last complete run as they were.
 				sha = None if self.writing else self.previous
-				self._set(status="failed", sha=sha, error=str(error)[:5000])
+				# Reviews skip the index for an hour after this, rather than fail the same way one by one.
+				self._set(status="failed", sha=sha, error=str(error)[:5000], completed_at=now_datetime())
 				frappe.db.set_value("Code Repository", self.repository, "index_status", "Failed")
 				db.commit()
-				# Reviews skip the index for an hour, rather than fail the same way one by one.
-				cache.set(_failed_key(self.index), str(error)[:500], FAILED_FOR)
 				raise
-			cache.delete(_failed_key(self.index))
 
 	def _run(self) -> None:
 		# Read it before the status changes below.
 		self.previous = None if self.doc.status == WRITING else self.doc.sha
 		# Clear the sha of half done rows now, in case this run dies in "cloning" too.
-		self._set(status="cloning", sha=self.previous, started_at=now_datetime(), error=None)
+		# The error of the last run stays until this one completes: see `recent_failure`.
+		self._set(status="cloning", sha=self.previous, started_at=now_datetime())
 		store = store_for(self.repository)
 		store.fetch_branches(self.doc.branch)
 		sha = store.rev_parse(f"refs/heads/{self.doc.branch}")
@@ -448,6 +452,7 @@ class Indexer:
 			sha=sha,
 			parser_version=PARSER_VERSION,
 			completed_at=now_datetime(),
+			error=None,
 			entity_count=counts["Code Entity"],
 			edge_count=counts["Code Edge"],
 			chunk_count=counts["Code Chunk"],

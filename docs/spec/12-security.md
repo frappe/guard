@@ -72,7 +72,7 @@ Runtime validation runs code from the pull request.
 
 ## Links in comments
 
-- Re-trigger links carry an HMAC signature over the pull request name with the site secret. A GET only shows a **Review again** button. The POST from that button starts the review, so link scanners and crawlers that open every link in a comment do not start reviews. A link starts at most one review every 2 minutes for each pull request.
+- Re-trigger links carry an HMAC signature over the pull request name with the site secret. A GET only shows a **Review again** button. The POST from that button starts the review, so link scanners and crawlers that open every link in a comment do not start reviews. A link starts at most one review every 2 minutes for each pull request. The time is in `retriggered_at` on the Pull Request. Guard reads it under the row lock and saves it before the review gate, so two clicks at once start one review and a link that the gate skips is limited too.
 - Fix links open Desk. Desk login protects them.
 
 ## Audit

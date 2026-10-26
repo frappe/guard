@@ -20,7 +20,7 @@ class CodeRepository(Document):
 		full_name: DF.Data
 		index_status: DF.Literal["Not Indexed", "Queued", "Indexing", "Indexed", "Failed"]
 		is_private: DF.Check
-		kb_status: DF.Literal["None", "Building", "Ready", "Failed"]
+		kb_status: DF.Literal["None", "Queued", "Building", "Ready", "Failed"]
 		kb_version: DF.Data | None
 		languages: DF.JSON | None
 		provider_repo_id: DF.Data | None

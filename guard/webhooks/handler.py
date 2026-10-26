@@ -115,12 +115,17 @@ def _pull_request(repository: str, event: WebhookEvent) -> bool:
 		trigger.consider(name, trigger.push_kind(repository, before, event.after))
 		return True
 	if action in ("closed", "merged"):
+		from guard.review import state
+
 		for review in frappe.get_all(
 			"Code Review",
 			filters={"pull_request": name, "status": ["in", ["Queued", "Running"]]},
 			pluck="name",
 		):
-			frappe.db.set_value("Code Review", review, "cancel_requested", 1)
+			try:
+				state.cancel(review, state.CLOSED)
+			except state.NotActive:
+				pass  # It posts its result now.
 		addressed.enqueue("on_close", pull_request=name)
 		return True
 	return False

@@ -12,7 +12,7 @@ from guard.graph.queries import Link
 from guard.llm.client import ChatRequest, LLMClient, use_responder
 from guard.llm.types import ChatResult, GatewayBilling, GatewayBusy, Message, ToolCall, Usage
 from guard.providers.base import ProviderComment, ProviderError
-from guard.review import jobs, trigger
+from guard.review import jobs, state, trigger
 from guard.review import pipeline as pipeline_module
 from guard.review.agent import Agent
 from guard.review.context import BuiltContext
@@ -80,7 +80,7 @@ class TestPipeline(PullRequestCase):
 		self.assertIn("<summary><b>Impact</b></summary>", summary)
 		self.assertIn("-.->|may break|", summary)
 		self.assertIn("Reviews (1)", summary)
-		self.assertEqual(self.adapter.named("status"), ["pending", "failure"])
+		self.assertEqual(self.adapter.named("status"), ["queued", "pending", "failure"])
 		self.assertIn("+1", self.adapter.named("react"))
 
 	def test_summary_is_posted_above_the_inline_comments(self):
@@ -135,6 +135,8 @@ class TestPipeline(PullRequestCase):
 		self.assertEqual(failed["status"], "Failed")
 		self.assertEqual(failed["agent_turns"], 1)
 		self.assertGreaterEqual(failed["input_tokens"], 100)
+		# As a retry does: only a queued review starts again.
+		db.set_values("Code Review", name, {"status": "Queued"})
 		with use_responder(scripted(submit)):
 			ReviewPipeline(name).attempt(1)
 		done = db.values("Code Review", name, ("status", "input_tokens", "agent_turns")) or {}
@@ -732,17 +734,20 @@ class TestPipeline(PullRequestCase):
 	def test_cancelled_review_closes_its_check(self):
 		# A newer review cancels this one while the model runs. Its check said "Guard is reviewing".
 		def cancel_then_submit(request):
-			frame = frappe.get_all("Code Review", filters={"pull_request": self.pr}, pluck="name")
-			frappe.db.set_value("Code Review", frame[0], "cancel_requested", 1)
+			name = frappe.get_all("Code Review", filters={"pull_request": self.pr}, pluck="name")[0]
+			state.cancel(name, state.REPLACED)
 			return respond(request)
 
 		respond = scripted([[("submit_review", {"summary": "s", "confidence_score": 5})]])
 		with use_responder(cancel_then_submit):
 			name = trigger.consider(self.pr, "open")
 		self.assertEqual(self.row(name)["status"], "Cancelled")
+		check = db.value("Code Review", str(name), "check_run_id")
 		self.assertEqual(
-			self.adapter.named("close_checks"), ["Guard stopped this review: a newer review replaced it."]
+			self.adapter.checks[-1],
+			(self.head, "cancelled", "Guard stopped this review: a newer review replaced it.", check),
 		)
+		self.assertNotIn("+1", self.adapter.named("react"))
 
 	def test_older_job_of_a_review_stops_when_a_newer_job_takes_it(self):
 		# suite #881: after a deploy, a second job ran the review while the first one still ran.
@@ -761,7 +766,7 @@ class TestPipeline(PullRequestCase):
 		self.assertEqual((row["status"], row["input_tokens"]), ("Running", 12345))
 		self.assertNotIn(row["stage"], ("publish", "after"))
 		self.assertEqual(self.adapter.named("close_checks"), [])
-		self.assertEqual(self.adapter.named("status"), ["pending"])
+		self.assertEqual(self.adapter.named("status"), ["queued", "pending"])
 
 	def test_hourly_job_closes_checks_of_finished_commits_only(self):
 		from guard.review import jobs
@@ -917,7 +922,7 @@ class TestPipeline(PullRequestCase):
 	def test_skip_keeps_the_check_of_a_reviewed_commit(self):
 		self.review([[("submit_review", {"summary": "s", "confidence_score": 5})]])
 		statuses = self.adapter.named("status")
-		self.assertEqual(statuses, ["pending", "success"])
+		self.assertEqual(statuses, ["queued", "pending", "success"])
 		# A skipped check counts as passing on GitHub. It must not replace the result of a review.
 		frappe.db.set_value("Pull Request", self.pr, "is_draft", 1)
 		self.assertIsNone(trigger.consider(self.pr, "open"))
@@ -948,7 +953,7 @@ class TestPipeline(PullRequestCase):
 			# Later tests in this class would hit the cap.
 			frappe.db.set_single_value("Guard Settings", "monthly_credit_cap", cap)
 		self.assertEqual(self.row(name)["status"], "Skipped")
-		self.assertEqual(self.adapter.named("status"), ["pending", "skipped"])
+		self.assertEqual(self.adapter.named("status"), ["queued", "pending", "skipped"])
 
 	def test_skip_authors_from_review_settings(self):
 		settings = frappe.get_doc("Review Settings", "Organization")
@@ -1212,7 +1217,7 @@ class TestApexAreas(IntegrationTestCase):
 			run.tier = "apex"
 			run.files = parse_diff(diff)
 			pipeline = ReviewPipeline.__new__(ReviewPipeline)
-			pipeline.check_cancel = lambda: None
+			pipeline.check_cancel = lambda lock=False: None
 			pipeline.save_usage = lambda: None
 			pipeline.current = run
 			pipeline.started = time.time()
@@ -1254,7 +1259,7 @@ class TestApexAreas(IntegrationTestCase):
 			)
 
 		pipeline = ReviewPipeline.__new__(ReviewPipeline)
-		pipeline.check_cancel = lambda: None
+		pipeline.check_cancel = lambda lock=False: None
 		pipeline.current = None
 		pipeline.started = time.time()
 		with use_responder(respond):

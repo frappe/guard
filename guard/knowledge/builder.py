@@ -399,7 +399,11 @@ def enqueue_build(repository: str, only: list[str] | None = None) -> None:
 	"""Queue a build of every document, or of the paths in `only`.
 
 	One job id for both: a stale sync does not run while a full build of the repository is queued.
+	A full build shows Queued at once. The documents of the last build stay readable until it starts.
 	"""
+	if only is None and db.value("Code Repository", repository, "kb_status") != "Building":
+		frappe.db.set_value("Code Repository", repository, "kb_status", "Queued")
+		repository_changed(repository)
 	frappe.enqueue(
 		"guard.knowledge.builder.build",
 		queue="long",
@@ -412,17 +416,33 @@ def enqueue_build(repository: str, only: list[str] | None = None) -> None:
 	)
 
 
-def recover_stuck() -> None:
-	"""Every 5 minutes: end the Building status of a build whose job stopped, for example in a deploy.
+def repository_changed(repository: str) -> None:
+	"""Tell an open Code Repository form to load the record again."""
+	frappe.publish_realtime(
+		"guard_repository_updated",
+		{"repository": repository},
+		doctype="Code Repository",
+		docname=repository,
+		after_commit=True,
+	)
 
-	Pushes mark documents stale and MCP reads them only while the status is Ready. A repository
-	with a finished earlier build still has its documents, so it goes back to Ready.
+
+def recover_stuck() -> None:
+	"""Every 5 minutes: end the Queued or Building status of a build whose job stopped, for example
+	in a deploy.
+
+	Pushes mark documents stale and MCP reads them only while the status is Ready or Queued. A
+	repository with a finished earlier build still has its documents, so it goes back to Ready.
 	"""
 	for row in frappe.get_all(
-		"Code Repository", filters={"kb_status": "Building"}, fields=["name", "kb_version"]
+		"Code Repository",
+		filters={"kb_status": ["in", ["Queued", "Building"]]},
+		fields=["name", "kb_status", "kb_version"],
 	):
-		if not is_job_enqueued(job_id(row.name)):
-			db.set_values("Code Repository", row.name, {"kb_status": "Ready" if row.kb_version else "Failed"})
+		if is_job_enqueued(job_id(row.name)):
+			continue
+		lost = "None" if row.kb_status == "Queued" else "Failed"
+		db.set_values("Code Repository", row.name, {"kb_status": "Ready" if row.kb_version else lost})
 
 
 def mark_stale(repository: str, paths: list[str]) -> None:

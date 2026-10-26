@@ -14,6 +14,7 @@ from guard.providers import adapter_for_repository
 from guard.review import permissions
 from guard.review.jobs import create_review
 from guard.review.publish import report_skip
+from guard.review.state import check_of
 from guard.utils import db
 
 if TYPE_CHECKING:
@@ -65,11 +66,25 @@ def consider(
 	if not result.allowed:
 		frappe.logger("guard").info(f"review skipped for {pull_request}: {result.reason}")
 		if adapter and config.settings.get("status_check", True) and not owns_check(pull_request, head):
-			report_skip(adapter, str(repo.get("full_name")), head, result.reason)
+			report_skip(
+				adapter,
+				str(repo.get("full_name")),
+				head,
+				result.reason,
+				check_id=check_of(pull_request, head),
+			)
 		return None
 	trigger = event if not manual else ("retrigger" if event == "retrigger" else "mention")
 	user = permissions.user_for_login(requested_by) if requested_by else None
-	return create_review(pull_request, trigger, requested_by, requested_tier, instructions, user)
+	return create_review(
+		pull_request,
+		trigger,
+		requested_by,
+		requested_tier,
+		instructions,
+		user,
+		bool(config.settings.get("status_check", True)),
+	)
 
 
 def owns_check(pull_request: str, head: str) -> bool:

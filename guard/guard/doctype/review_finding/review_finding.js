@@ -8,13 +8,14 @@ frappe.ui.form.on("Review Finding", {
 			);
 		const next = frm.doc.status === "Open" ? "Dismissed" : "Open";
 		if (["Open", "Dismissed"].includes(frm.doc.status)) {
-			frm.add_custom_button(next === "Open" ? __("Reopen") : __("Dismiss"), async () => {
-				await frappe.xcall("guard.api.ui.set_finding_status", {
-					finding: frm.doc.name,
-					status: next,
-				});
-				frm.reload_doc();
-			});
+			frm.add_custom_button(next === "Open" ? __("Reopen") : __("Dismiss"), () =>
+				optimistic(frm, { status: next }, () =>
+					frappe.xcall("guard.api.ui.set_finding_status", {
+						finding: frm.doc.name,
+						status: next,
+					})
+				)
+			);
 		}
 		const prompt = frm.doc.fix_prompt || "";
 		const target = encodeURIComponent(frm.doc.name);
@@ -42,3 +43,13 @@ frappe.ui.form.on("Review Finding", {
 			});
 	},
 });
+
+// Show `values` on the form at once, then make the call. Then load the saved record, also on an error.
+function optimistic(frm, values, call) {
+	Object.assign(frm.doc, values);
+	frm.refresh();
+	return call().then(
+		() => frm.reload_doc(),
+		() => frm.reload_doc()
+	);
+}

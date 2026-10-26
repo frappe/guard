@@ -39,6 +39,14 @@ class TestRetriggerLink(PullRequestCase):
 		self.open("POST", pull_request=self.pr, sig=links.sign(self.pr))
 		self.consider.assert_called_once_with(self.pr, "retrigger", manual=True)
 
+	def test_a_link_starts_one_review_in_two_minutes_also_when_the_gate_skips(self):
+		frappe.set_user("Guest")
+		self.consider.return_value = None
+		self.open("POST", pull_request=self.pr, sig=links.sign(self.pr))
+		self.open("POST", pull_request=self.pr, sig=links.sign(self.pr))
+		self.consider.assert_called_once()
+		self.assertIn("less than two minutes", str(frappe.local.message))
+
 	def test_link_without_a_signature_is_not_valid(self):
 		# Some link scanners read `&amp;sig=` from the comment HTML and send `amp;sig` instead of `sig`.
 		frappe.set_user("Guest")
