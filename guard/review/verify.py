@@ -4,12 +4,16 @@ check of the confidence score."""
 import re
 from typing import Any
 
-from guard.llm.client import LLMClient
+import frappe
+
+from guard.llm.client import LLMClient, parse_json
+from guard.llm.types import ChatResult, Message
 from guard.review.findings import SEVERITIES, Finding, score_cap, similar_titles
 from guard.review.prompts import VERDICT, VERIFIER, data
 from guard.review.rule_files import project_rules
 from guard.review.run import ReviewRun
 from guard.utils import db
+from guard.utils.redact import redact
 
 CODE_RADIUS = 15
 # `path/to/file.py:45`, `file.py:10-20` or `file.py:45,50` in the text of a finding.
@@ -17,6 +21,11 @@ CITED = re.compile(r"([\w][\w./-]*\.\w{1,6}):(\d+)(?:[-\u2013](\d+))?")
 MAX_CITED = 4
 CITED_RADIUS = 8
 LIBRARY_CONFIDENCE = 0.5
+# Findings for each verifier call. With one call for all findings, apex reviews of 14 to 28
+# findings often got an answer that was cut short or was not JSON, and no finding was checked.
+BATCH = 6
+# The start of an unusable answer goes to the Error Log, enough to see what went wrong.
+LOGGED_ANSWER = 1000
 
 
 def verify(run: ReviewRun) -> None:
@@ -28,37 +37,73 @@ def verify(run: ReviewRun) -> None:
 		return
 	rules = {rule.id: rule.text for rule in project_rules(run.rule_files)}
 	earlier = _earlier_verdicts(run)
-	prompt = "\n\n".join(
+	batches = [candidates[start : start + BATCH] for start in range(0, len(candidates), BATCH)]
+	system = Message("system", VERIFIER + "\n\nAnswer with JSON only.")
+	conversations = [[system, Message("user", _prompt(run, batch, rules, earlier))] for batch in batches]
+	results = client.chat_many(conversations)
+	for batch, result in zip(batches, results, strict=True):
+		answers = _answers(run, batch, result)
+		for index, finding in enumerate(batch):
+			if index in answers:
+				_apply(run, finding, answers[index])
+			else:
+				finding.verify_failed = True
+
+
+def _prompt(
+	run: ReviewRun, batch: list[Finding], rules: dict[str, str], earlier: list[dict[str, Any]]
+) -> str:
+	return "\n\n".join(
 		_item(run, index, finding, rules.get(finding.rule_id or "", ""))
 		+ _cited(run, finding)
 		+ _earlier(finding, earlier, index)
-		for index, finding in enumerate(candidates)
+		for index, finding in enumerate(batch)
 	)
-	answers = client.complete_json(VERIFIER, prompt, default=[])
-	if not isinstance(answers, list):
+
+
+def _answers(run: ReviewRun, batch: list[Finding], result: ChatResult) -> dict[int, dict[str, Any]]:
+	"""The answer for each finding of `batch`, by its index in the batch.
+
+	An answer that is cut short is not used: its last verdicts can be missing or wrong. When an
+	answer leaves out findings, it goes to the Error Log, because those findings are not checked.
+	"""
+	value = None if result.truncated else parse_json(result.content)
+	answers: dict[int, dict[str, Any]] = {}
+	for answer in value if isinstance(value, list) else []:
+		index = answer.get("index") if isinstance(answer, dict) else None
+		if isinstance(index, int) and 0 <= index < len(batch):
+			answers.setdefault(index, answer)
+	if len(answers) < len(batch):
+		_log_unusable(run, len(batch), len(answers), result)
+	return answers
+
+
+def _log_unusable(run: ReviewRun, size: int, answered: int, result: ChatResult) -> None:
+	review = getattr(run.review, "name", "") or ""
+	message = (
+		f"Review {review}: the verifier answered {answered} of {size} findings. "
+		f"Stop reason: {result.stop_reason or 'none'}. Model: {result.model or 'unknown'}.\n\n"
+		f"{result.content[:LOGGED_ANSWER]}"
+	)
+	frappe.log_error(redact(message), "Guard verifier")
+
+
+def _apply(run: ReviewRun, finding: Finding, answer: dict[str, Any]) -> None:
+	finding.verified = True
+	if answer.get("valid") is False:
+		finding.drop("Dismissed", f"verifier: {str(answer.get('reason') or 'not valid')[:200]}")
 		return
-	for answer in answers:
-		if not isinstance(answer, dict):
-			continue
-		index = answer.get("index")
-		if not isinstance(index, int) or not 0 <= index < len(candidates):
-			continue
-		finding = candidates[index]
-		finding.verified = True
-		if answer.get("valid") is False:
-			finding.drop("Dismissed", f"verifier: {str(answer.get('reason') or 'not valid')[:200]}")
-			continue
-		proven = finding.severity == "P0" and proven_break(run, finding)
-		if answer.get("severity") in SEVERITIES and not proven:
-			finding.severity = answer["severity"]
-		if isinstance(answer.get("confidence"), int | float):
-			finding.confidence = min(max(float(answer["confidence"]), 0.0), 1.0)
-		if answer.get("evidence") == "library" and not proven:
-			# The claim rests on how a library behaves, which no code here shows. Models get that
-			# wrong: they posted P1s about boto3 and frappe.log_error that were not true.
-			finding.severity = "P2"
-			finding.confidence = min(finding.confidence, LIBRARY_CONFIDENCE)
-			finding.extra["evidence"] = "library"
+	proven = finding.severity == "P0" and proven_break(run, finding)
+	if answer.get("severity") in SEVERITIES and not proven:
+		finding.severity = answer["severity"]
+	if isinstance(answer.get("confidence"), int | float):
+		finding.confidence = min(max(float(answer["confidence"]), 0.0), 1.0)
+	if answer.get("evidence") == "library" and not proven:
+		# The claim rests on how a library behaves, which no code here shows. Models get that
+		# wrong: they posted P1s about boto3 and frappe.log_error that were not true.
+		finding.severity = "P2"
+		finding.confidence = min(finding.confidence, LIBRARY_CONFIDENCE)
+		finding.extra["evidence"] = "library"
 
 
 def check_verdict(run: ReviewRun) -> None:

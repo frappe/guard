@@ -1,7 +1,13 @@
+import json
+import re
+from unittest.mock import PropertyMock, patch
+
 from frappe.tests import UnitTestCase
 
 from guard.evals import run as evals
 from guard.git.diff import parse_diff
+from guard.llm.client import ChatRequest, LLMClient, use_responder
+from guard.llm.types import ChatResult, Usage
 from guard.review import checks, verify
 from guard.review.findings import Finding, FindingFilter
 from guard.review.rule_files import ProjectRule, collect, project_rules
@@ -146,6 +152,14 @@ class TestRuleFilter(UnitTestCase):
 		self.assertTrue(confirmed.kept)
 		self.assertEqual(unchecked.status_reason, "low-confidence P2 at strictness 2")
 
+	def test_a_p2_that_the_verifier_did_not_answer_for_stays(self):
+		# central#546: the answer for 14 findings was cut short, and strictness 2 dropped five P2s
+		# that no verifier had looked at.
+		unanswered = finding(line=3)
+		unanswered.confidence, unanswered.verify_failed = 0.45, True
+		FindingFilter(parse_diff(DIFF), {"strictness": 2}).run([unanswered])
+		self.assertTrue(unanswered.kept)
+
 	def test_one_comment_for_an_issue_on_many_lines(self):
 		# pilot#690 got one P1 three times, and suite#881 one check 108 times.
 		repeats = [finding("P1", line=n) for n in (1, 2, 3)]
@@ -161,7 +175,73 @@ class TestRuleFilter(UnitTestCase):
 		self.assertTrue(lone.kept)
 
 
+def verifier(answer=None, stop_reason="end_turn"):
+	"""A responder that marks every finding of a verify call valid, and the requests it got.
+	`answer` maps the number of findings in a call to the indexes that it answers."""
+	requests: list[ChatRequest] = []
+
+	def respond(request: ChatRequest) -> ChatResult:
+		requests.append(request)
+		count = len(re.findall(r'<data label="finding \d+">', request.messages[-1].content))
+		indexes = (answer or {}).get(count, range(count))
+		verdicts = [{"index": i, "valid": True, "confidence": 0.9} for i in indexes]
+		return ChatResult(json.dumps(verdicts), [], Usage(10, 5), stop_reason=stop_reason)
+
+	return respond, requests
+
+
 class TestVerifier(UnitTestCase):
+	def setUp(self):
+		online = patch.object(LLMClient, "online", new_callable=PropertyMock, return_value=True)
+		online.start()
+		self.addCleanup(online.stop)
+		log = patch("guard.review.verify.frappe.log_error")
+		self.log = log.start()
+		self.addCleanup(log.stop)
+
+	def verify(self, findings, respond):
+		run = ReviewRun(None, None, "", lambda path: "x = 1\n", lambda path: None, lambda path: [], "", "")
+		run.tier, run.findings = "plus", findings
+		with use_responder(respond):
+			verify.verify(run)
+
+	def test_findings_go_to_the_verifier_in_batches(self):
+		# central#546: one call for 14 findings got an answer that was cut short, and none was checked.
+		findings = [finding("P1", line=n) for n in range(1, 15)]
+		respond, requests = verifier()
+		self.verify(findings, respond)
+		counts = [len(re.findall(r'label="finding \d+"', r.messages[-1].content)) for r in requests]
+		# The calls run side by side, so they can reach the responder in any order.
+		self.assertEqual(sorted(counts), [2, 6, 6])
+		# Each batch counts its findings from 0, as its answer does.
+		self.assertTrue(all('<data label="finding 0">' in r.messages[-1].content for r in requests))
+		self.assertTrue(all(f.verified and f.confidence == 0.9 for f in findings))
+		self.log.assert_not_called()
+
+	def test_an_answer_cut_short_is_not_used(self):
+		findings = [finding("P1", line=n) for n in (1, 2)]
+		respond, _ = verifier(stop_reason="max_tokens")
+		self.verify(findings, respond)
+		self.assertTrue(all(f.verify_failed and not f.verified for f in findings))
+		self.assertEqual([f.confidence for f in findings], [0.7, 0.7])
+		[(message, title), _] = self.log.call_args
+		self.assertEqual(title, "Guard verifier")
+		self.assertIn("answered 0 of 2 findings. Stop reason: max_tokens.", message)
+
+	def test_findings_that_an_answer_leaves_out_are_marked(self):
+		first, second = finding("P1", line=1), finding("P1", line=2)
+		respond, _ = verifier(answer={2: [0]})
+		self.verify([first, second], respond)
+		self.assertEqual((first.verified, first.verify_failed), (True, False))
+		self.assertEqual((second.verified, second.verify_failed), (False, True))
+		self.assertIn("answered 1 of 2 findings", self.log.call_args.args[0])
+
+	def test_an_answer_that_is_not_json_is_logged(self):
+		lone = finding("P1")
+		self.verify([lone], lambda request: ChatResult("I think it holds.", [], Usage(10, 5)))
+		self.assertTrue(lone.verify_failed)
+		self.assertIn("I think it holds.", self.log.call_args.args[0])
+
 	def test_project_rule_text_goes_to_the_verifier(self):
 		run = ReviewRun(None, None, "", lambda path: "x = 1\n", lambda path: None, lambda path: [], "", "")
 		item = verify._item(run, 0, finding(rule_id="project:CLAUDE.md:5"), "Always add tests.")

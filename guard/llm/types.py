@@ -3,6 +3,9 @@
 from dataclasses import dataclass, field
 from typing import Any
 
+# Stop reasons that mean the answer hit a limit and is cut short: Anthropic, then OpenAI.
+TRUNCATED = ("max_tokens", "model_context_window_exceeded", "length")
+
 
 @dataclass
 class ToolSpec:
@@ -53,6 +56,10 @@ class ChatResult:
 	stop_reason: str = ""
 	model: str = ""
 	thinking: list[dict[str, Any]] = field(default_factory=list)
+
+	@property
+	def truncated(self) -> bool:
+		return self.stop_reason in TRUNCATED
 
 	def as_message(self) -> Message:
 		return Message(

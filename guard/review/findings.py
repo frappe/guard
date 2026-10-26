@@ -32,6 +32,8 @@ class Finding:
 	side: str = "RIGHT"
 	outside_diff: bool = False
 	verified: bool = False
+	# The verifier was asked about this finding, and its answer did not cover it.
+	verify_failed: bool = False
 	status: str = "Open"
 	status_reason: str = ""
 	sandbox_log: str = ""
@@ -145,7 +147,9 @@ class FindingFilter:
 		"""At strictness 2, a P2 that no verifier confirmed needs confidence. One that the verifier
 		confirmed is correct and worth posting already: its confidence says nothing more. Before,
 		this dropped nearly every confirmed P2, because the verifier rated them 0.5 to 0.55.
-		A break of a project rule is a P2 that the repository asked for: it stays."""
+		A break of a project rule is a P2 that the repository asked for: it stays. So does a P2 that
+		the verifier did not answer for: its confidence is still the reviewer's first guess, and an
+		answer that is cut short is no evidence against it."""
 		strictness = int(self.settings.get("strictness") or 2)
 		for finding in findings:
 			if not finding.kept:
@@ -157,7 +161,7 @@ class FindingFilter:
 					continue
 				if finding.extra.get("evidence") == "library":
 					finding.drop("Dismissed", "rests on library behavior that the code does not show")
-				elif not finding.verified:
+				elif not finding.verified and not finding.verify_failed:
 					finding.drop("Dismissed", "low-confidence P2 at strictness 2")
 
 	def filter_rereview(self, findings: list[Finding]) -> None:

@@ -181,6 +181,8 @@ The system prompt tells the agent to:
 
 For plus and apex, Guard sends each finding with its code and context to the tier model. The model answers `valid`, a corrected severity and a confidence. Guard drops findings that are not valid. Base reviews verify only P0 findings. A finding from a project rule goes to the verifier with the rule text.
 
+The findings go in batches of 6, one call for each batch, side by side. With one call for all findings, a large review often got an answer that was cut short, and then no finding was checked. Guard does not use an answer that stopped at its token limit. When an answer is cut short, is not JSON, or leaves out findings, Guard writes it to the Error Log ("Guard verifier"), with the review, the stop reason and the start of the answer. The findings that it leaves out are marked `verify_failed`. They keep the severity and confidence of the reviewer.
+
 With each finding the verifier also gets:
 
 - the code at each place that the finding names as `path:line`, up to 4, when that place is not next to the finding. The evidence of an issue is often in another file;
@@ -197,7 +199,7 @@ In this order:
 1. **Anchor.** Move each finding to a line inside the diff on the head side. If the line is not in the diff, mark it `outside_diff`.
 2. **Comment types.** Drop types that the merged config does not allow.
 3. **Project rules.** A P2 that breaks a project rule stays at strictness 2 whatever its confidence, and of any comment type.
-4. **Strictness.** 1 keeps all. 2 drops a P2 with confidence below 0.6 that no verifier confirmed, and a P2 that rests on library behavior. A P2 that the verifier confirmed is kept: it is correct and worth posting. 3 keeps only P0 and P1.
+4. **Strictness.** 1 keeps all. 2 drops a P2 with confidence below 0.6 that no verifier confirmed, and a P2 that rests on library behavior. A P2 that the verifier confirmed is kept: it is correct and worth posting. A P2 marked `verify_failed` is kept too: the verifier was asked and gave no answer, which is no evidence against it. 3 keeps only P0 and P1.
 5. **Re-review.** On a later review, drop a P2 unless it touches a line added since the last reviewed commit.
 6. **Dedupe in the review.** Same path, overlapping lines and similar title: keep the higher severity.
 7. **Dedupe across reviews.** Skip a finding whose fingerprint or vector matches (cosine 0.88 or more) an open finding on the same pull request.
