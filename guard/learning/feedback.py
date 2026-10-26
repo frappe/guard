@@ -70,6 +70,8 @@ def read_reply(body: str, thread: str) -> ReplyReading:
 def record_reply(finding: str, pull_request: str, comment: ProviderComment, sentiment: str) -> str | None:
 	if not learning_on():
 		return None
+	if earlier := _recorded(finding, "Reply", comment.id):
+		return earlier
 	doc = _feedback(finding, pull_request, comment.author, "Reply", sentiment, comment.body, comment.id)
 	if sentiment == "Agree":
 		mark_addressed(finding, None, "author agreed in the thread")
@@ -82,6 +84,8 @@ def record_reply(finding: str, pull_request: str, comment: ProviderComment, sent
 def record_mention(pull_request: str, comment: ProviderComment, text: str) -> str | None:
 	if not learning_on():
 		return None
+	if earlier := _recorded(None, "Reply", comment.id):
+		return earlier
 	doc = _feedback(None, pull_request, comment.author, "Reply", "Context", text, comment.id)
 	memory_writer.enqueue(doc)
 	return doc
@@ -89,6 +93,8 @@ def record_mention(pull_request: str, comment: ProviderComment, text: str) -> st
 
 def record_missed(pull_request: str, comment: ProviderComment) -> str:
 	"""A human comment that raised what Guard did not."""
+	if earlier := _recorded(None, "Missed", comment.id):
+		return earlier
 	return _feedback(None, pull_request, comment.author, "Missed", "", comment.body, comment.id)
 
 
@@ -158,6 +164,13 @@ def mark_ignored(finding: str) -> None:
 		{"status": "Ignored", "status_reason": "still open when the pull request closed"},
 	)
 	_feedback(finding, db.value("Review Finding", finding, "pull_request"), "", "Ignored", "", "", "")
+
+
+def _recorded(finding: str | None, kind: str, ref: str) -> str | None:
+	"""Feedback that an earlier attempt on the same comment stored. A retry must not count it again."""
+	filters = {"provider_ref": ref, "kind": kind, "finding": finding or ["is", "not set"]}
+	name = db.value("Review Feedback", filters, "name")
+	return str(name) if name else None
 
 
 def _feedback(

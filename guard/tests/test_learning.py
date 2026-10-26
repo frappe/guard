@@ -1,6 +1,7 @@
 from unittest.mock import patch
 
 import frappe
+from frappe.utils import add_to_date, now_datetime
 
 from guard.api import ui
 from guard.conversation import threads
@@ -8,12 +9,14 @@ from guard.indexing.vectors import VectorRow, VectorStore
 from guard.learning import addressed, feedback, memories, memory_writer, suggestions
 from guard.llm.client import ChatRequest, use_responder
 from guard.llm.embeddings import Embedder
+from guard.llm.types import GatewayBusy
 from guard.providers.base import ProviderComment, Reaction
 from guard.review import trigger
 from guard.tests.cases import PullRequestCase
 from guard.tests.fakes import scripted
 from guard.tests.utils import TempRepo, make_repository
 from guard.utils import db
+from guard.webhooks import handler
 
 FINDING = {
 	"path": "app/models.py",
@@ -28,7 +31,7 @@ CHECK = "Check that get_user results are not None before use."
 MEMORY = "In app/**, user dicts are per-request copies. Mutating them is intended."
 
 
-class TestLearning(PullRequestCase):
+class LearningCase(PullRequestCase):
 	def setUp(self):
 		super().setUp()
 		frappe.db.set_single_value("Guard Settings", "teach_permission", "Everyone")
@@ -55,6 +58,8 @@ class TestLearning(PullRequestCase):
 		self.assertTrue(row.get("provider_comment_id"))
 		return str(row["name"]), str(row["provider_comment_id"])
 
+
+class TestLearning(LearningCase):
 	def memory(self, body):
 		return db.values(
 			"Custom Context",
@@ -298,3 +303,130 @@ class TestLearning(PullRequestCase):
 			)
 		self.assertFalse([r for r in self.requests if r.purpose == "missed"])
 		self.assertFalse(db.value("Review Feedback", {"kind": "Missed", "pull_request": self.pr}, "name"))
+
+
+class TestGatewayRetries(LearningCase):
+	"""Comments and addressed checks wait for a busy or failing gateway, and then run again."""
+
+	def question(self) -> ProviderComment:
+		_, comment_id = self.posted_finding()
+		# Rows outlive a test: Frappe rolls back once for each class. So each test gets its own id.
+		reply = ProviderComment(
+			frappe.generate_hash(length=8),
+			"inline",
+			"bob",
+			"Why is this a problem?",
+			in_reply_to=comment_id,
+			number=7,
+		)
+		handler.store_comment(self.pr, self.repository, reply, False)
+		return reply
+
+	def busy_answers(self, busy: bool):
+		"""Read the reply as a question. The answer fails while `busy` is true."""
+		responder = scripted(
+			["The cached copy is shared."], {"reply": '{"class": "answer", "sentiment": "Question"}'}
+		)
+
+		def respond(request):
+			if busy and request.purpose == "conversation":
+				raise GatewayBusy("429", 5)
+			return responder(request)
+
+		return use_responder(respond)
+
+	def comment_retry(self, comment_id):
+		return (
+			db.values(
+				"Pull Request Comment",
+				{"pull_request": self.pr, "provider_comment_id": comment_id},
+				("attempt", "retry_at"),
+			)
+			or {}
+		)
+
+	def reactions(self, comment_id):
+		return [r[2] for r in self.adapter.named("reaction") if r[1] == comment_id]
+
+	def test_answer_waits_for_a_busy_gateway_and_runs_again(self):
+		reply = self.question()
+		with self.busy_answers(True), self.online():
+			handler.handle_comment(self.pr, reply.__dict__)
+		retry = self.comment_retry(reply.id)
+		self.assertEqual(retry["attempt"], 1)
+		self.assertGreater(retry["retry_at"], now_datetime())
+		self.assertEqual(self.reactions(reply.id), ["eyes"])  # no 😕 while Guard still tries
+		self.assertFalse(self.adapter.named("reply"))
+
+		db.set_values(
+			"Pull Request Comment",
+			str(
+				db.value(
+					"Pull Request Comment", {"pull_request": self.pr, "provider_comment_id": reply.id}, "name"
+				)
+			),
+			{"retry_at": add_to_date(now_datetime(), seconds=-1)},
+		)
+		with self.busy_answers(False), self.online():
+			handler.resume_comments()
+		self.assertEqual(self.adapter.named("reply"), ["The cached copy is shared."])
+		self.assertIn("+1", self.reactions(reply.id))
+		self.assertNotIn("confused", self.reactions(reply.id))
+		self.assertIsNone(self.comment_retry(reply.id)["retry_at"])
+		# The retry did not record the reply a second time.
+		self.assertEqual(frappe.db.count("Review Feedback", {"provider_ref": reply.id}), 1)
+
+	def test_answer_gives_up_after_the_last_attempt(self):
+		reply = self.question()
+		last = len(handler.COMMENT_RETRY_DELAYS)
+		with self.busy_answers(True), self.online(), self.assertRaises(GatewayBusy):
+			handler.handle_comment(self.pr, reply.__dict__, attempt=last)
+		self.assertIsNone(self.comment_retry(reply.id)["retry_at"])
+		self.assertEqual(self.reactions(reply.id)[-2:], ["removed", "confused"])
+
+	def test_close_check_waits_for_a_busy_gateway(self):
+		with patch("guard.learning.addressed._judge_close", side_effect=GatewayBusy("429", 5)):
+			addressed.on_close(self.pr)
+		row = db.values("Pull Request", self.pr, ("addressed_attempt", "addressed_retry_at")) or {}
+		self.assertEqual(row["addressed_attempt"], 1)
+		self.assertGreater(row["addressed_retry_at"], now_datetime())
+
+		db.set_values(
+			"Pull Request",
+			self.pr,
+			{"state": "closed", "addressed_retry_at": add_to_date(now_datetime(), seconds=-1)},
+		)
+		with patch("guard.learning.addressed._judge_close") as judge:
+			addressed.resume()
+		judge.assert_called_once_with(self.pr)
+		self.assertIsNone(db.value("Pull Request", self.pr, "addressed_retry_at"))
+
+	def test_push_check_runs_again_from_the_first_push_that_failed(self):
+		with patch("guard.learning.addressed._judge_push", side_effect=GatewayBusy("429", 5)):
+			addressed.on_push(self.pr, "first", "second")
+			addressed.on_push(self.pr, "second", "third")
+		self.assertEqual(db.value("Pull Request", self.pr, "addressed_since"), "first")
+
+		head = db.value("Pull Request", self.pr, "head_sha")
+		frappe.db.set_value(
+			"Pull Request", self.pr, "addressed_retry_at", add_to_date(now_datetime(), seconds=-1)
+		)
+		with patch("guard.learning.addressed._judge_push") as judge:
+			addressed.resume()
+		judge.assert_called_once_with(self.pr, "first", head)
+		self.assertFalse(db.value("Pull Request", self.pr, "addressed_since"))
+
+	def test_check_fails_after_the_last_attempt(self):
+		last = len(addressed.RETRY_DELAYS)
+		with (
+			patch("guard.learning.addressed._judge_close", side_effect=GatewayBusy("429", 5)),
+			self.assertRaises(GatewayBusy),
+		):
+			addressed.on_close(self.pr, attempt=last)
+		self.assertIsNone(db.value("Pull Request", self.pr, "addressed_retry_at"))
+
+	def test_comment_and_addressed_jobs_get_a_long_timeout(self):
+		with patch("frappe.enqueue") as enqueue:
+			handler.enqueue_comment(self.pr, ProviderComment("c1", "issue", "bob", "hi"))
+			addressed.enqueue("on_close", pull_request=self.pr)
+		self.assertEqual([c.kwargs["timeout"] for c in enqueue.call_args_list], [1800, 1800])

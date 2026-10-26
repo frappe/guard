@@ -1,10 +1,15 @@
 """Process one stored Webhook Delivery."""
 
 import json
+from typing import TYPE_CHECKING, cast
 
 import frappe
+from frappe.utils import add_to_date, now_datetime
 
 from guard import settings as guard_settings
+from guard.learning import addressed
+from guard.llm import breaker
+from guard.llm.types import GatewayBusy
 from guard.providers import sync
 from guard.providers.base import ProviderComment
 from guard.review import pull_requests, trigger
@@ -14,7 +19,14 @@ from guard.utils.timeutil import parse_iso
 from guard.webhooks import github
 from guard.webhooks.events import WebhookEvent
 
+if TYPE_CHECKING:
+	from guard.guard.doctype.pull_request_comment.pull_request_comment import PullRequestComment
+
 OPEN_ACTIONS = {"opened", "reopened", "ready"}
+# An answer makes up to 9 gateway calls, and each one can wait for a rate limit.
+COMMENT_TIMEOUT = 1800
+# Seconds before each new attempt of a comment that met a busy or failing gateway.
+COMMENT_RETRY_DELAYS = (120, 600, 1800)
 
 
 def process(delivery: str) -> None:
@@ -99,15 +111,7 @@ def _pull_request(repository: str, event: WebhookEvent) -> bool:
 		approve.dismiss(name)
 		db.commit()
 		if before and event.after:
-			frappe.enqueue(
-				"guard.learning.addressed.on_push",
-				queue="default",
-				enqueue_after_commit=True,
-				now=bool(frappe.flags.in_test),
-				pull_request=name,
-				before=before,
-				after=event.after,
-			)
+			addressed.enqueue("on_push", pull_request=name, before=before, after=event.after)
 		trigger.consider(name, trigger.push_kind(repository, before, event.after))
 		return True
 	if action in ("closed", "merged"):
@@ -117,13 +121,7 @@ def _pull_request(repository: str, event: WebhookEvent) -> bool:
 			pluck="name",
 		):
 			frappe.db.set_value("Code Review", review, "cancel_requested", 1)
-		frappe.enqueue(
-			"guard.learning.addressed.on_close",
-			queue="default",
-			enqueue_after_commit=True,
-			now=bool(frappe.flags.in_test),
-			pull_request=name,
-		)
+		addressed.enqueue("on_close", pull_request=name)
 		return True
 	return False
 
@@ -138,21 +136,73 @@ def _comment(repository: str, event: WebhookEvent) -> bool:
 	store_comment(str(pr.name), repository, comment, is_guard)
 	if is_guard or comment.is_bot:
 		return True
-	frappe.enqueue(
-		"guard.webhooks.handler.handle_comment",
-		queue="default",
-		enqueue_after_commit=True,
-		now=bool(frappe.flags.in_test),
-		pull_request=str(pr.name),
-		comment=comment.__dict__,
-	)
+	enqueue_comment(str(pr.name), comment)
 	return True
 
 
-def handle_comment(pull_request: str, comment: dict) -> None:
+def enqueue_comment(pull_request: str, comment: ProviderComment, attempt: int = 0) -> None:
+	frappe.enqueue(
+		"guard.webhooks.handler.handle_comment",
+		queue="default",
+		timeout=COMMENT_TIMEOUT,
+		enqueue_after_commit=True,
+		now=bool(frappe.flags.in_test),
+		pull_request=pull_request,
+		comment=comment.__dict__,
+		attempt=attempt,
+	)
+
+
+def handle_comment(pull_request: str, comment: dict, attempt: int = 0) -> None:
+	"""Read one human comment. When the gateway is busy or down, try it again later."""
 	from guard.conversation import threads
 
-	threads.handle(pull_request, ProviderComment(**comment))
+	parsed = ProviderComment(**comment)
+	try:
+		threads.handle(pull_request, parsed)
+	except GatewayBusy as busy:
+		if attempt >= len(COMMENT_RETRY_DELAYS):
+			threads.give_up(pull_request, parsed)
+			raise
+		delay = max(busy.retry_after, COMMENT_RETRY_DELAYS[attempt], breaker.wait_seconds())
+		name = db.value(
+			"Pull Request Comment", {"pull_request": pull_request, "provider_comment_id": parsed.id}, "name"
+		)
+		if not name:
+			raise
+		db.set_values(
+			"Pull Request Comment",
+			str(name),
+			{"attempt": attempt + 1, "retry_at": add_to_date(now_datetime(), seconds=delay)},
+		)
+
+
+def resume_comments() -> None:
+	"""Every minute: queue again the comments whose retry time has passed."""
+	for row in frappe.get_all(
+		"Pull Request Comment",
+		filters={"retry_at": ["<=", now_datetime()]},
+		fields=["name", "pull_request", "attempt"],
+	):
+		db.set_values("Pull Request Comment", row.name, {"retry_at": None})
+		enqueue_comment(row.pull_request, stored_comment(row.name), int(row.attempt or 0))
+
+
+def stored_comment(name: str) -> ProviderComment:
+	row = cast("PullRequestComment", frappe.get_doc("Pull Request Comment", name))
+	return ProviderComment(
+		id=row.provider_comment_id or "",
+		kind=row.kind or "issue",
+		author=row.author or "",
+		body=row.body or "",
+		created_at=str(row.commented_at or ""),
+		path=row.path or None,
+		line=row.line or None,
+		in_reply_to=row.in_reply_to or None,
+		thread_id=row.thread_id or None,
+		is_bot=bool(row.is_bot),
+		number=int(db.value("Pull Request", row.pull_request, "number") or 0) or None,
+	)
 
 
 def store_comment(pull_request: str, repository: str, comment: ProviderComment, is_guard: bool) -> None:

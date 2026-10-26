@@ -48,6 +48,8 @@ On GitHub, resolving a thread needs the App permission **Contents: Read & write*
 2. The fast model judges each one.
 3. Addressed findings get Addressed. The rest get Ignored, and Guard adds Review Feedback of kind Ignored.
 
+When the AI gateway is busy or down, the check runs again later ([02-architecture.md](02-architecture.md#processes-and-queues)). A push check runs again from the first push that was not checked up to the head. If the pull request closed in the meantime, the close check runs instead.
+
 ## Missed issues
 
 A human review comment can raise a problem that Guard did not. Guard checks a comment when all of these are true:

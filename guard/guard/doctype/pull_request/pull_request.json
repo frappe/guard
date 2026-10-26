@@ -44,6 +44,9 @@
   "guard_approved",
   "approval_id",
   "tour_sha",
+  "addressed_attempt",
+  "addressed_retry_at",
+  "addressed_since",
   "description",
   "tour"
  ],
@@ -302,15 +305,34 @@
    "read_only": 1
   },
   {
+   "fieldname": "addressed_attempt",
+   "fieldtype": "Int",
+   "label": "Addressed Attempt",
+   "read_only": 1
+  },
+  {
+   "fieldname": "addressed_retry_at",
+   "fieldtype": "Datetime",
+   "label": "Addressed Retry At",
+   "read_only": 1,
+   "search_index": 1
+  },
+  {
+   "fieldname": "addressed_since",
+   "fieldtype": "Data",
+   "label": "Addressed Since",
+   "read_only": 1
+  },
+  {
    "fieldname": "description",
    "fieldtype": "Long Text",
-   "idx": 39,
+   "idx": 42,
    "label": "Description"
   },
   {
    "fieldname": "tour",
    "fieldtype": "JSON",
-   "idx": 40,
+   "idx": 43,
    "label": "Tour",
    "read_only": 1
   }
@@ -343,7 +365,7 @@
    "link_fieldname": "pull_request"
   }
  ],
- "modified": "2026-10-25 17:06:56.000000",
+ "modified": "2026-10-26 19:00:00.000000",
  "modified_by": "Administrator",
  "module": "Guard",
  "name": "Pull Request",

@@ -13,6 +13,7 @@ class PullRequestComment(Document):
 	if TYPE_CHECKING:
 		from frappe.types import DF
 
+		attempt: DF.Int
 		author: DF.Data | None
 		body: DF.LongText | None
 		commented_at: DF.Datetime | None
@@ -27,6 +28,7 @@ class PullRequestComment(Document):
 		provider_comment_id: DF.Data | None
 		pull_request: DF.Link
 		repository: DF.Link | None
+		retry_at: DF.Datetime | None
 		thread_id: DF.Data | None
 	# end: auto-generated types
 

@@ -20,7 +20,9 @@
   "line",
   "commented_at",
   "finding",
-  "processed"
+  "processed",
+  "attempt",
+  "retry_at"
  ],
  "fields": [
   {
@@ -127,11 +129,24 @@
    "fieldtype": "Check",
    "idx": 15,
    "label": "Processed"
+  },
+  {
+   "fieldname": "attempt",
+   "fieldtype": "Int",
+   "label": "Attempt",
+   "read_only": 1
+  },
+  {
+   "fieldname": "retry_at",
+   "fieldtype": "Datetime",
+   "label": "Retry At",
+   "read_only": 1,
+   "search_index": 1
   }
  ],
  "index_web_pages_for_search": 0,
  "links": [],
- "modified": "2026-10-25 17:06:56.000000",
+ "modified": "2026-10-26 19:00:00.000000",
  "modified_by": "Administrator",
  "module": "Guard",
  "name": "Pull Request Comment",

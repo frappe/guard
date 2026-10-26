@@ -11,6 +11,7 @@ from guard.git.diff import parse_diff
 from guard.git.repository import store_for
 from guard.graph.queries import CodeGraph
 from guard.learning import feedback, missed
+from guard.llm.types import GatewayBusy
 from guard.providers import adapter_for_repository
 from guard.providers.base import ProviderComment, ProviderError
 from guard.review import permissions, tips, trigger
@@ -126,10 +127,20 @@ def _answer(pull_request: str, comment: ProviderComment, question: str, finding:
 	ack = acks.accept(pull_request, comment)
 	try:
 		posted = _reply(pull_request, comment, question, finding)
+	except GatewayBusy:
+		# Keep 👀: the comment is tried again later, and the last attempt calls give_up().
+		raise
 	except Exception:
 		acks.done(ack, failed=True)
 		raise
 	acks.done(ack, failed=not posted)
+
+
+def give_up(pull_request: str, comment: ProviderComment) -> None:
+	"""The gateway failed on every attempt. React 😕 on a comment that asked Guard for something."""
+	if _finding_of(pull_request, comment) or mentions.find(comment.body) is not None:
+		# On GitHub, 👀 from an earlier attempt is returned again, so done() removes it.
+		acks.done(acks.accept(pull_request, comment), failed=True)
 
 
 def _reply(pull_request: str, comment: ProviderComment, question: str, finding: str | None = None) -> bool:

@@ -65,11 +65,13 @@ Guard uses the Frappe RQ workers. It adds no new process.
 
 | Queue | Jobs | Timeout |
 | - | - | - |
-| `short` | Webhook follow-up, reactions, status updates, thread replies | 5 min |
-| `default` | Reviews (base, plus, and new reviews with no tier yet), chat answers, addressed checks | 30 min, 2 h for a review with no tier yet |
+| `short` | Webhook follow-up, reactions, status updates | 5 min |
+| `default` | Reviews (base, plus, and new reviews with no tier yet), thread replies, chat answers, addressed checks | 30 min, 2 h for a review with no tier yet |
 | `long` | Full indexing, apex reviews, knowledge base builds, sandbox runs | 2 h |
 
 The gate picks the tier inside the review job, so a new review gets the timeout of apex. The agents stop 6 minutes before the job timeout, or the base and plus limit of 30 minutes, and submit what they have. The apex parts may use two thirds of that time, and the pass across the parts the rest. A job that the worker kills loses all of its work.
+
+Thread replies and addressed checks wait for a busy or failing gateway, as reviews do. The job stores an attempt and a retry time, and stops. A job every minute queues the work again when the retry time has passed. After 120 s, 10 min and 30 min, the last attempt fails and logs its traceback.
 
 Job keys stop duplicate work: one review job for each pull request and head commit, one index job for each repository and branch.
 

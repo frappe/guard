@@ -14,6 +14,9 @@ class PullRequest(Document):
 		from frappe.types import DF
 
 		additions: DF.Int
+		addressed_attempt: DF.Int
+		addressed_retry_at: DF.Datetime | None
+		addressed_since: DF.Data | None
 		approval_id: DF.Data | None
 		author: DF.Data | None
 		base_branch: DF.Data | None

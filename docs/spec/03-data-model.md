@@ -135,7 +135,9 @@ The indexer writes these with bulk inserts. Names are content hashes, so a re-in
 
 ### Pull Request
 
-`repository`, `number`, `title`, `description`, `author`, `state` (open, closed, merged), `is_draft`, `base_branch`, `head_branch`, `base_sha`, `head_sha`, `first_commit_sha`, `head_clone_url`, `web_url`, `labels` (JSON), `opened_at`, `merged_at`, `closed_at`, `additions`, `deletions`, `changed_files`, `review_count`, `last_reviewed_sha`, `summary_comment_id`, `latest_review`, `confidence_score`, `risk_level`, `guard_approved`, `approval_id`, `tour` (JSON), `tour_sha`, `provider_node_id`.
+`repository`, `number`, `title`, `description`, `author`, `state` (open, closed, merged), `is_draft`, `base_branch`, `head_branch`, `base_sha`, `head_sha`, `first_commit_sha`, `head_clone_url`, `web_url`, `labels` (JSON), `opened_at`, `merged_at`, `closed_at`, `additions`, `deletions`, `changed_files`, `review_count`, `last_reviewed_sha`, `summary_comment_id`, `latest_review`, `confidence_score`, `risk_level`, `guard_approved`, `approval_id`, `tour` (JSON), `tour_sha`, `provider_node_id`, `addressed_attempt`, `addressed_retry_at`, `addressed_since`.
+
+`addressed_attempt` and `addressed_retry_at` hold the next try of an addressed check that met a busy or failing gateway. `addressed_since` is the `before` commit of the first push that was not checked.
 
 ### Code Review
 
@@ -187,7 +189,9 @@ The indexer writes these with bulk inserts. Names are content hashes, so a re-in
 
 Every comment on a pull request, human or bot. Learning, thread replies and comment search use it.
 
-`pull_request`, `repository`, `provider_comment_id`, `kind` (issue, review, inline), `thread_id`, `in_reply_to`, `author`, `is_bot`, `is_guard`, `body`, `path`, `line`, `commented_at`, `finding`, `processed`.
+`pull_request`, `repository`, `provider_comment_id`, `kind` (issue, review, inline), `thread_id`, `in_reply_to`, `author`, `is_bot`, `is_guard`, `body`, `path`, `line`, `commented_at`, `finding`, `processed`, `attempt`, `retry_at`.
+
+`attempt` and `retry_at` hold the next try of a comment that met a busy or failing gateway.
 
 ### Review Feedback
 
