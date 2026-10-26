@@ -63,12 +63,20 @@ class Cancelled(Exception):
 	pass
 
 
+class JobReplaced(Exception):
+	"""A newer job runs the same review. This job stops and writes nothing more to the review."""
+
+
 class ReviewPipeline:
 	def __init__(self, review: str):
 		self.review = cast("CodeReview", frappe.get_doc("Code Review", review))
 		self.started = time.time()
 		self.current: ReviewRun | None = None  # the run of this attempt, once prepared
 		self.busy: GatewayBusy | None = None  # why this attempt went back to the queue, if it did
+		# Written to `job_id` when this job starts the review. A deploy can start a second job of the
+		# same review, with the same RQ job id, while the first still runs. The newest claim wins.
+		self.claim: str | None = None
+		self.job_replaced = False
 
 	@classmethod
 	def run(cls, review: str, attempt: int = 0) -> "ReviewPipeline":
@@ -76,7 +84,8 @@ class ReviewPipeline:
 		try:
 			pipeline.attempt(attempt)
 		finally:
-			pipeline.acknowledge()
+			if not pipeline.job_replaced:
+				pipeline.acknowledge()
 		return pipeline
 
 	def acknowledge(self) -> None:
@@ -114,6 +123,10 @@ class ReviewPipeline:
 				self.park(attempt, SLOT_WAIT, "waiting for a free review slot")
 				return
 			self.execute()
+		except JobReplaced:
+			db.rollback()
+			self.job_replaced = True
+			frappe.logger("guard").info(f"review {self.review.name}: a newer job took it over")
 		except Cancelled:
 			self.review.db_set({"status": "Cancelled", "completed_at": now_datetime()})
 			self.close_checks("Guard stopped this review: a newer review replaced it.")
@@ -140,7 +153,9 @@ class ReviewPipeline:
 				raise
 		finally:
 			try:
-				self.save_usage()
+				# The newer job keeps its own count, which includes this one's.
+				if not self.job_replaced:
+					self.save_usage()
 			except Exception as error:
 				frappe.log_error(redact(str(error)), "Guard review usage")
 
@@ -299,7 +314,10 @@ class ReviewPipeline:
 		return crossrepo.linked(run.repository, str(provider or ""), run.cfg.repos)
 
 	def prepare(self) -> ReviewRun | None:
-		self.review.db_set({"status": "Running", "started_at": now_datetime(), "stage": "prepare"})
+		self.claim = frappe.generate_hash(length=12)
+		self.review.db_set(
+			{"status": "Running", "started_at": now_datetime(), "stage": "prepare", "job_id": self.claim}
+		)
 		db.commit()
 		if self.review.source == "cli":
 			from guard.review.cli_review import prepare_cli
@@ -551,9 +569,9 @@ class ReviewPipeline:
 		db.commit()
 
 	def between_turns(self) -> None:
-		"""Before each agent turn: keep the usage so far, and stop when a newer review replaced this one."""
-		self.save_usage()
+		"""Before each agent turn: stop when a newer review or job replaced this one, else keep the usage."""
 		self.check_cancel()
+		self.save_usage()
 
 	def save_usage(self) -> None:
 		"""Write the tokens and turns used so far. A failed, cancelled or killed job also costs tokens."""
@@ -572,7 +590,10 @@ class ReviewPipeline:
 		db.commit()
 
 	def check_cancel(self) -> None:
-		if db.value("Code Review", str(self.review.name), "cancel_requested"):
+		row = db.values("Code Review", str(self.review.name), ("cancel_requested", "job_id")) or {}
+		if self.claim and row.get("job_id") != self.claim:
+			raise JobReplaced
+		if row.get("cancel_requested"):
 			raise Cancelled
 
 	def existing_findings(self) -> list[dict[str, Any]]:

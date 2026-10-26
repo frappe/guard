@@ -736,6 +736,25 @@ class TestPipeline(PullRequestCase):
 			self.adapter.named("close_checks"), ["Guard stopped this review: a newer review replaced it."]
 		)
 
+	def test_older_job_of_a_review_stops_when_a_newer_job_takes_it(self):
+		# suite #881: after a deploy, a second job ran the review while the first one still ran.
+		def take_over_then_submit(request):
+			name = frappe.get_all("Code Review", filters={"pull_request": self.pr}, pluck="name")[0]
+			db.set_values("Code Review", name, {"job_id": "newer-job", "input_tokens": 12345})
+			return respond(request)
+
+		respond = scripted([[("submit_review", {"summary": "s", "confidence_score": 5})]])
+		with use_responder(take_over_then_submit):
+			name = str(trigger.consider(self.pr, "open"))
+		# Rows outlive the test: fail_dead_reviews in a later test would start this one again.
+		self.addCleanup(db.set_values, "Code Review", name, {"status": "Completed"})
+		# The newer job owns the status, the usage and the check. The older one wrote nothing more.
+		row = db.values("Code Review", name, ("status", "stage", "input_tokens")) or {}
+		self.assertEqual((row["status"], row["input_tokens"]), ("Running", 12345))
+		self.assertNotIn(row["stage"], ("publish", "after"))
+		self.assertEqual(self.adapter.named("close_checks"), [])
+		self.assertEqual(self.adapter.named("status"), ["pending"])
+
 	def test_hourly_job_closes_checks_of_finished_commits_only(self):
 		from guard.review import jobs
 
