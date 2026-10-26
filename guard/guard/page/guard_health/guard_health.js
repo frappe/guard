@@ -14,18 +14,20 @@ frappe.pages["guard-health"].on_page_load = function (wrapper) {
 	const esc = (v) => frappe.utils.escape_html(v == null ? "" : String(v));
 	let charts = [];
 
-	// Days, and the label of the period.
+	// Hours, and the label of the period. The server has the same hours in `metrics.PERIODS`.
 	const periods = [
-		["1", __("Last 24 hours")],
-		["7", __("Last 7 days")],
-		["30", __("Last 30 days")],
+		["1", __("Last hour")],
+		["6", __("Last 6 hours")],
+		["24", __("Last 24 hours")],
+		["168", __("Last 7 days")],
+		["720", __("Last 30 days")],
 	];
 	const period = page.add_field({
 		fieldname: "period",
 		label: __("Period"),
 		fieldtype: "Select",
 		options: periods.map(([value, label]) => ({ value, label })),
-		default: "1",
+		default: "24",
 		change: () => load(),
 	});
 
@@ -328,10 +330,10 @@ frappe.pages["guard-health"].on_page_load = function (wrapper) {
 	};
 
 	const load = () => {
-		const [days, label] =
-			periods.find(([value]) => value === period.get_value()) || periods[0];
+		const [hours, label] =
+			periods.find(([value]) => value === period.get_value()) || periods[2];
 		return frappe
-			.xcall("guard.api.health.status", { days: Number(days) })
+			.xcall("guard.api.health.status", { hours: Number(hours) })
 			.then((data) => render(data, label));
 	};
 	page.set_primary_action(__("Refresh"), load, "refresh-cw");

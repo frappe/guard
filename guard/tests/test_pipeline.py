@@ -329,7 +329,8 @@ class TestPipeline(PullRequestCase):
 		self.assertGreater(data["failure_rate"]["rate"], health.ALERT_RATE)
 		self.assertGreaterEqual(data["metrics"]["summary"]["failed"], health.ALERT_MIN + 1)
 		self.assertEqual(len(data["metrics"]["series"]), 24)
-		self.assertEqual(len(health.status(days=7)["metrics"]["series"]), 7)
+		self.assertEqual(len(health.status(hours=7 * 24)["metrics"]["series"]), 7)
+		self.assertEqual(len(health.status(hours=1)["metrics"]["series"]), 12)
 
 		target = "frappe.desk.doctype.notification_log.notification_log.enqueue_create_notification"
 		with (

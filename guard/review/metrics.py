@@ -14,7 +14,9 @@ from frappe.utils import flt, now_datetime
 from guard import settings as guard_settings
 from guard.utils import db
 
-PERIODS = (1, 7, 30)  # days that the page offers
+# The periods that the page offers, in hours, and the minutes of each bar in their charts.
+PERIODS = {1: 5, 6: 15, 24: 60, 7 * 24: 1440, 30 * 24: 1440}
+DAY = 1440  # minutes
 ENDED = ("Completed", "Failed", "Cancelled")
 # The stages in the order the pipeline runs them, for the chart of where the time goes.
 STAGES = ("prepare", "start", "index", "context", "review", "verify", "filter", "publish", "after")
@@ -51,22 +53,22 @@ class Review:
 		return self.stages.get("review") or self.seconds
 
 
-def metrics(days: int) -> dict[str, Any]:
-	days = days if days in PERIODS else PERIODS[0]
+def metrics(hours: int) -> dict[str, Any]:
+	hours = hours if hours in PERIODS else 24
 	now = now_datetime()
-	reviews = _reviews(now - timedelta(days=days))
+	reviews = _reviews(now - timedelta(hours=hours))
 	prices = guard_settings.prices()
 	tiers = sorted({r.tier for r in reviews if r.tier})
 	return {
-		"days": days,
+		"hours": hours,
 		"in_flight": _in_flight(),
 		"summary": {
 			**_stats(reviews, prices),
-			"per_hour": round(sum(r.status == "Completed" for r in reviews) / (days * 24), 2),
+			"per_hour": round(sum(r.status == "Completed" for r in reviews) / hours, 2),
 		},
 		"tiers": [{"tier": t, **_stats([r for r in reviews if r.tier == t], prices)} for t in tiers],
 		"stages": _stages([r for r in reviews if r.status == "Completed"]),
-		"series": _series(reviews, now, days, prices),
+		"series": _series(reviews, now, hours, prices),
 	}
 
 
@@ -164,24 +166,25 @@ def _stages(done: list[Review]) -> list[dict[str, Any]]:
 
 
 def _series(
-	reviews: list[Review], now: datetime, days: int, prices: guard_settings.Prices
+	reviews: list[Review], now: datetime, hours: int, prices: guard_settings.Prices
 ) -> list[dict[str, Any]]:
-	"""Stats for each hour of one day, or for each day of a longer period, oldest first."""
-	hourly = days == 1
-	step, label = (timedelta(hours=1), "%H:00") if hourly else (timedelta(days=1), "%d %b")
-	count = 24 if hourly else days
-	starts = [_floor(now, hourly) - step * i for i in reversed(range(count))]
+	"""Stats for each bar of the period (`PERIODS`), oldest first."""
+	minutes = PERIODS[hours]
+	label = "%d %b" if minutes >= DAY else "%H:%M"
+	starts = [
+		_floor(now, minutes) - timedelta(minutes=minutes * i) for i in reversed(range(hours * 60 // minutes))
+	]
 	buckets: dict[datetime, list[Review]] = {start: [] for start in starts}
 	for review in reviews:
-		if (start := _floor(review.ended, hourly)) in buckets:
+		if (start := _floor(review.ended, minutes)) in buckets:
 			buckets[start].append(review)
 	return [{"label": start.strftime(label), **_stats(buckets[start], prices)} for start in starts]
 
 
-def _floor(moment: datetime, hourly: bool) -> datetime:
-	"""The start of the hour or the day of `moment`."""
-	moment = moment.replace(minute=0, second=0, microsecond=0)
-	return moment if hourly else moment.replace(hour=0)
+def _floor(moment: datetime, minutes: int) -> datetime:
+	"""The start of the bar of `minutes` that `moment` falls in. Bars start at midnight."""
+	moment = moment.replace(second=0, microsecond=0)
+	return moment - timedelta(minutes=(moment.hour * 60 + moment.minute) % minutes)
 
 
 def _avg(values: list[int] | list[float]) -> float | None:

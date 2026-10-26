@@ -62,13 +62,19 @@ class TestMetrics(UnitTestCase):
 		self.assertIsNone(stats["cost_per_review"])
 		self.assertIsNone(metrics._stats([review(1)], Prices())["cost"], "no prices, no cost")
 
-	def test_series_has_a_bucket_for_each_hour_or_day(self):
+	def test_series_has_a_bucket_for_each_bar_of_the_period(self):
 		reviews = [review(5), review(10), review(90), review(60 * 30)]
-		hours = metrics._series(reviews, NOW, 1, PRICES)
+		hour = metrics._series(reviews, NOW, 1, PRICES)
+		self.assertEqual(len(hour), 12)  # 5 minutes a bar
+		self.assertEqual([h["label"] for h in hour[-3:]], ["15:20", "15:25", "15:30"])
+		self.assertEqual([h["completed"] for h in hour[-3:]], [1, 1, 0])
+		six = metrics._series(reviews, NOW, 6, PRICES)
+		self.assertEqual((len(six), six[-1]["label"], sum(h["completed"] for h in six)), (24, "15:30", 3))
+		hours = metrics._series(reviews, NOW, 24, PRICES)
 		self.assertEqual(len(hours), 24)
 		self.assertEqual(hours[-1]["label"], "15:00")
 		self.assertEqual([h["completed"] for h in hours[-2:]], [1, 2])
-		days = metrics._series(reviews, NOW, 7, PRICES)
+		days = metrics._series(reviews, NOW, 7 * 24, PRICES)
 		self.assertEqual([d["label"] for d in days[-2:]], ["25 Oct", "26 Oct"])
 		self.assertEqual([d["completed"] for d in days[-2:]], [1, 3])
 

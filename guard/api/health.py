@@ -22,18 +22,18 @@ ALERT_MIN = 5  # reviews in the hour before the rate counts
 
 
 @frappe.whitelist()
-def status(days: int = 1) -> dict[str, Any]:
-	"""The state now, and the reviews of the last `days` days: 1, 7 or 30."""
+def status(hours: int = 24) -> dict[str, Any]:
+	"""The state now, and the reviews of the last `hours` hours: one of `metrics.PERIODS`."""
 	frappe.only_for(["Guard Admin", "System Manager"])
-	days = cint(days) if cint(days) in metrics.PERIODS else metrics.PERIODS[0]
+	hours = cint(hours) if cint(hours) in metrics.PERIODS else 24
 	return {
 		"queues": _queues(),
-		"reviews": _reviews(hours=days * 24),
-		"failures": _failures(hours=days * 24),
+		"reviews": _reviews(hours=hours),
+		"failures": _failures(hours=hours),
 		"gateway": _gateway(),
 		"indexes": _indexes(),
 		"failure_rate": failure_rate(),
-		"metrics": metrics.metrics(days),
+		"metrics": metrics.metrics(hours),
 	}
 
 
