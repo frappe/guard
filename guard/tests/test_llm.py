@@ -185,6 +185,30 @@ class TestGatewayErrors(UnitTestCase):
 			self.post(429)
 		self.assertNotIsInstance(raised.exception, GatewayBilling)
 
+	def test_hung_call_gives_up_after_two_timeouts(self):
+		import httpx
+
+		from guard.llm.http import post_json
+
+		# CR-000519: a turn waited 8 minutes. Seven timeouts of 300 s would hold a review for 35.
+		clock = [0.0]
+		timeouts: list[float] = []
+
+		def hang(*args, **kwargs):
+			timeouts.append(kwargs["timeout"])
+			clock[0] += kwargs["timeout"]
+			raise httpx.ReadTimeout("no answer")
+
+		with (
+			patch("guard.llm.http.httpx.post", side_effect=hang),
+			patch("guard.llm.http.time.sleep", side_effect=lambda s: clock.__setitem__(0, clock[0] + s)),
+			patch("guard.llm.http.time.monotonic", side_effect=lambda: clock[0]),
+		):
+			with self.assertRaises(GatewayDown):
+				post_json("https://gateway.test/v1", {}, {}, 300)
+		# The retry gets the rest of the budget, not a full timeout.
+		self.assertEqual(timeouts, [300, 299])  # 1 s went to the backoff
+
 	def test_4xx_is_not_retried(self):
 		from guard.llm.types import GatewayDown, LLMError
 

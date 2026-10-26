@@ -10,21 +10,30 @@ from guard.llm.types import GatewayBilling, GatewayBusy, GatewayDown, LLMError
 RETRIES = 4
 RATE_RETRIES = 3
 RATE_WAIT_CAP = 30
+# One call, with its retries, gets this many request timeouts in all. httpx limits each phase of a
+# request, not the whole: a call that timed out on every retry held a review for over 30 minutes.
+CALL_BUDGET = 2
 
 
 def post_json(url: str, body: dict[str, Any], headers: dict[str, str], timeout: int) -> dict[str, Any]:
 	"""POST JSON. Retry network errors and 5xx. Raise GatewayBilling on 402, GatewayBusy on 429,
-	and GatewayDown when the errors outlast the retries."""
+	and GatewayDown when the errors outlast the retries or the time budget of the call."""
+	end = time.monotonic() + timeout * CALL_BUDGET
 	last_error: Exception | None = None
 	for attempt in range(RETRIES + RATE_RETRIES):
+		left = end - time.monotonic()
+		if left <= 0:
+			break
 		try:
-			response = httpx.post(url, json=body, headers=headers, timeout=timeout)
+			# A retry gets only the time that is left.
+			response = httpx.post(url, json=body, headers=headers, timeout=min(timeout, left))
 		except httpx.HTTPError as error:
 			last_error = error
 			time.sleep(2**attempt)
 			continue
 		if response.status_code == 429 and attempt < RATE_RETRIES and not _in_test():
 			# A short wait keeps the turns already done. Long waits go back to the job queue.
+			last_error = GatewayBusy(_message(response), _retry_after(response))
 			time.sleep(min(_retry_after(response), RATE_WAIT_CAP) * (attempt + 1))
 			continue
 		if response.status_code == 402:
@@ -38,6 +47,8 @@ def post_json(url: str, body: dict[str, Any], headers: dict[str, str], timeout: 
 		if response.status_code >= 400:
 			raise LLMError(_message(response))
 		return response.json()
+	if isinstance(last_error, GatewayBusy):
+		raise last_error
 	raise GatewayDown(f"Gateway request failed: {last_error}")
 
 

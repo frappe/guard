@@ -26,6 +26,7 @@ A new push to a pull request cancels a queued or running review for an older hea
 ### Failure
 
 - A gateway 402 or 429 puts the job back in the queue with a delay: 2, 10, 20, then 40 minutes. Rate limits can last an hour. Before that, the HTTP client waits for a short time, and calls that ran side by side go again one at a time, so the turns already done are kept.
+- One gateway call, with its retries, gets two request timeouts (`request_timeout` in Guard Settings) in all. Each retry gets only the time that is left. A call that hangs then ends as a gateway outage after about 10 minutes, not after seven full timeouts.
 - A busy code graph index puts the job back with a delay of 1, 5, then 15 minutes.
 - Any other error ends the review as Failed. Guard adds 😕, sets the status to `error`, and stores the error on the Code Review.
 
