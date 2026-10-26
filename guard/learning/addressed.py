@@ -67,7 +67,7 @@ def resume() -> None:
 	"""
 	for row in frappe.get_all(
 		"Pull Request",
-		filters={"addressed_retry_at": ["<=", now_datetime()]},
+		filters=db.due("addressed_retry_at"),
 		fields=["name", "state", "head_sha", "addressed_since", "addressed_attempt"],
 	):
 		db.set_values("Pull Request", row.name, {"addressed_retry_at": None, "addressed_since": None})

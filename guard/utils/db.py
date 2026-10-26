@@ -4,6 +4,7 @@ from collections.abc import Sequence
 from typing import Any, cast
 
 import frappe
+from frappe.utils import now_datetime
 
 Values = tuple | list | dict | None
 
@@ -68,6 +69,14 @@ def values(doctype: str, name: str | dict, fields: Sequence[str]) -> dict[str, A
 	"""Field values of one record as a dict, or None when it does not exist."""
 	result = frappe.db.get_value(doctype, name, list(fields), as_dict=True)
 	return cast(dict[str, Any], result) if result else None
+
+
+def due(field: str) -> list[list[Any]]:
+	"""Filters for rows whose `field` time is set and has passed.
+
+	Frappe compiles `[field, "<=", now]` to `IFNULL(field, '') <= now`, which matches every NULL row.
+	"""
+	return [[field, "is", "set"], [field, "<=", now_datetime()]]
 
 
 def commit() -> None:

@@ -56,7 +56,8 @@ Semgrep is not installed globally. To check locally:
   `db.values`, `db.set_values`, `db.insert_many`, `db.commit`, `db.rollback`), not raw `frappe.db.sql`.
   It types the results and passes `()` instead of `None` (MySQLdb fails on `None`).
   `db.commit()` is a no-op in tests: tests run in one transaction. Background jobs commit progress
-  through it.
+  through it. To find rows whose time has passed, filter with `db.due(field)`, not
+  `{field: ["<=", now]}`: Frappe turns that into `IFNULL(field, '') <= now`, which matches NULL rows.
 - **Cache and locks:** `guard/utils/cache.py` (`cache.get/set/delete`, `cache.exclusive(key, ttl)` for a
   non-blocking Redis lock) and `guard/utils/locks.py` (`file_lock` for git mirrors and indexes).
 - **Secrets:** pass error text through `guard.utils.redact.redact` before it goes into a field, a log

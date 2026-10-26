@@ -11,7 +11,7 @@ from guard.llm.client import ChatRequest, use_responder
 from guard.llm.embeddings import Embedder
 from guard.llm.types import GatewayBusy
 from guard.providers.base import ProviderComment, Reaction
-from guard.review import trigger
+from guard.review import jobs, trigger
 from guard.tests.cases import PullRequestCase
 from guard.tests.fakes import scripted
 from guard.tests.utils import TempRepo, make_repository
@@ -375,6 +375,31 @@ class TestGatewayRetries(LearningCase):
 		self.assertIsNone(self.comment_retry(reply.id)["retry_at"])
 		# The retry did not record the reply a second time.
 		self.assertEqual(frappe.db.count("Review Feedback", {"provider_ref": reply.id}), 1)
+
+	def test_resume_skips_rows_without_a_retry_time(self):
+		reply = self.question()
+		db.set_values("Pull Request", self.pr, {"state": "closed", "addressed_retry_at": None})
+		review = frappe.get_doc(
+			{
+				"doctype": "Code Review",
+				"pull_request": self.pr,
+				"repository": self.repository,
+				"source": "pull_request",
+				"status": "Queued",
+				"trigger": "open",
+			}
+		).insert(ignore_permissions=True)
+		with (
+			patch("guard.webhooks.handler.enqueue_comment") as comments,
+			patch("guard.learning.addressed.enqueue") as checks,
+			patch("guard.review.jobs.enqueue_review") as reviews,
+		):
+			handler.resume_comments()
+			addressed.resume()
+			jobs.resume_waiting()
+		self.assertNotIn(reply.id, [call.args[1].id for call in comments.call_args_list])
+		self.assertNotIn(self.pr, [call.kwargs["pull_request"] for call in checks.call_args_list])
+		self.assertNotIn(review.name, [call.args[0] for call in reviews.call_args_list])
 
 	def test_answer_gives_up_after_the_last_attempt(self):
 		reply = self.question()

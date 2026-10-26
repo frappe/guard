@@ -181,7 +181,7 @@ def resume_comments() -> None:
 	"""Every minute: queue again the comments whose retry time has passed."""
 	for row in frappe.get_all(
 		"Pull Request Comment",
-		filters={"retry_at": ["<=", now_datetime()]},
+		filters=db.due("retry_at"),
 		fields=["name", "pull_request", "attempt"],
 	):
 		db.set_values("Pull Request Comment", row.name, {"retry_at": None})

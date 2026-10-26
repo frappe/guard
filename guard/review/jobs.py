@@ -140,7 +140,7 @@ def resume_waiting() -> None:
 	"""Every minute: queue reviews whose retry time has passed."""
 	rows = frappe.get_all(
 		"Code Review",
-		filters={"status": "Queued", "retry_at": ["<=", now_datetime()]},
+		filters=[["status", "=", "Queued"], *db.due("retry_at")],
 		fields=["name", "attempt", "tier"],
 	)
 	for row in rows:
