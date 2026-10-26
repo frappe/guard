@@ -177,6 +177,76 @@ class TestAnchor(UnitTestCase):
 		self.assertEqual((head.side, head.start_line), ("RIGHT", 3))
 
 
+FRAPPE_SOURCE = """import frappe
+
+
+@frappe.whitelist(allow_guest=True)
+def shared(name):
+    drive_check(name, "read")
+    return frappe.get_doc("Note", name).as_dict()
+
+
+@frappe.whitelist(allow_guest=True)
+def boot():
+    return {"user": frappe.session.user}
+
+
+def create_body(node):
+    frappe.get_doc({"doctype": "Note", "node": node}).insert(ignore_permissions=True)
+
+
+@frappe.whitelist()
+def update_limits(limit):
+    require_admin()
+    frappe.get_doc("Limits").save(ignore_permissions=True)
+
+
+@frappe.whitelist()
+def purge(name):
+    # Drive decided the purge. This removes the body of its node.
+    frappe.get_doc("Note", name).delete(ignore_permissions=True)
+
+
+@frappe.whitelist()
+def remove(name):
+    frappe.get_doc("Note", name).delete(ignore_permissions=True)
+
+
+@frappe.whitelist()
+def rename(name, title):
+    frappe.db.set_value("Note", name, "title", title)
+    frappe.db.commit()
+
+
+class Note(Document):
+    def on_update(self):
+        for child in self.children:
+            child.save()
+            frappe.db.commit()
+
+    def sweep(self):
+        frappe.db.commit()
+
+
+def execute():
+    for name in frappe.get_all("Note", pluck="name"):
+        try:
+            frappe.delete_doc("Note", name)
+            frappe.db.commit()
+        except Exception:
+            frappe.db.rollback()
+
+
+def find(title):
+    return frappe.db.sql(f"select name from tabNote where title = {title}")
+
+
+def count(table):
+    # The table name comes from a constant.
+    return frappe.db.sql(f"select count(*) from `tab{table}`")  # nosemgrep: frappe-sql-format-injection
+"""
+
+
 class TestChecks(UnitTestCase):
 	def test_secret_and_frappe_checks(self):
 		from guard.review import checks
@@ -189,9 +259,38 @@ class TestChecks(UnitTestCase):
 		files = parse_diff(text)
 		secrets = checks.secret_findings(files)
 		self.assertEqual([(f.severity, f.start_line) for f in secrets], [("P0", 2)])
-		frappe_pack = checks.frappe_findings(files)
+		frappe_pack = checks.frappe_findings(files, lambda path: None)
 		self.assertEqual([f.title for f in frappe_pack], ["SQL built from strings"])
 		self.assertNotIn("ghp_", checks.mask_secrets(files[0].annotated()))
+
+	def test_frappe_checks_fire_only_where_their_rule_applies(self):
+		# suite#881: 117 findings from these checks, and the verifier refuted every one. The guest
+		# endpoints checked access, and the commits and bypasses were in patches, jobs and helpers.
+		from guard.review import checks
+
+		source = FRAPPE_SOURCE.splitlines()
+		diff = f"diff --git a/app/api.py b/app/api.py\nnew file mode 100644\n--- /dev/null\n+++ b/app/api.py\n@@ -0,0 +1,{len(source)} @@\n"
+		files = parse_diff(diff + "".join(f"+{line}\n" for line in source))
+		found = checks.frappe_findings(files, lambda path: FRAPPE_SOURCE)
+		flagged = [source[f.start_line - 1].strip() for f in found]
+		self.assertEqual(
+			[(f.title, line) for f, line in zip(found, flagged, strict=True)],
+			[
+				("New guest endpoint", "@frappe.whitelist(allow_guest=True)"),
+				(
+					"Permission check is bypassed",
+					'frappe.get_doc("Note", name).delete(ignore_permissions=True)',
+				),
+				("Explicit commit", "frappe.db.commit()"),
+				("Explicit commit", "frappe.db.commit()"),
+				(
+					"SQL built from strings",
+					'return frappe.db.sql(f"select name from tabNote where title = {title}")',
+				),
+			],
+		)
+		# The commits that stay are in the whitelisted method and in the document hook.
+		self.assertEqual([f.start_line for f in found if f.title == "Explicit commit"], [39, 46])
 
 	def test_code_that_names_a_secret_is_not_one(self):
 		from guard.review.checks import _secret_kind

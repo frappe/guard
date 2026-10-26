@@ -112,6 +112,15 @@ Every item from code, comments, tickets or documents goes inside a fenced block 
 
 ## Stage 5: Agent
 
+Before the agent, checks that need no model add findings: secrets in the diff, calls to other repositories ([10-integrations.md](10-integrations.md)), project test rules and, for a Frappe app, the Frappe review pack. Each Frappe check finds a pattern on an added line, then reads the function around it at the head and fires only where its rule applies:
+
+- `allow_guest=True`: when the body of the endpoint calls no access check, such as `frappe.has_permission`, `check_permission`, `frappe.only_for` or a helper like `require_admin()`.
+- `ignore_permissions=True`: in a whitelisted method, when no access check comes before it and no comment explains it. Patches, jobs and helpers that no caller reaches do not count.
+- `frappe.db.commit()`: in a whitelisted method or a document hook (`validate`, `on_update` and so on). Patches and jobs commit on purpose.
+- String-built `frappe.db.sql`: always.
+
+A line with `# nosemgrep` on it or just above it was reviewed, and no check fires on it. A check on the line alone posted 117 findings on one large pull request, and the verifier refuted them all.
+
 `guard.review.agent.ReviewAgent` runs a tool-calling loop against the tier model.
 
 ### Tools

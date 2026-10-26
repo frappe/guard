@@ -288,7 +288,7 @@ class ReviewPipeline:
 		)
 		run.findings += rule_checks.findings(run.files, run.head, run.base, rules)
 		if run.frappe_app:
-			run.findings += checks.frappe_findings(run.files)
+			run.findings += checks.frappe_findings(run.files, run.head)
 		run.sandbox = sandbox.Sandbox(run) if sandbox.wanted(run) else None
 		try:
 			self.agent(run, built)
