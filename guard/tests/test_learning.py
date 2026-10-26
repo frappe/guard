@@ -202,14 +202,29 @@ class TestLearning(LearningCase):
 		# A reply to another person gets no answer.
 		self.assertFalse(self.adapter.named("reply"))
 
-	def test_ack_reply_marks_addressed_and_reacts(self):
+	def test_ack_reply_marks_addressed_resolves_the_thread_and_reacts(self):
 		finding, comment_id = self.posted_finding()
 		reply = ProviderComment("r2", "inline", "ada", "Good catch, fixed.", in_reply_to=comment_id, number=7)
 		with self.respond({"reply": '{"class": "ack", "sentiment": "Agree"}'}), self.online():
 			threads.handle(self.pr, reply)
 		self.assertEqual(db.value("Review Finding", finding, "status"), "Addressed")
+		# The next review checks only open findings, so the reply must close the thread itself.
+		thread = db.value("Review Finding", finding, "provider_thread_id")
+		self.assertEqual(self.adapter.named("resolve"), [thread])
+		self.assertIn("0 open finding(s)", self.adapter.checks[-1][2])
 		self.assertIn(("inline", "r2", "+1"), [r[:3] for r in self.adapter.named("reaction")])
 		self.assertEqual(len([r for r in self.requests if r.purpose == "reply"]), 1)
+
+	def test_promise_to_fix_keeps_the_finding_open(self):
+		finding, comment_id = self.posted_finding()
+		reply = ProviderComment("r3", "inline", "ada", "Will do.", in_reply_to=comment_id, number=7)
+		with self.respond({"reply": '{"class": "ack", "sentiment": "Neutral"}'}), self.online():
+			threads.handle(self.pr, reply)
+		reading = next(r for r in self.requests if r.purpose == "reply")
+		self.assertIn('a promise to fix it later ("will do")', str(reading.messages))
+		self.assertEqual(db.value("Review Finding", finding, "status"), "Open")
+		self.assertFalse(self.adapter.named("resolve"))
+		self.assertIn(("inline", "r3", "+1"), [r[:3] for r in self.adapter.named("reaction")])
 
 	def test_reactions_count_one_vote_for_each_person(self):
 		finding, comment_id = self.posted_finding()
