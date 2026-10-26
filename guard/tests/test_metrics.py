@@ -4,10 +4,10 @@ from frappe.tests import UnitTestCase
 
 from guard.review import metrics
 from guard.review.metrics import Review
-from guard.settings import Prices
+from guard.settings import PriceList, Prices
 
 NOW = datetime(2026, 10, 26, 15, 30)
-PRICES = Prices(input=2.0, cached_input=0.1, output=10.0)
+PRICES = PriceList({"base": Prices(input=2.0, cached_input=0.1, output=10.0)})
 
 
 def review(minutes_ago: int, **values) -> Review:
@@ -60,7 +60,13 @@ class TestMetrics(UnitTestCase):
 		self.assertIsNone(stats["duration_p50"])
 		self.assertIsNone(stats["turns_per_minute"])
 		self.assertIsNone(stats["cost_per_review"])
-		self.assertIsNone(metrics._stats([review(1)], Prices())["cost"], "no prices, no cost")
+		self.assertIsNone(metrics._stats([review(1)], PriceList())["cost"], "no prices, no cost")
+
+	def test_each_review_costs_the_prices_of_its_tier(self):
+		prices = PriceList({**PRICES.tiers, "apex": Prices(input=10.0, cached_input=0.25, output=50.0)})
+		stats = metrics._stats([review(1), review(2, tier="apex"), review(3, tier="plus")], prices)
+		base = 0.5 * 2 + 0.5 * 0.1 + 0.1 * 10  # plus has no prices: it costs the base prices
+		self.assertEqual(stats["cost"], round(2 * base + 0.5 * 10 + 0.5 * 0.25 + 0.1 * 50, 2))
 
 	def test_series_has_a_bucket_for_each_bar_of_the_period(self):
 		reviews = [review(5), review(10), review(90), review(60 * 30)]

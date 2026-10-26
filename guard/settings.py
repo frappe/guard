@@ -62,7 +62,7 @@ def gateway() -> GatewayConfig:
 
 @dataclass
 class Prices:
-	"""USD for one million tokens, from Guard Settings. Only for cost estimates: the gateway bills."""
+	"""USD for one million tokens of one model. Only for cost estimates: the gateway bills."""
 
 	input: float = 0.0
 	cached_input: float = 0.0
@@ -78,9 +78,44 @@ class Prices:
 		return (uncached * self.input + cached_tokens * self.cached_input + output_tokens * self.output) / 1e6
 
 
-def prices() -> Prices:
+@dataclass
+class PriceList:
+	"""The prices of each tier, from Guard Settings."""
+
+	tiers: dict[str, Prices] = field(default_factory=dict)
+
+	@property
+	def known(self) -> bool:
+		return any(prices.known for prices in self.tiers.values())
+
+	def for_tier(self, tier: str) -> Prices:
+		"""Prices for a tier. Falls back to the next lower tier that has prices, as `model_for` does
+		for the model. A review with no tier yet counts as base."""
+		order = TIERS[: TIERS.index(tier) + 1] if tier in TIERS else ("base",)
+		for name in reversed(order):
+			if (prices := self.tiers.get(name)) and prices.known:
+				return prices
+		return Prices()
+
+	def cost(self, tier: str, input_tokens: int, cached_tokens: int, output_tokens: int) -> float:
+		return self.for_tier(tier).cost(input_tokens, cached_tokens, output_tokens)
+
+
+def prices() -> PriceList:
 	doc = settings()
-	return Prices(flt(doc.input_price), flt(doc.cached_input_price), flt(doc.output_price))
+	return PriceList(
+		{
+			"base": Prices(
+				flt(doc.base_input_price), flt(doc.base_cached_input_price), flt(doc.base_output_price)
+			),
+			"plus": Prices(
+				flt(doc.plus_input_price), flt(doc.plus_cached_input_price), flt(doc.plus_output_price)
+			),
+			"apex": Prices(
+				flt(doc.apex_input_price), flt(doc.apex_cached_input_price), flt(doc.apex_output_price)
+			),
+		}
+	)
 
 
 def max_turns(tier: str) -> int:

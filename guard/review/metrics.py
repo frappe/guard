@@ -116,7 +116,7 @@ def _in_flight() -> dict[str, int]:
 	return {"queued": counts.get("Queued", 0), "running": counts.get("Running", 0)}
 
 
-def _stats(reviews: list[Review], prices: guard_settings.Prices) -> dict[str, Any]:
+def _stats(reviews: list[Review], prices: guard_settings.PriceList) -> dict[str, Any]:
 	"""The same numbers for the period, a tier or a bucket of time.
 
 	Time, turns and findings come from the completed reviews. Tokens and cost come from every
@@ -129,7 +129,7 @@ def _stats(reviews: list[Review], prices: guard_settings.Prices) -> dict[str, An
 	agent_minutes = sum(r.agent_seconds for r in worked) / 60
 	input_tokens = sum(r.input_tokens for r in reviews)
 	cached_tokens = sum(r.cached_tokens for r in reviews)
-	cost = sum(prices.cost(r.input_tokens, r.cached_tokens, r.output_tokens) for r in reviews)
+	cost = sum(prices.cost(r.tier, r.input_tokens, r.cached_tokens, r.output_tokens) for r in reviews)
 	return {
 		"completed": len(done),
 		"failed": sum(r.status == "Failed" for r in reviews),
@@ -166,7 +166,7 @@ def _stages(done: list[Review]) -> list[dict[str, Any]]:
 
 
 def _series(
-	reviews: list[Review], now: datetime, hours: int, prices: guard_settings.Prices
+	reviews: list[Review], now: datetime, hours: int, prices: guard_settings.PriceList
 ) -> list[dict[str, Any]]:
 	"""Stats for each bar of the period (`PERIODS`), oldest first."""
 	minutes = PERIODS[hours]

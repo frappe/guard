@@ -7,6 +7,7 @@
 guard.patches.set_review_limits
 guard.patches.reset_knowledge_base_status
 guard.patches.mark_guard_comments
+guard.patches.prices_per_tier
 
 [post_fixture_sync]
 # Patches added in this section will be executed after fixtures and customizations

@@ -3,10 +3,11 @@ from frappe.tests import IntegrationTestCase, UnitTestCase
 from frappe.utils import add_days, now_datetime, today
 
 from guard.guard.report.guard_usage import guard_usage
-from guard.settings import Prices
+from guard.settings import PriceList, Prices
 from guard.tests.utils import TempRepo, make_repository
 
-PRICES = {"input_price": 0.30, "cached_input_price": 0.03, "output_price": 1.20}
+PRICES = {"base_input_price": 0.30, "base_cached_input_price": 0.03, "base_output_price": 1.20}
+APEX_PRICES = {"apex_input_price": 10.0, "apex_cached_input_price": 0.25, "apex_output_price": 50.0}
 
 
 class TestPrices(UnitTestCase):
@@ -15,6 +16,14 @@ class TestPrices(UnitTestCase):
 		# 1M prompt tokens, of which 750k from the cache, and 100k output tokens.
 		self.assertAlmostEqual(prices.cost(1_000_000, 750_000, 100_000), 0.075 + 0.0225 + 0.12)
 		self.assertFalse(Prices().known)
+
+	def test_a_tier_without_prices_uses_the_next_lower_tier(self):
+		base, apex = Prices(2.0, 0.1, 10.0), Prices(10.0, 0.25, 50.0)
+		prices = PriceList({"base": base, "plus": Prices(), "apex": apex})
+		self.assertEqual((prices.for_tier("apex"), prices.for_tier("plus")), (apex, base))
+		self.assertEqual(prices.for_tier(""), base)  # no tier yet
+		self.assertAlmostEqual(prices.cost("apex", 1_000_000, 0, 0), 10.0)
+		self.assertFalse(PriceList({"base": Prices()}).known)
 
 	def test_compact_counts(self):
 		self.assertEqual(
@@ -29,7 +38,7 @@ class TestGuardUsage(IntegrationTestCase):
 		self.addCleanup(self.repo.cleanup)
 		self.repository = make_repository(self.repo, "acme/usage")
 		self.other = make_repository(self.repo, "acme/other")
-		for name in PRICES:
+		for name in [*PRICES, *APEX_PRICES]:
 			self.addCleanup(self.set_price, name, 0)
 
 	def set_price(self, name: str, value: float) -> None:
@@ -86,6 +95,24 @@ class TestGuardUsage(IntegrationTestCase):
 		self.assertEqual(cards[-1]["label"], "Est. Cost (USD)")
 		self.assertEqual(len(cards), 5)
 		self.assertEqual(chart["data"]["datasets"][0]["name"], "Est. Cost (USD)")
+
+	def test_each_tier_costs_its_own_prices(self):
+		self.seed()
+		for name, value in {**PRICES, **APEX_PRICES}.items():
+			self.set_price(name, value)
+		_, rows, *_ = self.report(group_by="Tier")
+		rows = {row["bucket"]: row for row in rows}
+		# 1M uncached input, 3M cached input and 200k output tokens at the apex prices.
+		self.assertAlmostEqual(rows["apex"]["cost"], 10.0 + 3 * 0.25 + 0.2 * 50.0)
+		# Plus has no prices of its own, so it uses the base prices.
+		self.assertAlmostEqual(rows["plus"]["cost"], (450_000 * 0.30 + 750_000 * 0.03 + 110_000 * 1.20) / 1e6)
+		# A day with reviews of two tiers adds the cost of each.
+		self.add("apex", "Completed", (1_000_000, 0, 0), credits=10)
+		_, rows, _, _, cards = self.report(group_by="Day")
+		today_row = next(row for row in rows if str(row["bucket"]) == str(today()))
+		plus = (450_000 * 0.30 + 750_000 * 0.03 + 110_000 * 1.20) / 1e6
+		self.assertAlmostEqual(today_row["cost"], plus + 10.0)
+		self.assertEqual(cards[-1]["value"], f"${sum(row['cost'] for row in rows):,.2f}")
 
 	def test_rows_by_repository_and_day(self):
 		self.seed()

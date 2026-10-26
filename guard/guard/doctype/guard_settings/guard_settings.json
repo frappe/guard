@@ -27,11 +27,17 @@
   "turns_col2",
   "max_turns_apex",
   "price_section",
-  "input_price",
+  "base_input_price",
+  "base_cached_input_price",
+  "base_output_price",
   "price_col1",
-  "cached_input_price",
+  "plus_input_price",
+  "plus_cached_input_price",
+  "plus_output_price",
   "price_col2",
-  "output_price",
+  "apex_input_price",
+  "apex_cached_input_price",
+  "apex_output_price",
   "bot_tab",
   "trigger_handles",
   "bot_logins",
@@ -66,20 +72,17 @@
   {
    "fieldname": "gateway_tab",
    "fieldtype": "Tab Break",
-   "idx": 1,
    "label": "AI Gateway"
   },
   {
    "description": "Base URL of the AI gateway, for example a Grove gateway. Leave blank for offline mode.",
    "fieldname": "gateway_url",
    "fieldtype": "Data",
-   "idx": 2,
    "label": "Gateway URL"
   },
   {
    "fieldname": "gateway_api_key",
    "fieldtype": "Password",
-   "idx": 3,
    "label": "Gateway API Key",
    "length": 512
   },
@@ -87,7 +90,6 @@
    "default": "openai",
    "fieldname": "gateway_dialect",
    "fieldtype": "Select",
-   "idx": 4,
    "label": "Dialect",
    "options": "openai\nanthropic"
   },
@@ -96,145 +98,167 @@
    "description": "Seconds",
    "fieldname": "request_timeout",
    "fieldtype": "Int",
-   "idx": 5,
    "label": "Request Timeout"
   },
   {
    "fieldname": "gateway_col",
-   "fieldtype": "Column Break",
-   "idx": 6
+   "fieldtype": "Column Break"
   },
   {
    "description": "Model id, for example anthropic/claude-sonnet-5-5",
    "fieldname": "base_model",
    "fieldtype": "Data",
-   "idx": 7,
    "label": "Base Model"
   },
   {
    "fieldname": "plus_model",
    "fieldtype": "Data",
-   "idx": 8,
    "label": "Plus Model"
   },
   {
    "fieldname": "apex_model",
    "fieldtype": "Data",
-   "idx": 9,
    "label": "Apex Model"
   },
   {
    "description": "Classifiers, titles, small summaries",
    "fieldname": "fast_model",
    "fieldtype": "Data",
-   "idx": 10,
    "label": "Fast Model"
   },
   {
    "fieldname": "embedding_section",
    "fieldtype": "Section Break",
-   "idx": 11,
    "label": "Embeddings"
   },
   {
    "description": "Blank means hash embeddings",
    "fieldname": "embedding_model",
    "fieldtype": "Data",
-   "idx": 12,
    "label": "Embedding Model"
   },
   {
    "fieldname": "embedding_col",
-   "fieldtype": "Column Break",
-   "idx": 13
+   "fieldtype": "Column Break"
   },
   {
    "default": "1024",
    "description": "Changing this rebuilds all vectors",
    "fieldname": "embedding_dimensions",
    "fieldtype": "Int",
-   "idx": 14,
    "label": "Embedding Dimensions"
   },
   {
    "fieldname": "turns_section",
    "fieldtype": "Section Break",
-   "idx": 15,
    "label": "Agent Turns"
   },
   {
    "default": "10",
    "fieldname": "max_turns_base",
    "fieldtype": "Int",
-   "idx": 16,
    "label": "Max Turns (Base)"
   },
   {
    "fieldname": "turns_col1",
-   "fieldtype": "Column Break",
-   "idx": 17
+   "fieldtype": "Column Break"
   },
   {
    "default": "16",
    "fieldname": "max_turns_plus",
    "fieldtype": "Int",
-   "idx": 18,
    "label": "Max Turns (Plus)"
   },
   {
    "fieldname": "turns_col2",
-   "fieldtype": "Column Break",
-   "idx": 19
+   "fieldtype": "Column Break"
   },
   {
    "default": "24",
    "fieldname": "max_turns_apex",
    "fieldtype": "Int",
-   "idx": 20,
    "label": "Max Turns (Apex)"
   },
   {
    "fieldname": "price_section",
    "fieldtype": "Section Break",
    "label": "Prices",
-   "description": "USD for one million tokens. Guard Usage uses them to estimate cost. 0 leaves that part out."
+   "description": "USD for one million tokens of the model of each tier. Input is the part of the prompt that the cache did not cover, cached input is the part read from the cache, and output includes reasoning. Guard Usage and Guard Health use them to estimate the cost of each review by its tier. A tier without prices uses the prices of the next lower tier, as it does for its model. 0 leaves that part out."
   },
   {
-   "fieldname": "input_price",
+   "fieldname": "base_input_price",
    "fieldtype": "Float",
-   "label": "Input Price",
+   "label": "Input Price (Base)",
    "precision": "4",
-   "non_negative": 1,
-   "description": "Prompt tokens that the cache did not cover"
+   "non_negative": 1
+  },
+  {
+   "fieldname": "base_cached_input_price",
+   "fieldtype": "Float",
+   "label": "Cached Input Price (Base)",
+   "precision": "4",
+   "non_negative": 1
+  },
+  {
+   "fieldname": "base_output_price",
+   "fieldtype": "Float",
+   "label": "Output Price (Base)",
+   "precision": "4",
+   "non_negative": 1
   },
   {
    "fieldname": "price_col1",
    "fieldtype": "Column Break"
   },
   {
-   "fieldname": "cached_input_price",
+   "fieldname": "plus_input_price",
    "fieldtype": "Float",
-   "label": "Cached Input Price",
+   "label": "Input Price (Plus)",
    "precision": "4",
-   "non_negative": 1,
-   "description": "Prompt tokens read from the gateway's prompt cache"
+   "non_negative": 1
+  },
+  {
+   "fieldname": "plus_cached_input_price",
+   "fieldtype": "Float",
+   "label": "Cached Input Price (Plus)",
+   "precision": "4",
+   "non_negative": 1
+  },
+  {
+   "fieldname": "plus_output_price",
+   "fieldtype": "Float",
+   "label": "Output Price (Plus)",
+   "precision": "4",
+   "non_negative": 1
   },
   {
    "fieldname": "price_col2",
    "fieldtype": "Column Break"
   },
   {
-   "fieldname": "output_price",
+   "fieldname": "apex_input_price",
    "fieldtype": "Float",
-   "label": "Output Price",
+   "label": "Input Price (Apex)",
    "precision": "4",
-   "non_negative": 1,
-   "description": "Answer and reasoning tokens"
+   "non_negative": 1
+  },
+  {
+   "fieldname": "apex_cached_input_price",
+   "fieldtype": "Float",
+   "label": "Cached Input Price (Apex)",
+   "precision": "4",
+   "non_negative": 1
+  },
+  {
+   "fieldname": "apex_output_price",
+   "fieldtype": "Float",
+   "label": "Output Price (Apex)",
+   "precision": "4",
+   "non_negative": 1
   },
   {
    "fieldname": "bot_tab",
    "fieldtype": "Tab Break",
-   "idx": 21,
    "label": "Bot"
   },
   {
@@ -242,46 +266,39 @@
    "description": "One handle each line",
    "fieldname": "trigger_handles",
    "fieldtype": "Small Text",
-   "idx": 22,
    "label": "Trigger Handles"
   },
   {
    "description": "Provider logins that are Guard itself, one each line",
    "fieldname": "bot_logins",
    "fieldtype": "Small Text",
-   "idx": 23,
    "label": "Bot Logins"
   },
   {
    "fieldname": "bot_col",
-   "fieldtype": "Column Break",
-   "idx": 24
+   "fieldtype": "Column Break"
   },
   {
    "description": "Base URL for links in comments. Blank means the site URL.",
    "fieldname": "public_url",
    "fieldtype": "Data",
-   "idx": 25,
    "label": "Public URL"
   },
   {
    "default": "Claude Code\nCodex\nCursor",
    "fieldname": "default_coding_agents",
    "fieldtype": "Small Text",
-   "idx": 26,
    "label": "Default Coding Agents"
   },
   {
    "fieldname": "permission_section",
    "fieldtype": "Section Break",
-   "idx": 27,
    "label": "Who Guard Answers"
   },
   {
    "default": "Everyone",
    "fieldname": "trigger_by_authoring",
    "fieldtype": "Select",
-   "idx": 28,
    "label": "Trigger By Authoring",
    "options": "Everyone\nOrganization members\nGuard users"
   },
@@ -289,20 +306,17 @@
    "default": "Everyone",
    "fieldname": "trigger_by_tagging",
    "fieldtype": "Select",
-   "idx": 29,
    "label": "Trigger By Tagging",
    "options": "Everyone\nOrganization members\nGuard users"
   },
   {
    "fieldname": "permission_col",
-   "fieldtype": "Column Break",
-   "idx": 30
+   "fieldtype": "Column Break"
   },
   {
    "default": "Everyone",
    "fieldname": "chat_permission",
    "fieldtype": "Select",
-   "idx": 31,
    "label": "Chat Permission",
    "options": "Everyone\nOrganization members\nGuard users"
   },
@@ -310,14 +324,12 @@
    "default": "Everyone",
    "fieldname": "teach_permission",
    "fieldtype": "Select",
-   "idx": 32,
    "label": "Teach Permission",
    "options": "Everyone\nOrganization members\nGuard users"
   },
   {
    "fieldname": "org_section",
    "fieldtype": "Section Break",
-   "idx": 33,
    "label": "Organization"
   },
   {
@@ -325,7 +337,6 @@
    "description": "0 means no cap",
    "fieldname": "monthly_credit_cap",
    "fieldtype": "Int",
-   "idx": 34,
    "label": "Monthly Credit Cap"
   },
   {
@@ -340,26 +351,22 @@
    "default": "1",
    "fieldname": "auto_enable_new_repositories",
    "fieldtype": "Check",
-   "idx": 36,
    "label": "Auto Enable New Repositories"
   },
   {
    "fieldname": "org_col",
-   "fieldtype": "Column Break",
-   "idx": 37
+   "fieldtype": "Column Break"
   },
   {
    "default": "0",
    "fieldname": "feature_tips",
    "fieldtype": "Check",
-   "idx": 38,
    "label": "Feature Tips"
   },
   {
    "default": "1",
    "fieldname": "learn_from_activity",
    "fieldtype": "Check",
-   "idx": 39,
    "label": "Learn From Activity"
   },
   {
@@ -367,27 +374,23 @@
    "description": "List open pull requests every 5 minutes. Use when webhooks cannot reach this site.",
    "fieldname": "polling_enabled",
    "fieldtype": "Check",
-   "idx": 40,
    "label": "Poll Providers"
   },
   {
    "fieldname": "sandbox_tab",
    "fieldtype": "Tab Break",
-   "idx": 41,
    "label": "Runtime Validation"
   },
   {
    "default": "0",
    "fieldname": "sandbox_enabled",
    "fieldtype": "Check",
-   "idx": 42,
    "label": "Enable Runtime Validation"
   },
   {
    "default": "On request",
    "fieldname": "sandbox_when",
    "fieldtype": "Select",
-   "idx": 43,
    "label": "Run",
    "options": "On request\nAlways\nNever"
   },
@@ -395,47 +398,41 @@
    "default": "podman",
    "fieldname": "sandbox_runtime",
    "fieldtype": "Select",
-   "idx": 44,
    "label": "Container Runtime",
    "options": "podman\ndocker"
   },
   {
    "fieldname": "sandbox_col",
-   "fieldtype": "Column Break",
-   "idx": 45
+   "fieldtype": "Column Break"
   },
   {
    "default": "docker.io/library/python:3.14-slim",
    "fieldname": "sandbox_image",
    "fieldtype": "Data",
-   "idx": 46,
    "label": "Sandbox Image"
   },
   {
    "fieldname": "sandbox_setup_command",
    "fieldtype": "Small Text",
-   "idx": 47,
    "label": "Sandbox Setup Command"
   },
   {
    "default": "600",
    "fieldname": "sandbox_timeout",
    "fieldtype": "Int",
-   "idx": 48,
    "label": "Timeout (seconds)"
   },
   {
    "default": "0",
    "fieldname": "sandbox_network",
    "fieldtype": "Check",
-   "idx": 49,
    "label": "Allow Network"
   }
  ],
  "index_web_pages_for_search": 0,
  "issingle": 1,
  "links": [],
- "modified": "2026-10-25 16:30:00.000000",
+ "modified": "2026-10-26 23:50:00.000000",
  "modified_by": "Administrator",
  "module": "Guard",
  "name": "Guard Settings",

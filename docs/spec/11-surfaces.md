@@ -76,7 +76,7 @@ The page shows the reviews that ended in the last hour, 6 hours, 24 hours, 7 day
 - Charts, with a bar for each 5 minutes of an hour, 15 minutes of 6 hours, hour of 24 hours, or day of a longer period: reviews that ended (completed, failed, cancelled), review time, wait to start, turns and rounds, turns per minute, tokens, and the mean seconds in each stage.
 - A table for each tier, then the queues, the reviews created and why reviews failed in the period, the AI gateway and the indexes that need attention.
 
-Time, turns and findings count the completed reviews. Tokens and cost count every review that ended, because failed and cancelled reviews spend them too. Turns per minute divides the turns by the time of the `review` stage. Reviews from before `stage_seconds` use their whole duration. Wait to start runs from the request to the start of the last attempt. Cost uses the prices in Guard Settings.
+Time, turns and findings count the completed reviews. Tokens and cost count every review that ended, because failed and cancelled reviews spend them too. Turns per minute divides the turns by the time of the `review` stage. Reviews from before `stage_seconds` use their whole duration. Wait to start runs from the request to the start of the last attempt. Cost uses the prices of the tier of each review in Guard Settings.
 
 ### Reports
 
@@ -85,7 +85,7 @@ Time, turns and findings count the completed reviews. Tokens and cost count ever
 | Guard Analytics | Script | Summary cards, charts and leaderboards |
 | Bugs Caught | Script | One row for each posted finding |
 | My Guard | Script | The same metrics for the pull requests of the current user |
-| Guard Usage | Script | Reviews, credits, input, cached and output tokens, cache share, agent turns and estimated cost, by day, tier or repository. Tokens count every attempt of every review. Credits count completed reviews, as the monthly cap does. The cost uses the prices in Guard Settings and is only an estimate: the gateway bills. Guard Admin and System Manager only, because it reads all teams. |
+| Guard Usage | Script | Reviews, credits, input, cached and output tokens, cache share, agent turns and estimated cost, by day, tier or repository. Tokens count every attempt of every review. Credits count completed reviews, as the monthly cap does. The cost of each review uses the prices of its tier in Guard Settings, so a row with several tiers adds the cost of each. It is only an estimate: the gateway bills. Guard Admin and System Manager only, because it reads all teams. |
 
 Frappe report export gives CSV and Excel.
 

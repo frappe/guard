@@ -7,7 +7,7 @@ from frappe import _
 from frappe.utils import add_days, getdate
 
 from guard import settings as guard_settings
-from guard.settings import TIERS, Prices
+from guard.settings import TIERS, PriceList
 from guard.utils import db
 
 GROUPS = {
@@ -33,7 +33,7 @@ def execute(filters: dict | None = None) -> tuple:
 	if group not in GROUPS:
 		group = "Day"
 	prices = guard_settings.prices()
-	rows = [with_totals(row, prices) for row in usage(filters, group)]
+	rows = [with_totals(row) for row in usage(filters, group, prices)]
 	message = (
 		None
 		if prices.known
@@ -44,9 +44,9 @@ def execute(filters: dict | None = None) -> tuple:
 	return columns(group, prices), rows, message, chart(rows, group, prices), summary(rows, prices)
 
 
-def usage(filters: dict, group: str) -> list[dict[str, Any]]:
+def usage(filters: dict, group: str, prices: PriceList) -> list[dict[str, Any]]:
 	"""One row each group. Tokens count every attempt of every review. Credits count completed reviews,
-	as the monthly credit cap does."""
+	as the monthly credit cap does. The cost of each tier uses the prices of that tier."""
 	conditions = ["r.creation >= %(start)s", "r.creation < %(end)s"]
 	values: dict[str, Any] = {
 		"start": day(filters.get("from_date"), -29),
@@ -65,14 +65,26 @@ def usage(filters: dict, group: str) -> list[dict[str, Any]]:
 			SUM(r.status = 'Completed') AS completed,
 			SUM(IF(r.status = 'Completed', r.credits, 0)) AS credits,
 			SUM(r.input_tokens) AS input_tokens, SUM(r.cached_tokens) AS cached_tokens,
-			SUM(r.output_tokens) AS output_tokens, SUM(r.agent_turns) AS agent_turns
+			SUM(r.output_tokens) AS output_tokens, SUM(r.agent_turns) AS agent_turns, r.tier AS tier
 		FROM `tabCode Review` r
 		LEFT JOIN `tabCode Repository` repo ON repo.name = r.repository
 		WHERE {" AND ".join(conditions)}
-		GROUP BY bucket""",
+		GROUP BY bucket, r.tier""",
 		values,
 	)
-	return sorted(rows, key=lambda row: order(row, group))
+	groups: dict[Any, dict[str, Any]] = {}
+	for row in rows:
+		counts = {name: int(row[name] or 0) for name in COUNTS}
+		cost = prices.cost(
+			str(row["tier"] or ""), counts["input_tokens"], counts["cached_tokens"], counts["output_tokens"]
+		)
+		merged = groups.setdefault(
+			row["bucket"], {"bucket": row["bucket"], "cost": 0.0, **dict.fromkeys(COUNTS, 0)}
+		)
+		for name in COUNTS:
+			merged[name] += counts[name]
+		merged["cost"] += cost
+	return sorted(groups.values(), key=lambda row: order(row, group))
 
 
 def day(value: Any, default_offset: int) -> date:
@@ -91,18 +103,14 @@ def order(row: dict[str, Any], group: str) -> Any:
 	return -int(row["input_tokens"] or 0)
 
 
-def with_totals(row: dict[str, Any], prices: Prices) -> dict[str, Any]:
-	counts = {name: int(row[name] or 0) for name in COUNTS}
+def with_totals(row: dict[str, Any]) -> dict[str, Any]:
 	if not row["bucket"]:
 		# A review stopped before the gate picked its tier, or its repository is gone.
 		row["bucket"] = _("None")
-	cost = prices.cost(counts["input_tokens"], counts["cached_tokens"], counts["output_tokens"])
 	return {
 		**row,
-		**counts,
-		"cache_share": share(counts["cached_tokens"], counts["input_tokens"]),
-		"cost": cost,
-		"cost_per_review": cost / counts["completed"] if counts["completed"] else 0.0,
+		"cache_share": share(row["cached_tokens"], row["input_tokens"]),
+		"cost_per_review": row["cost"] / row["completed"] if row["completed"] else 0.0,
 	}
 
 
@@ -118,7 +126,7 @@ def compact(count: int) -> str:
 	return str(count)
 
 
-def columns(group: str, prices: Prices) -> list[dict[str, Any]]:
+def columns(group: str, prices: PriceList) -> list[dict[str, Any]]:
 	bucket = {"fieldname": "bucket", "label": _(group), "width": 220}
 	bucket["fieldtype"] = "Date" if group == "Day" else "Data"
 	tokens = {"fieldtype": "Int"}
@@ -153,7 +161,7 @@ def columns(group: str, prices: Prices) -> list[dict[str, Any]]:
 	return result
 
 
-def chart(rows: list[dict[str, Any]], group: str, prices: Prices) -> dict[str, Any]:
+def chart(rows: list[dict[str, Any]], group: str, prices: PriceList) -> dict[str, Any]:
 	"""Estimated cost when the prices are set. Without them: uncached and cached input tokens."""
 	labels = [str(row["bucket"]) for row in rows]
 	if prices.known:
@@ -173,7 +181,7 @@ def chart(rows: list[dict[str, Any]], group: str, prices: Prices) -> dict[str, A
 	}
 
 
-def summary(rows: list[dict[str, Any]], prices: Prices) -> list[dict[str, Any]]:
+def summary(rows: list[dict[str, Any]], prices: PriceList) -> list[dict[str, Any]]:
 	total = {name: sum(row[name] for row in rows) for name in COUNTS}
 	cards = [
 		{"label": _("Reviews"), "value": total["reviews"], "datatype": "Int", "indicator": "Blue"},
@@ -199,7 +207,7 @@ def summary(rows: list[dict[str, Any]], prices: Prices) -> list[dict[str, Any]]:
 	]
 	if prices.known:
 		# Five cards fit on one row: the cost takes the place of the output tokens.
-		cost = prices.cost(total["input_tokens"], total["cached_tokens"], total["output_tokens"])
+		cost = sum(row["cost"] for row in rows)
 		cards[-1] = {
 			"label": _("Est. Cost (USD)"),
 			"value": f"${cost:,.2f}",
