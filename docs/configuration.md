@@ -181,7 +181,7 @@ Mention Guard in a pull request comment. Guard answers to the handles in **Guard
 | A reply in a Guard thread | Guard answers in the same thread. |
 | 👍 or 👎 on a Guard comment | Feedback. Guard learns which findings the team rejects. |
 
-You can also click **Re-trigger** in the footer of the summary.
+You can also click **Re-trigger** in the footer of the summary, then **Review again**.
 
 ## Settings in Desk
 

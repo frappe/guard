@@ -20,7 +20,7 @@ Guard reviews a pull request when a configured event happens.
 - `@guard review this draft` reviews a draft.
 - `@guard review this at apex`, `@guard apex review` and `@guard effort: plus` raise the tier for that review only. A comment cannot lower the tier.
 - Free text after the handle becomes extra instructions for that review, for example `@guard check for memory leaks`.
-- The **Re-trigger** link in the summary footer starts a new review without a comment.
+- The **Re-trigger** link in the summary footer opens a page with a **Review again** button. The button starts a new review without a comment.
 - A "re-run" on the provider status check starts a new review.
 
 ### R3. Codebase context
