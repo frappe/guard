@@ -158,6 +158,8 @@ After a review, the fast model gets the list of hunks, each with an id, and the 
 
 Every hunk must be in exactly one step. Guard adds missing hunks to a last step called "Other changes". Steps go in reading order: data model, core logic, interfaces, callers, tests. Guard stores the tour on the Pull Request with the head sha.
 
+The list of hunks has a budget of 60,000 characters, so each hunk shows less of its code when there are many. A pull request with more than 400 hunks, or a gateway call that fails, gets one step for each file instead.
+
 ## Codebase chat
 
 Desk page `guard-chat`. The user picks one or more indexed repositories and asks questions. The answer cites files and lines with links to the provider. The engine is the same as the query API ([11-surfaces.md](11-surfaces.md)). Each conversation is a Chat Session of kind Codebase.
