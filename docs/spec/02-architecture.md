@@ -55,7 +55,7 @@ Guard settings hold:
 - Model ids in Grove form, `<provider>/<name>`. Example: `anthropic/claude-sonnet-5-5`.
 - One model for each tier, a fast model, and an embedding model.
 
-Any other OpenAI-compatible or Anthropic-compatible endpoint also works with the same settings. Guard reads `/v1/models` to fill the model pickers. A gateway answer of 402 (cap reached) or 429 (rate limit) puts the job back in the queue with a delay. It does not fail the review at once.
+Any other OpenAI-compatible or Anthropic-compatible endpoint also works with the same settings. Guard reads `/v1/models` to fill the model pickers. It sends the auth headers of the selected dialect. A gateway answer of 402 (cap reached) or 429 (rate limit) puts the job back in the queue with a delay. It does not fail the review at once.
 
 Some models write tool calls in their own markup, and the server can fail to parse it. DeepSeek, for example, sometimes writes a DSML tag the server does not know. Then the calls come back as text. `llm/markup.py` reads such calls when the request offered those tools, and it always removes the markup from the text, so Guard never posts it.
 

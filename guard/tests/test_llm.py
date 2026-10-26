@@ -5,11 +5,13 @@ import frappe
 from frappe.tests import UnitTestCase
 
 from guard.llm import markup
-from guard.llm.anthropic_dialect import _messages
+from guard.llm.anthropic_dialect import VERSION as ANTHROPIC_VERSION
+from guard.llm.anthropic_dialect import AnthropicDialect, _messages
 from guard.llm.anthropic_dialect import _result as anthropic_result
 from guard.llm.client import PARALLEL_CALLS, ChatRequest, LLMClient, parse_json, use_responder
 from guard.llm.embeddings import hash_embedding, tokens
 from guard.llm.offline import OfflineDialect
+from guard.llm.openai_dialect import OpenAIDialect
 from guard.llm.openai_dialect import _result as openai_result
 from guard.llm.types import (
 	ChatResult,
@@ -147,6 +149,22 @@ class TestDialects(UnitTestCase):
 		self.assertEqual(result.tool_calls[0].arguments, {"pattern": "x"})
 		self.assertEqual(result.usage.output_tokens, 4)
 		self.assertEqual((result.usage.input_tokens, result.usage.cached_tokens), (3, 2))
+
+	def test_models_use_the_auth_of_the_dialect(self):
+		import httpx
+
+		seen: list[tuple[str, dict]] = []
+
+		def answer(url, headers, timeout):
+			seen.append((url, headers))
+			return httpx.Response(200, json={"data": [{"id": "m1"}, {"id": ""}]})
+
+		with patch("guard.llm.http.httpx.get", side_effect=answer):
+			self.assertEqual(AnthropicDialect("https://gw", "k", 30).models(), ["m1"])
+			self.assertEqual(OpenAIDialect("https://gw", "k", 30).models(), ["m1"])
+		self.assertEqual(seen[0][1], {"x-api-key": "k", "anthropic-version": ANTHROPIC_VERSION})
+		self.assertTrue(seen[0][0].startswith("https://gw/v1/models?"))
+		self.assertEqual(seen[1], ("https://gw/v1/models", {"Authorization": "Bearer k"}))
 
 
 class TestParseJsonOuter(UnitTestCase):

@@ -5,10 +5,12 @@ Supports prompt caching: a message with `cache=True` gets a cache breakpoint.
 
 from typing import Any
 
-from guard.llm.http import post_json
+from guard.llm.http import get_json, post_json
 from guard.llm.types import ChatResult, Message, ToolCall, ToolSpec, Usage
 
 VERSION = "2023-06-01"
+# The most model ids that `/v1/models` returns on one page.
+MODELS_PAGE = 1000
 
 
 class AnthropicDialect:
@@ -43,12 +45,18 @@ class AnthropicDialect:
 				body["tool_choice"] = (
 					{"type": "any"} if tool_choice == "required" else {"type": "tool", "name": tool_choice}
 				)
-		headers = {"x-api-key": self.api_key, "anthropic-version": VERSION}
-		data = post_json(f"{self.url}/v1/messages", body, headers, self.timeout)
+		data = post_json(f"{self.url}/v1/messages", body, self._headers(), self.timeout)
 		return _result(data, model)
 
 	def embed(self, model: str, texts: list[str]) -> list[list[float]]:
 		raise NotImplementedError("The Anthropic front has no embeddings. Use the OpenAI front.")
+
+	def models(self) -> list[str]:
+		data = get_json(f"{self.url}/v1/models?limit={MODELS_PAGE}", self._headers())
+		return [str(row["id"]) for row in data.get("data") or [] if row.get("id")]
+
+	def _headers(self) -> dict[str, str]:
+		return {"x-api-key": self.api_key, "anthropic-version": VERSION}
 
 
 def _text_block(text: str, cache: bool) -> dict[str, Any]:

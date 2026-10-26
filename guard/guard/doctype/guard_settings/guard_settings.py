@@ -5,7 +5,8 @@ import frappe
 from frappe import _
 from frappe.model.document import Document
 
-from guard.llm.http import get_json
+from guard.llm.anthropic_dialect import AnthropicDialect
+from guard.llm.openai_dialect import OpenAIDialect
 from guard.llm.types import LLMError
 
 
@@ -76,11 +77,12 @@ class GuardSettings(Document):
 		"""Model ids that the gateway serves, from `/v1/models`."""
 		if not self.gateway_url:
 			frappe.throw(_("Set the gateway URL first."))
-		key = self.get_password("gateway_api_key", raise_exception=False) or ""
-		headers = {"Authorization": f"Bearer {key}"} if key else {}
+		url = (self.gateway_url or "").rstrip("/")
+		key = str(self.get_password("gateway_api_key", raise_exception=False) or "")
+		# Each dialect has its own auth headers. The Anthropic front rejects a bearer token.
+		dialect_class = AnthropicDialect if self.gateway_dialect == "anthropic" else OpenAIDialect
 		try:
-			data = get_json(f"{(self.gateway_url or '').rstrip('/')}/v1/models", headers)
+			return sorted(dialect_class(url, key, self.request_timeout).models())
 		except LLMError as error:
 			frappe.throw(str(error), title=_("Gateway"))
 			return []
-		return sorted(str(row.get("id")) for row in data.get("data") or [] if row.get("id"))

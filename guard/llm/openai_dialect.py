@@ -3,7 +3,7 @@
 import json
 from typing import Any
 
-from guard.llm.http import post_json
+from guard.llm.http import get_json, post_json
 from guard.llm.types import ChatResult, Message, ToolCall, ToolSpec, Usage
 
 
@@ -45,6 +45,10 @@ class OpenAIDialect:
 		)
 		rows = sorted(data.get("data", []), key=lambda row: row.get("index", 0))
 		return [row["embedding"] for row in rows]
+
+	def models(self) -> list[str]:
+		data = get_json(f"{self.url}/v1/models", self._headers())
+		return [str(row["id"]) for row in data.get("data") or [] if row.get("id")]
 
 	def _headers(self) -> dict[str, str]:
 		return {"Authorization": f"Bearer {self.api_key}"} if self.api_key else {}
