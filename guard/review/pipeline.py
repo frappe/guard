@@ -76,8 +76,13 @@ class JobReplaced(Exception):
 
 
 class ReviewPipeline:
-	def __init__(self, review: str):
+	def __init__(self, review: str, queued_tier: str | None = None, moved: bool = False):
 		self.review = cast("CodeReview", frappe.get_doc("Code Review", review))
+		# The tier that the job was queued for, and whether it took over from another job. None when
+		# the review runs inline, for example in an eval: then it never moves to another queue.
+		self.queued_tier = queued_tier
+		self.moved = moved
+		self.attempt_number = 0
 		self.started = time.time()
 		self.current: ReviewRun | None = None  # the run of this attempt, once prepared
 		self.busy: GatewayBusy | None = None  # why this attempt went back to the queue, if it did
@@ -94,8 +99,10 @@ class ReviewPipeline:
 		self.stage_started = 0.0
 
 	@classmethod
-	def run(cls, review: str, attempt: int = 0) -> "ReviewPipeline":
-		pipeline = cls(review)
+	def run(
+		cls, review: str, attempt: int = 0, tier: str | None = None, moved: bool = False
+	) -> "ReviewPipeline":
+		pipeline = cls(review, tier, moved)
 		try:
 			pipeline.attempt(attempt)
 		finally:
@@ -127,6 +134,7 @@ class ReviewPipeline:
 		acks.review_finished(pull_request, failed=status != "Completed")
 
 	def attempt(self, attempt: int) -> None:
+		self.attempt_number = attempt
 		try:
 			# Before a park: else a cancelled review stays Queued while it waits for the gateway or a slot.
 			self.check_cancel()
@@ -263,6 +271,8 @@ class ReviewPipeline:
 		focus_changed = [e for e in run.changed if e.path in run.delta.names] if run.delta else run.changed
 		self.pick_tier(run, focus_changed)
 		if not self.credits_allow(run):
+			return
+		if self.hand_off(run):
 			return
 		linked = (
 			tickets.for_pull_request(run.title, run.description, run.head_branch)
@@ -465,6 +475,32 @@ class ReviewPipeline:
 			first_review=self.review_number() == 1,
 		)
 		self.review.db_set("tier", run.tier)
+
+	def hand_off(self, run: ReviewRun) -> bool:
+		"""Move the review to the dedicated queue of its tier. True when it moved, and this job stops.
+
+		The new job does the stages before the agents again. They take seconds, and the index is fresh.
+		"""
+		from guard.review.jobs import enqueue_review, handoff_queue
+
+		if self.queued_tier is None:
+			return False
+		queue = handoff_queue(self.queued_tier, run.tier, self.moved)
+		if not queue:
+			return False
+		self.save_usage()
+		if not state.move(str(self.review.name), {"status": "Queued", "stage": f"waiting for {queue}"}):
+			raise Cancelled
+		# The new job writes the review from here on. In tests it runs inline, before this job ends.
+		self.job_replaced = True
+		try:
+			enqueue_review(str(self.review.name), attempt=self.attempt_number, tier=run.tier, moved=True)
+		except Exception:
+			# Redis refused the job: this job fails the review, and finishes its mentions.
+			self.job_replaced = False
+			raise
+		db.commit()
+		return True
 
 	def credits_allow(self, run: ReviewRun) -> bool:
 		cap = int(guard_settings.settings().monthly_credit_cap or 0)
@@ -922,6 +958,7 @@ def graph_verdict(run: ReviewRun) -> Verdict:
 	)
 
 
-def run_review(review: str, attempt: int = 0) -> None:
-	"""Background job entry point."""
-	ReviewPipeline.run(review, attempt)
+def run_review(review: str, attempt: int = 0, tier: str = "", moved: bool = False) -> None:
+	"""Background job entry point. `tier` is the tier that the job was queued for, and `moved` is set
+	on the job that took over from another one on the queue of its tier."""
+	ReviewPipeline.run(review, attempt, tier, moved)

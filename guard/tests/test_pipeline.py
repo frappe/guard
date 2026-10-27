@@ -836,6 +836,42 @@ class TestPipeline(PullRequestCase):
 		with patch("guard.review.jobs.frappe.enqueue", side_effect=ConnectionError("down")):
 			jobs.restart_dead_reviews()
 
+	def test_a_new_review_moves_to_the_queue_of_its_tier(self):
+		real, queued = frappe.enqueue, []
+
+		def enqueue(method, **kwargs):
+			if method == "guard.review.pipeline.run_review":
+				queued.append((kwargs["queue"], kwargs["job_id"], kwargs["tier"]))
+			return real(method, **kwargs)
+
+		with (
+			patch("guard.review.jobs.get_queues_timeout", return_value=DEDICATED),
+			patch("guard.review.jobs.frappe.enqueue", side_effect=enqueue),
+		):
+			name = self.review([])
+		row = db.values("Code Review", str(name), ("status", "tier")) or {}
+		tier = str(row["tier"])
+		self.assertEqual(row["status"], "Completed")
+		self.assertEqual(
+			queued,
+			[
+				(jobs.INTAKE_QUEUE, jobs.job_id(str(name), 0), ""),
+				(jobs.TIER_QUEUES[tier], jobs.job_id(str(name), 0, moved=True), tier),
+			],
+		)
+
+	def test_a_review_that_runs_inline_does_not_move(self):
+		# An eval runs the pipeline itself: a job on another queue would run the review a second time.
+		with patch("guard.review.jobs.enqueue_review"):
+			name = self.review([])
+		with (
+			patch("guard.review.jobs.get_queues_timeout", return_value=DEDICATED),
+			patch("guard.review.jobs.enqueue_review") as enqueue,
+		):
+			ReviewPipeline.run(str(name))
+		enqueue.assert_not_called()
+		self.assertEqual(db.value("Code Review", str(name), "status"), "Completed")
+
 	def test_reason_is_fact_checked_when_findings_were_dropped(self):
 		# erpnext #62149: one P1 posted, one refuted, and the reason said "several real gaps".
 		posted = dict(PROBLEM, severity="P1", title="Saving old bundles breaks")
@@ -1733,6 +1769,44 @@ class TestApexAreas(IntegrationTestCase):
 		with patch("guard.settings.gateway", return_value=gateway):
 			self.assertEqual(verify.check_tier("apex"), "apex")
 			self.assertEqual(verify.check_tier("plus"), "plus")
+
+
+DEDICATED = {name: 300 for name in ("short", "default", "long", *jobs.REVIEW_QUEUES)}
+
+
+class TestReviewQueues(UnitTestCase):
+	def test_a_bench_with_dedicated_queues_uses_them(self):
+		with patch("guard.review.jobs.get_queues_timeout", return_value=DEDICATED):
+			self.assertEqual(jobs.review_queue(""), "guard-review")
+			self.assertEqual(jobs.review_queue("apex"), "guard-apex")
+			self.assertEqual(jobs.handoff_queue("", "plus"), "guard-plus")
+			self.assertIsNone(jobs.handoff_queue("plus", "plus"))
+			# A requested tier is only the lowest tier: the gate can pick a higher one.
+			self.assertEqual(jobs.handoff_queue("base", "apex"), "guard-apex")
+			self.assertEqual(jobs.handoff_queue("auto", "apex"), "guard-apex")
+			# A moved job stays, also when the gate now picks another tier: a review moves once.
+			self.assertIsNone(jobs.handoff_queue("plus", "apex", moved=True))
+
+	def test_a_bench_without_dedicated_queues_uses_the_shared_ones(self):
+		shared = {"short": 300, "default": 300, "long": 1500}
+		with patch("guard.review.jobs.get_queues_timeout", return_value=shared):
+			self.assertEqual(jobs.review_queue(""), "default")
+			self.assertEqual(jobs.review_queue("plus"), "default")
+			self.assertEqual(jobs.review_queue("apex"), "long")
+			self.assertIsNone(jobs.handoff_queue("", "apex"))
+		# Only the apex queue: a new review starts on default, and moves when it is apex.
+		with patch("guard.review.jobs.get_queues_timeout", return_value={**shared, "guard-apex": 300}):
+			self.assertEqual(jobs.review_queue(""), "default")
+			self.assertEqual(jobs.handoff_queue("", "apex"), "guard-apex")
+			self.assertIsNone(jobs.handoff_queue("", "plus"))
+			self.assertIsNone(jobs.handoff_queue("base", "plus"))
+
+	def test_the_moved_job_counts_as_the_job_of_the_review(self):
+		# Else `requeue_lost` and `fail_dead_reviews` queue a second job while it waits.
+		moved = jobs.job_id("CR-1", 2, moved=True)
+		with patch("guard.review.jobs.is_job_enqueued", side_effect=lambda job: job == moved):
+			self.assertTrue(jobs.has_job("CR-1", 2))
+			self.assertFalse(jobs.has_job("CR-1", 1))
 
 
 class TestDeadline(UnitTestCase):
