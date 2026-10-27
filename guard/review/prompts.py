@@ -92,7 +92,12 @@ Report findings with `report_finding`, then call `submit_review`."""
 DELTA = """This is a re-review. Guard reviewed this pull request at commit {since}. The diff below
 shows only the changes since then: review these changes. The rest of the pull request was reviewed
 before. Read it with the tools when a change depends on it. In `submit_review`, write the summary and
-the verdict for the whole pull request as it is now. Start from the summary of the last review."""
+the verdict for the whole pull request as it is now. Start from the summary of the last review.
+In `important_files`, list only files of this diff: Guard adds the earlier ones after them."""
+
+DELTA_DIAGRAM = """The last review drew this {kind} diagram. Send `diagram_type` `none` when the
+changes since do not change what it shows: Guard keeps it. Else send a new diagram of the whole
+pull request."""
 
 FORCE_SUBMIT = "You have used your turns. Report any issue you found with `report_finding` now, and call `submit_review` with your verdict."
 

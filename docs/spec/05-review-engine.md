@@ -70,7 +70,10 @@ A review that a push starts reads only the changes since the last completed revi
 - The merge base did not change. After a rebase, a force push or a merge of the base branch, the diff since the last review holds changes that are not of the pull request.
 - The diff since `last_reviewed_sha` changes at least one reviewed file of the pull request. Else the review reads the whole diff, so that the commit gets a check.
 
-The delta changes only what the agents read. The task shows the annotated diff since `last_reviewed_sha`, the changed entities of those files, the names of the other changed files, and the summary of the last review. The agent writes the summary and the verdict for the whole pull request. The graph, the blast radius, the deterministic checks, the anchors and the filters still use the whole diff. Context files come from the entities of the delta files. Apex areas split the delta files.
+The delta changes only what the agents read. The task shows the annotated diff since `last_reviewed_sha`, the changed entities of those files, the names of the other changed files, and the summary and diagram of the last review. The agent writes the summary and the verdict for the whole pull request. The summary comment keeps what the last review showed of the files that the agent did not see:
+
+- Important files: the files of the new verdict come first, then the earlier ones that it does not list, up to 15.
+- Diagram: when the agent sends `diagram_type` `none`, Guard keeps the last diagram. A new diagram replaces it. A last diagram longer than 3,000 characters is not in the task, as it costs tokens on each turn. The graph, the blast radius, the deterministic checks, the anchors and the filters still use the whole diff. Context files come from the entities of the delta files. Apex areas split the delta files.
 
 ### Tier selection
 

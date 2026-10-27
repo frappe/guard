@@ -17,6 +17,7 @@ Reader = Callable[[str], str | None]
 Lister = Callable[[str], list[tuple[str, str]]]
 # (pattern, path glob) -> (path, line, text) of each match at the head.
 Grepper = Callable[[str, str | None], list[tuple[str, int, str]]]
+MAX_IMPORTANT_FILES = 15  # rows of the important files table in the summary
 
 
 @dataclass
@@ -44,7 +45,7 @@ class Verdict:
 			diagram=str(args.get("diagram") or "").strip(),
 			important_files=[
 				f for f in args.get("important_files") or [] if isinstance(f, dict) and f.get("path")
-			][:15],
+			][:MAX_IMPORTANT_FILES],
 			submitted=True,
 		)
 
@@ -57,6 +58,19 @@ class Delta:
 	files: list[FileDiff]  # the diff since `since`, of the reviewed files
 	summary: str = ""  # the summary of the last review
 	rest: list[str] = field(default_factory=list)  # the other changed files of the pull request
+	# What the last review showed of the whole pull request.
+	important_files: list[dict[str, str]] = field(default_factory=list)
+	diagram_type: str = ""
+	diagram: str = ""
+
+	def carry_over(self, verdict: Verdict) -> None:
+		"""Keep what the last review showed of the files that the agent did not see: their important
+		files after the new ones, and the diagram when the agent sent none."""
+		paths = {f["path"] for f in verdict.important_files}
+		earlier = [f for f in self.important_files if f.get("path") not in paths]
+		verdict.important_files = (verdict.important_files + earlier)[:MAX_IMPORTANT_FILES]
+		if verdict.diagram_type == "none" and self.diagram_type and self.diagram:
+			verdict.diagram_type, verdict.diagram = self.diagram_type, self.diagram
 
 	@property
 	def paths(self) -> list[str]:

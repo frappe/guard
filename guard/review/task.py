@@ -2,7 +2,7 @@
 
 from guard.review import checks, rule_files
 from guard.review.context import BuiltContext, excerpt
-from guard.review.prompts import DELTA, TASK, data
+from guard.review.prompts import DELTA, DELTA_DIAGRAM, TASK, data
 from guard.review.run import ReviewRun
 
 DIFF_LIMIT = 120_000
@@ -17,6 +17,7 @@ HUNK_PAD = HUNK_PADS[0]
 MAX_RULES = 80
 MAX_REST = 100  # names of the files not changed since the last review
 SUMMARY_LIMIT = 4000  # characters of the last summary on a re-review
+DIAGRAM_LIMIT = 3000  # characters of the last diagram: a long one is not worth its tokens on each turn
 # Lower number = more important. Files beyond the budget are left out, least important first.
 PRIORITY = (
 	("project rule file", 1),
@@ -161,6 +162,10 @@ def _delta(run: ReviewRun) -> str:
 	if run.delta.summary:
 		parts.append(
 			"Summary of the last review:\n" + data("last summary", run.delta.summary[:SUMMARY_LIMIT])
+		)
+	if run.delta.diagram_type and run.delta.diagram and len(run.delta.diagram) <= DIAGRAM_LIMIT:
+		parts.append(
+			DELTA_DIAGRAM.format(kind=run.delta.diagram_type) + "\n" + data("last diagram", run.delta.diagram)
 		)
 	if run.delta.rest:
 		names = "\n".join(f"- {name}" for name in run.delta.rest[:MAX_REST])

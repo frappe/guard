@@ -19,7 +19,7 @@ from guard.review.context import BuiltContext
 from guard.review.pipeline import ReviewPipeline
 from guard.review.prompt import ContextPack
 from guard.review.prompts import data
-from guard.review.run import ReviewRun
+from guard.review.run import Delta, ReviewRun, Verdict
 from guard.tests.cases import AUTO_APPROVE, PullRequestCase
 from guard.tests.fakes import dsml, scripted
 from guard.utils import db
@@ -938,6 +938,41 @@ class TestPipeline(PullRequestCase):
 		[_, second] = self.reviews("posted_count", "files_reviewed")
 		self.assertEqual(second.posted_count, 1)
 		self.assertEqual(second.files_reviewed, 2, "the whole pull request, not only the delta")
+
+	def test_a_push_rereview_keeps_the_earlier_important_files_and_diagram(self):
+		# The agent sees only the delta, so the summary keeps what the last review showed of the rest.
+		self.first_review()
+		diagram = "flowchart LR\n  a --> b"
+		shown = [{"path": "app/models.py", "why": "old"}, {"path": "app/service.py", "why": "caller"}]
+		db.set_values(
+			"Code Review",
+			self.reviews("name")[0].name,
+			{"important_files": frappe.as_json(shown), "diagram_type": "flow", "diagram": diagram},
+		)
+		self.repo.commit({"app/extra.py": "VALUE = 1\n"}, "push")
+		frappe.db.set_value("Pull Request", self.pr, "head_sha", self.repo.head())
+		new = [{"path": "app/extra.py", "why": "new"}, {"path": "app/models.py", "why": "newer"}]
+		verdict = {"summary": "s", "confidence_score": 5, "important_files": new, "diagram_type": "none"}
+		requests = self.online_review([[("submit_review", verdict)]], {}, event="push")
+		task = next(r for r in requests if r.purpose == "review").messages[1].content
+		self.assertIn("The last review drew this flow diagram", task)
+		self.assertIn(diagram, task)
+		second = (
+			db.values(
+				"Code Review", self.reviews("name")[1].name, ("important_files", "diagram_type", "diagram")
+			)
+			or {}
+		)
+		self.assertEqual(
+			[(f["path"], f["why"]) for f in frappe.parse_json(second["important_files"])],
+			[("app/extra.py", "new"), ("app/models.py", "newer"), ("app/service.py", "caller")],
+			"the new files first, each path once",
+		)
+		self.assertEqual((second["diagram_type"], second["diagram"]), ("flow", diagram))
+		# A new diagram replaces the last one.
+		push = Verdict(diagram_type="sequence", diagram="sequenceDiagram\n  a->>b: x")
+		Delta("abc", [], diagram_type="flow", diagram=diagram).carry_over(push)
+		self.assertEqual(push.diagram_type, "sequence")
 
 	def test_a_push_after_a_review_without_the_model_reads_the_whole_diff(self):
 		# The graph alone made the last verdict, so no model read the code at that commit.

@@ -314,6 +314,8 @@ class ReviewPipeline:
 		verify.check_verdict(run)
 		if not run.verdict.submitted:
 			run.verdict = graph_verdict(run)
+		elif run.delta:
+			run.delta.carry_over(run.verdict)
 		earlier = [row["severity"] for row in run.earlier_open]
 		run.verdict.confidence_score = min(run.verdict.confidence_score, score_cap(run.findings, earlier))
 		self.stage("publish")
@@ -769,7 +771,16 @@ class ReviewPipeline:
 		last = db.values(
 			"Code Review",
 			str(pr.latest_review),
-			("status", "head_sha", "merge_base_sha", "summary", "agent_turns"),
+			(
+				"status",
+				"head_sha",
+				"merge_base_sha",
+				"summary",
+				"agent_turns",
+				"important_files",
+				"diagram_type",
+				"diagram",
+			),
 		)
 		since = str(pr.last_reviewed_sha)
 		# A review without agent turns had only the graph: no model read the code at `since`.
@@ -790,7 +801,16 @@ class ReviewPipeline:
 			return None
 		paths = {f.path for f in changed}
 		rest = [f"{f.path} (+{f.additions} -{f.deletions})" for f in files if f.path not in paths]
-		return Delta(since, changed, str(last.get("summary") or ""), rest)
+		files_shown = frappe.parse_json(last.get("important_files") or "[]")
+		return Delta(
+			since,
+			changed,
+			str(last.get("summary") or ""),
+			rest,
+			[f for f in files_shown or [] if isinstance(f, dict) and f.get("path")],
+			str(last.get("diagram_type") or ""),
+			str(last.get("diagram") or ""),
+		)
 
 	def review_number(self) -> int:
 		if not self.review.pull_request:
