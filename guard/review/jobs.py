@@ -1,11 +1,14 @@
 """Create and queue Code Reviews, and the work that runs after one."""
 
+from collections.abc import Callable
 from typing import Any
 
 import frappe
 from frappe.utils import add_to_date, now_datetime, time_diff_in_seconds
 from frappe.utils.background_jobs import get_queue, get_queues_timeout, get_workers, is_job_enqueued
 
+from guard import settings as guard_settings
+from guard.review.host import ensure_host, is_hosted
 from guard.utils import cache, db
 
 # Dedicated review queues, used when the bench has workers for them (`workers` in
@@ -26,6 +29,8 @@ RESTARTED = "restarting: the worker stopped during the review"
 # A queued review that has had no job for this long lost it. A job that waits in a long queue still
 # counts as enqueued, so this only needs to be past the time a request takes to commit.
 LOST_AFTER = 300
+WAITING_FOR_PUSHES = "waiting for more pushes"
+WAITING_FOR_SLOT = "waiting for a free review slot"
 
 
 def create_review(
@@ -36,12 +41,14 @@ def create_review(
 	instructions: str = "",
 	user: str | None = None,
 	status_check: bool | None = None,
+	delay: int = 0,
 ) -> str:
 	"""Create a review, queue it, and cancel the older reviews of the pull request.
 
 	The pull request shows the new review at once: a queued check on its head, and the review in
 	Desk. `status_check` is None when the caller did not read the config: then the dashboard
-	settings of the team decide.
+	settings of the team decide. A review with a `delay` starts after that many seconds, so that a
+	newer push can replace it before it costs anything.
 	"""
 	from guard.review import state
 
@@ -64,6 +71,7 @@ def create_review(
 			"requested_tier": requested_tier or "",
 			"instructions": instructions,
 			"head_sha": head,
+			"stage": WAITING_FOR_PUSHES if delay else "",
 			"triggered_by_user": user,
 			# The check of the commit, when an older review set one: the new review updates it.
 			"check_run_id": state.check_of(pull_request, str(head or "")),
@@ -78,7 +86,7 @@ def create_review(
 	if status_check is None:
 		status_check = _dashboard_status_check(str(repository or ""))
 	state.queued(str(doc.name), status_check)
-	enqueue_review(str(doc.name), tier=requested_tier)
+	enqueue_review(str(doc.name), delay=delay, tier=requested_tier)
 	return str(doc.name)
 
 
@@ -145,9 +153,10 @@ def enqueue_review(
 		# The job id holds the attempt. `fail_dead_reviews` looks for the job of the saved attempt, so
 		# without this it takes a restarted job that runs for a dead one.
 		db.set_values("Code Review", review, {"attempt": attempt})
+	queue = review_queue(tier)
 	frappe.enqueue(
 		"guard.review.pipeline.run_review",
-		queue=review_queue(tier),
+		queue=queue,
 		timeout=job_timeout(tier),
 		job_id=job_id(review, attempt, moved),
 		deduplicate=True,
@@ -158,6 +167,32 @@ def enqueue_review(
 		tier=tier,
 		moved=moved,
 	)
+	if not frappe.flags.in_test:  # the job ran inline
+		host_for(queue)
+
+
+def host_for(queue: str) -> None:
+	"""Let a host run the review job just queued, when workers run several reviews.
+
+	Only on the review queues: a host on a shared queue would hold a worker that other jobs need.
+	"""
+	if queue not in REVIEW_QUEUES or guard_settings.reviews_per_worker() < 2:
+		return
+
+	def ensure() -> None:
+		try:
+			ensure_host(queue)
+		except Exception as error:
+			# The review job is queued, and a worker runs it alone.
+			frappe.logger("guard").warning(f"could not queue a review host on {queue}: {error}")
+
+	after_enqueues(ensure)
+
+
+def after_enqueues(action: Callable[[], None]) -> None:
+	"""Run `action` after the jobs queued at the commit, in the same list as `frappe.enqueue` uses."""
+	callbacks = getattr(frappe.local, "deferred_enqueue_after_commit", None)
+	(callbacks or frappe.db.after_commit).add(action)
 
 
 def job_timeout(tier: str) -> int:
@@ -171,8 +206,13 @@ def job_id(review: str, attempt: int, moved: bool = False) -> str:
 
 
 def has_job(review: str, attempt: int) -> bool:
-	"""A job of this attempt is queued or runs, on the intake queue or on the queue of its tier."""
-	return is_job_enqueued(job_id(review, attempt)) or is_job_enqueued(job_id(review, attempt, True))
+	"""A job of this attempt is queued or runs, on the intake queue or on the queue of its tier, or a
+	host runs the attempt on a thread."""
+	return (
+		is_job_enqueued(job_id(review, attempt))
+		or is_job_enqueued(job_id(review, attempt, True))
+		or is_hosted(review, attempt)
+	)
 
 
 def restart_dead_reviews() -> None:
@@ -251,10 +291,17 @@ def resume_waiting() -> None:
 	rows = frappe.get_all(
 		"Code Review",
 		filters=[["status", "=", "Queued"], *db.due("retry_at")],
-		fields=["name", "attempt", "tier"],
+		fields=["name", "attempt", "tier", "stage"],
 	)
+	from guard.review import state
+
 	for row in rows:
-		frappe.db.set_value("Code Review", row.name, "retry_at", None)
+		values: dict[str, Any] = {"retry_at": None}
+		if row.stage == WAITING_FOR_PUSHES:
+			values["stage"] = ""  # it waits for a worker now
+		# Under the row lock: a review cancelled since the select stays cancelled.
+		if not state.move(row.name, values, allowed=("Queued",)):
+			continue
 		enqueue_review(row.name, attempt=row.attempt or 0, tier=row.tier or "")
 	requeue_lost()
 

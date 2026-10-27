@@ -39,6 +39,7 @@ from guard.review import (
 )
 from guard.review.agent import Agent, run_together, tools
 from guard.review.findings import FindingFilter, score_cap
+from guard.review.jobs import WAITING_FOR_SLOT
 from guard.review.publish import Publisher, remove_eyes, set_status
 from guard.review.run import Delta, ReviewRun, Verdict
 from guard.review.task import BUDGET_TOKENS, compose
@@ -76,12 +77,14 @@ class JobReplaced(Exception):
 
 
 class ReviewPipeline:
-	def __init__(self, review: str, queued_tier: str | None = None, moved: bool = False):
+	def __init__(self, review: str, queued_tier: str | None = None, moved: bool = False, timeout: int = 0):
 		self.review = cast("CodeReview", frappe.get_doc("Code Review", review))
 		# The tier that the job was queued for, and whether it took over from another job. None when
 		# the review runs inline, for example in an eval: then it never moves to another queue.
 		self.queued_tier = queued_tier
 		self.moved = moved
+		# The timeout of the job, when a host runs it on a thread: RQ knows only the host job then.
+		self.timeout = timeout
 		self.attempt_number = 0
 		self.started = time.time()
 		self.current: ReviewRun | None = None  # the run of this attempt, once prepared
@@ -100,9 +103,9 @@ class ReviewPipeline:
 
 	@classmethod
 	def run(
-		cls, review: str, attempt: int = 0, tier: str | None = None, moved: bool = False
+		cls, review: str, attempt: int = 0, tier: str | None = None, moved: bool = False, timeout: int = 0
 	) -> "ReviewPipeline":
-		pipeline = cls(review, tier, moved)
+		pipeline = cls(review, tier, moved, timeout)
 		try:
 			pipeline.attempt(attempt)
 		finally:
@@ -142,7 +145,7 @@ class ReviewPipeline:
 				self.park(attempt, wait, GATEWAY_DOWN)
 				return
 			if self.slots_full():
-				self.park(attempt, SLOT_WAIT, "waiting for a free review slot")
+				self.park(attempt, SLOT_WAIT, WAITING_FOR_SLOT)
 				return
 			self.execute()
 		except JobReplaced:
@@ -655,8 +658,9 @@ class ReviewPipeline:
 
 		job = get_current_job()
 		seconds = job_timeout(tier)
-		if job is not None and job.timeout:
-			seconds = min(seconds, int(job.timeout))
+		limit = self.timeout or (int(job.timeout) if job is not None and job.timeout else 0)
+		if limit:
+			seconds = min(seconds, limit)
 		return self.started + seconds - FINISH_SECONDS
 
 	def after(self, run: ReviewRun, number: int) -> None:
@@ -958,7 +962,8 @@ def graph_verdict(run: ReviewRun) -> Verdict:
 	)
 
 
-def run_review(review: str, attempt: int = 0, tier: str = "", moved: bool = False) -> None:
+def run_review(review: str, attempt: int = 0, tier: str = "", moved: bool = False, timeout: int = 0) -> None:
 	"""Background job entry point. `tier` is the tier that the job was queued for, and `moved` is set
-	on the job that took over from another one on the queue of its tier."""
-	ReviewPipeline.run(review, attempt, tier, moved)
+	on the job that took over from another one on the queue of its tier. A host (`review/host.py`) sets
+	`timeout`, the timeout of the job that it took."""
+	ReviewPipeline.run(review, attempt, tier, moved, timeout)

@@ -50,7 +50,9 @@ class GuardSettings(Document):
 		plus_output_price: DF.Float
 		polling_enabled: DF.Check
 		public_url: DF.Data | None
+		push_review_delay: DF.Int
 		request_timeout: DF.Int
+		reviews_per_worker: DF.Int
 		sandbox_enabled: DF.Check
 		sandbox_image: DF.Data | None
 		sandbox_network: DF.Check

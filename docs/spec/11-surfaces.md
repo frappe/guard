@@ -72,9 +72,10 @@ Code Entity, Code Edge and Code Chunk connect only to Repository Index. Their ta
 
 The page shows the reviews that ended in the last hour, 6 hours, 24 hours, 7 days or 30 days, and then the state now.
 
-- Cards: throughput (completed reviews per hour), reviews in flight, review time and wait to start (median and 90th percentile), turns and rounds per review, turns per minute, the failed and retried share, tokens and the cached share, estimated cost, and findings per review.
+- Cards: throughput (completed reviews per hour), reviews in flight, review slots (running reviews against `max_concurrent_reviews`, the reviews that wait for a slot or for more pushes, and `reviews_per_worker`), review time and wait to start (median and 90th percentile), turns and rounds per review, turns per minute, the failed and retried share, tokens and the cached share, estimated cost, and findings per review.
 - Charts, with a bar for each 5 minutes of an hour, 15 minutes of 6 hours, hour of 24 hours, or day of a longer period: reviews that ended (completed, failed, cancelled), review time, wait to start, turns and rounds, turns per minute, tokens, and the mean seconds in each stage.
-- A table for each tier, then the queues, the reviews created and why reviews failed in the period, the AI gateway and the indexes that need attention.
+- A banner when reviews wait for a free review slot.
+- A table for each tier, then the queues (the dedicated review queues too, when the bench has them), the reviews created and why reviews failed in the period, the AI gateway and the indexes that need attention.
 
 Time, turns and findings count the completed reviews. Tokens and cost count every review that ended, because failed and cancelled reviews spend them too. Turns per minute divides the turns by the time of the `review` stage. Reviews from before `stage_seconds` use their whole duration. Wait to start runs from the request to the start of the last attempt. Cost uses the prices of the tier of each review in Guard Settings.
 

@@ -53,6 +53,8 @@
   "org_section",
   "monthly_credit_cap",
   "max_concurrent_reviews",
+  "reviews_per_worker",
+  "push_review_delay",
   "auto_enable_new_repositories",
   "org_col",
   "feature_tips",
@@ -349,6 +351,22 @@
   },
   {
    "default": "1",
+   "description": "Reviews that one worker of a Guard review queue (guard-review, guard-base, guard-plus, guard-apex) runs at the same time, each on its own thread. A review mostly waits for the AI gateway, so one worker can run several. 1 runs one review in each worker. At most 16.",
+   "fieldname": "reviews_per_worker",
+   "fieldtype": "Int",
+   "label": "Reviews Per Worker",
+   "non_negative": 1
+  },
+  {
+   "default": "120",
+   "description": "Seconds that an automatic review of a push waits before it starts. A newer push in that time replaces the review before it uses tokens. 0 starts the review at once.",
+   "fieldname": "push_review_delay",
+   "fieldtype": "Int",
+   "label": "Push Review Delay",
+   "non_negative": 1
+  },
+  {
+   "default": "1",
    "fieldname": "auto_enable_new_repositories",
    "fieldtype": "Check",
    "label": "Auto Enable New Repositories"
@@ -432,7 +450,7 @@
  "index_web_pages_for_search": 0,
  "issingle": 1,
  "links": [],
- "modified": "2026-10-26 23:50:00.000000",
+ "modified": "2026-10-27 20:00:00.000000",
  "modified_by": "Administrator",
  "module": "Guard",
  "name": "Guard Settings",

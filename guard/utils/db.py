@@ -118,5 +118,12 @@ def rollback() -> None:
 		frappe.db.rollback()
 
 
+def close() -> None:
+	"""Close the connection of a job that waits for a long time. The next query connects again. Tests
+	keep it: they run in one transaction."""
+	if not frappe.flags.in_test:
+		frappe.db.close()
+
+
 def set_values(doctype: str, name: str, values: dict[str, Any]) -> None:
 	frappe.db.set_value(doctype, name, cast(Any, values))

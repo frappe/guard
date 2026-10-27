@@ -15,6 +15,10 @@ CREDITS = {"base": 1, "plus": 3, "apex": 10}
 # square of its turns. The model can ask for several tools in one turn.
 DEFAULT_TURNS = {"base": 10, "plus": 16, "apex": 24}
 DEFAULT_CONCURRENT_REVIEWS = 4
+# Seconds, long enough for the fix-up pushes that often come right after a push.
+DEFAULT_PUSH_REVIEW_DELAY = 120
+# Threads of one worker. Each holds a database connection, and a hung one keeps its slot.
+MAX_REVIEWS_PER_WORKER = 16
 
 
 @dataclass
@@ -126,6 +130,17 @@ def max_concurrent_reviews() -> int:
 	"""Reviews that may run at once. 0 means no limit."""
 	value = _value("max_concurrent_reviews")
 	return DEFAULT_CONCURRENT_REVIEWS if value in (None, "") else max(cint(value), 0)
+
+
+def reviews_per_worker() -> int:
+	"""Reviews that one worker runs at once, on threads. 1 runs each review in its own job."""
+	return min(max(cint(_value("reviews_per_worker")), 1), MAX_REVIEWS_PER_WORKER)
+
+
+def push_review_delay() -> int:
+	"""Seconds that an automatic review of a push waits, so that a newer push can replace it first."""
+	value = _value("push_review_delay")
+	return DEFAULT_PUSH_REVIEW_DELAY if value in (None, "") else max(cint(value), 0)
 
 
 def trigger_handles() -> list[str]:

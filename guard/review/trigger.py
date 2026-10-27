@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING, cast
 
 import frappe
 
+from guard import settings as guard_settings
 from guard.config import gate
 from guard.config.globs import match_filter
 from guard.config.resolver import ConfigResolver
@@ -16,6 +17,8 @@ from guard.review.jobs import create_review
 from guard.review.publish import report_skip
 from guard.review.state import check_of
 from guard.utils import db
+
+PUSH_EVENTS = ("push", "rebase")
 
 if TYPE_CHECKING:
 	from guard.guard.doctype.pull_request.pull_request import PullRequest
@@ -86,7 +89,17 @@ def consider(
 		instructions,
 		user,
 		bool(config.settings.get("status_check", True)),
+		delay=push_delay(event, manual),
 	)
+
+
+def push_delay(event: str, manual: bool) -> int:
+	"""Seconds that a review waits before it starts. Pushes often come in a row: the review of each one
+	but the last would be cancelled after it spent tokens. An opened pull request and a request do not wait.
+	"""
+	if manual or event not in PUSH_EVENTS:
+		return 0
+	return guard_settings.push_review_delay()
 
 
 def owns_check(pull_request: str, head: str) -> bool:
