@@ -16,9 +16,11 @@ from guard.review import jobs, state, trigger, verify
 from guard.review import pipeline as pipeline_module
 from guard.review.agent import Agent
 from guard.review.context import BuiltContext
+from guard.review.findings import Finding
 from guard.review.pipeline import ReviewPipeline
-from guard.review.prompt import ContextPack
-from guard.review.run import ReviewRun
+from guard.review.prompt import ContextFile, ContextPack
+from guard.review.run import ReviewRun, Verdict
+from guard.settings import GatewayConfig
 from guard.tests.cases import AUTO_APPROVE, PullRequestCase
 from guard.tests.fakes import dsml, scripted
 from guard.utils import db
@@ -1375,6 +1377,68 @@ class TestApexAreas(IntegrationTestCase):
 		self.assertIn("(score 5): part", across)
 		self.assertEqual(run.verdict.summary, "whole")
 		self.assertEqual(len(run.files), files)
+
+	def test_parts_get_the_context_budget_of_plus(self):
+		# Each part sends its task again on every turn, and reviews at most 8 files.
+		diff = "".join(
+			f"diff --git a/app/f{n}.py b/app/f{n}.py\n--- a/app/f{n}.py\n+++ b/app/f{n}.py\n"
+			+ f"@@ -1 +1 @@\n-a = {n}\n+a = {n + 1}\n"
+			for n in range(pipeline_module.AREA_FILES + 1)
+		)
+		run = ReviewRun(None, None, "", lambda path: "a = 1", lambda path: None, lambda path: [], "", "")
+		run.tier = "apex"
+		run.files = parse_diff(diff)
+		# Fits the apex budget, but not the one of plus.
+		big = ContextFile("app/big.py", "x = 1\n" * 16_000, "impacted by f")
+		tasks: list[str] = []
+
+		def respond(request: ChatRequest) -> ChatResult:
+			tasks.append(request.messages[1].content)
+			return ChatResult(
+				"", [ToolCall("t", "submit_review", {"summary": "s", "confidence_score": 5})], Usage(10, 1)
+			)
+
+		pipeline = ReviewPipeline.__new__(ReviewPipeline)
+		pipeline.check_cancel = lambda lock=False: None
+		pipeline.current = None
+		pipeline.started = time.time()
+		with use_responder(respond):
+			pipeline.agent(run, BuiltContext(ContextPack(files=[big])))
+		parts = [t for t in tasks if "diff part" in t]
+		[across] = [t for t in tasks if "Verdicts of the parts" in t]
+		self.assertEqual(len(parts), 2)
+		self.assertFalse(any("app/big.py" in t for t in parts))
+		self.assertIn("app/big.py", across)
+
+	def test_apex_findings_and_score_are_checked_by_the_plus_model(self):
+		from guard.review import verify
+
+		run = ReviewRun(None, None, "", lambda path: "a = 1", lambda path: None, lambda path: [], "", "")
+		run.tier = "apex"
+		run.findings = [Finding("app/a.py", 1, 1, "P1", "logic", "Wrong value", "x")]
+		run.verdict = Verdict(summary="s", confidence_score=3, submitted=True)
+		models = {"base": "base-model", "plus": "plus-model", "apex": "apex-model"}
+		gateway = GatewayConfig("https://gw", "k", "anthropic", 30, models)
+		answers = {"verify": '[{"index": 0, "valid": false, "reason": "no"}]', "verdict": '{"score": 5}'}
+		respond = scripted([], answers)
+		requests: list[ChatRequest] = []
+
+		def record(request: ChatRequest) -> ChatResult:
+			requests.append(request)
+			return respond(request)
+
+		with patch("guard.settings.gateway", return_value=gateway), use_responder(record):
+			verify.verify(run)
+			verify.check_verdict(run)
+		self.assertEqual(
+			[(r.purpose, r.model) for r in requests], [("verify", "plus-model"), ("verdict", "plus-model")]
+		)
+		self.assertEqual(run.verdict.confidence_score, 5)
+		# Without a plus model, the check falls back to apex and not to base.
+		gateway.models = dict(models, plus="")
+		with patch("guard.settings.gateway", return_value=gateway):
+			self.assertEqual(verify.check_tier("apex"), "apex")
+			self.assertEqual(verify.check_tier("plus"), "plus")
 
 
 class TestDeadline(UnitTestCase):

@@ -1,11 +1,11 @@
 from typing import Any, cast
-from unittest.mock import patch
+from unittest.mock import PropertyMock, patch
 
 from frappe.tests import UnitTestCase
 
 from guard.git.diff import parse_diff
 from guard.graph.queries import CodeGraph, Entity, Link
-from guard.llm.client import ChatRequest, use_responder
+from guard.llm.client import ChatRequest, LLMClient, use_responder
 from guard.llm.types import ChatResult
 from guard.review import agent, context, task
 from guard.review.context import BuiltContext
@@ -186,6 +186,72 @@ class TestTrim(UnitTestCase):
 		self.assertTrue(any(cut))
 		self.assertEqual(cut, sorted(cut, reverse=True), "older output first")
 		self.assertFalse(any(cut[-agent.KEEP_TURNS :]))
+
+
+FINDING = {
+	"path": "app/a.py",
+	"start_line": 500,
+	"severity": "P1",
+	"comment_type": "logic",
+	"title": "Wrong value",
+	"body": "x",
+}
+
+
+class TestClose(UnitTestCase):
+	def test_an_agent_out_of_turns_keeps_its_tools_and_reads_no_more(self):
+		# The prompt cache starts with the tools. With fewer tools in the last calls, the whole
+		# conversation went again at more than the full price.
+		requests: list[ChatRequest] = []
+		respond = scripted(
+			[
+				[("read_file", {"path": "app/a.py"})],
+				[("read_file", {"path": "app/a.py", "start_line": 500})],
+				[("report_finding", FINDING), ("submit_review", {"summary": "Done.", "confidence_score": 4})],
+			]
+		)
+
+		def record(request: ChatRequest) -> ChatResult:
+			requests.append(request)
+			return respond(request)
+
+		review = agent.Agent(run_on(LONG), "system", max_turns=1)
+		with (
+			patch.object(LLMClient, "online", new_callable=PropertyMock, return_value=True),
+			use_responder(record),
+		):
+			review.run_loop("task")
+		self.assertEqual([r.tool_choice for r in requests], [None, "required", "required"])
+		names = [[spec.name for spec in r.tools or []] for r in requests]
+		self.assertEqual(names, [names[0]] * 3)
+		self.assertIn("read_file", names[0])
+		# The read after the last turn does not run, and the next call still reports.
+		self.assertIn(agent.OUT_OF_TURNS, [m.content for m in review.messages if m.role == "tool"])
+		self.assertEqual([f.title for f in review.run.findings], [FINDING["title"]])
+		self.assertEqual(review.run.verdict.confidence_score, 4)
+
+	def test_the_last_call_forces_the_verdict(self):
+		read: list[tuple[str, dict[str, Any]]] = [("read_file", {"path": "app/a.py"})]
+		requests: list[ChatRequest] = []
+		last_roles: list[str] = []  # the agent goes on adding to the messages of a request
+		# Then the default answer of `scripted`: submit_review.
+		respond = scripted([read, "I am done.", read])
+
+		def record(request: ChatRequest) -> ChatResult:
+			requests.append(request)
+			last_roles.append(request.messages[-1].role)
+			return respond(request)
+
+		review = agent.Agent(run_on(LONG), "system", max_turns=1)
+		with (
+			patch.object(LLMClient, "online", new_callable=PropertyMock, return_value=True),
+			use_responder(record),
+		):
+			review.run_loop("task")
+		self.assertEqual([r.tool_choice for r in requests], [None, *agent.CLOSE_CHOICES])
+		self.assertTrue(review.run.verdict.submitted)
+		# Each request ends with a user turn or tool output, not with an answer of the model.
+		self.assertEqual(last_roles[1:], ["user", "user", "tool"])
 
 
 class TestChangedFiles(UnitTestCase):

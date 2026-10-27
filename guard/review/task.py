@@ -27,7 +27,8 @@ PRIORITY = (
 )
 
 
-def compose(run: ReviewRun, built: BuiltContext, extra: str = "") -> str:
+def compose(run: ReviewRun, built: BuiltContext, extra: str = "", tokens: int = 0) -> str:
+	"""The task message. `tokens` is the budget, by default the one of the tier."""
 	parts = [TASK]
 	if run.instructions:
 		parts.append("Extra instructions for this review:\n" + data("request", run.instructions))
@@ -60,7 +61,7 @@ def compose(run: ReviewRun, built: BuiltContext, extra: str = "") -> str:
 		)
 	for note in built.pack.notes[:12]:
 		parts.append(data("context", note))
-	total = BUDGET_TOKENS.get(run.tier, BUDGET_TOKENS["base"]) * CHARS_PER_TOKEN
+	total = (tokens or BUDGET_TOKENS.get(run.tier, BUDGET_TOKENS["base"])) * CHARS_PER_TOKEN
 	diff = checks.mask_secrets(annotated_diff(run, total // 2))[:DIFF_LIMIT]
 	used = sum(len(p) for p in parts) + len(diff) + len(extra)
 	budget = total - used
