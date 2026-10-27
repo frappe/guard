@@ -29,7 +29,6 @@ COMPOSITE_INDEXES = (
 	("Review Finding", "repository_creation", ("repository", "creation")),
 	# Open findings number cards.
 	("Review Finding", "status_posted", ("status", "posted")),
-	("Pull Request", "repository_number", ("repository", "number")),
 	# Open pull requests to poll, and merged ones in a time window.
 	("Pull Request", "repository_state", ("repository", "state", "merged_at")),
 	("Pull Request", "state_merged_at", ("state", "merged_at")),
@@ -38,6 +37,11 @@ COMPOSITE_INDEXES = (
 	("Knowledge Base Document", "repository_path", ("repository", "path")),
 	# Deliveries whose job was lost.
 	("Webhook Delivery", "status_creation", ("status", "creation")),
+)
+# (doctype, index name, columns) of indexes that also stop duplicate rows.
+UNIQUE_INDEXES = (
+	# Events of a new pull request arrive in the same second, and each job can insert it.
+	("Pull Request", "repository_number", ("repository", "number")),
 )
 
 
@@ -77,32 +81,40 @@ def create_organization_settings():
 
 def create_indexes():
 	for doctype, name, columns in COMPOSITE_INDEXES:
-		table = f"tab{doctype}"
-		current = _index_columns(table, name)
-		if current == list(columns):
-			continue
-		# An index with other columns is replaced in the same statement.
-		drop = f"DROP INDEX `{name}`, " if current else ""
-		cols = ", ".join(_quote_column(column) for column in columns)
-		# Names come from COMPOSITE_INDEXES, not from input.
-		frappe.db.sql_ddl(
-			f"ALTER TABLE `{table}` {drop}ADD INDEX `{name}` ({cols})"
-		)  # nosemgrep: frappe-sql-format-injection
+		_create_index(doctype, name, columns, unique=False)
+	for doctype, name, columns in UNIQUE_INDEXES:
+		_create_index(doctype, name, columns, unique=True)
 	if not frappe.db.sql("SHOW INDEX FROM `tabCode Chunk` WHERE Key_name = 'content_fulltext'"):
 		frappe.db.sql_ddl("ALTER TABLE `tabCode Chunk` ADD FULLTEXT INDEX `content_fulltext` (`content`)")
 
 
-def _index_columns(table: str, name: str) -> list[str]:
-	"""Columns of an index in order, as `column` or `column(prefix length)`."""
+def _create_index(doctype: str, name: str, columns: tuple[str, ...], unique: bool) -> None:
+	table = f"tab{doctype}"
+	current, current_unique = _index(table, name)
+	if current == list(columns) and current_unique == unique:
+		return
+	# An index with other columns is replaced in the same statement.
+	drop = f"DROP INDEX `{name}`, " if current else ""
+	kind = "UNIQUE INDEX" if unique else "INDEX"
+	cols = ", ".join(_quote_column(column) for column in columns)
+	# Names come from COMPOSITE_INDEXES and UNIQUE_INDEXES, not from input.
+	frappe.db.sql_ddl(
+		f"ALTER TABLE `{table}` {drop}ADD {kind} `{name}` ({cols})"
+	)  # nosemgrep: frappe-sql-format-injection
+
+
+def _index(table: str, name: str) -> tuple[list[str], bool]:
+	"""Columns of an index in order, as `column` or `column(prefix length)`, and if it is unique."""
 	# The table name comes from COMPOSITE_INDEXES, not from input.
 	rows = db.dict_rows(
 		f"SHOW INDEX FROM `{table}` WHERE Key_name = %s", (name,)
 	)  # nosemgrep: frappe-sql-format-injection
 	rows.sort(key=lambda row: row["Seq_in_index"])
-	return [
+	columns = [
 		f"{row['Column_name']}({row['Sub_part']})" if row["Sub_part"] else str(row["Column_name"])
 		for row in rows
 	]
+	return columns, bool(rows) and not int(rows[0]["Non_unique"])
 
 
 def _quote_column(column: str) -> str:

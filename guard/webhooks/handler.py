@@ -124,6 +124,8 @@ def dispatch(provider: str, event: WebhookEvent) -> bool:
 		return _thread(repository, event)
 	if event.kind == "rerun" and event.number:
 		pr = pull_requests.refresh(repository, event.number)
+		# Release the Pull Request row before the git work of the gate.
+		db.commit()
 		return bool(trigger.consider(str(pr.name), "retrigger", True, event.sender))
 	return False
 

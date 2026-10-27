@@ -25,6 +25,10 @@ def poll() -> None:
 			poll_repository(repository)
 		except ProviderError as error:
 			frappe.log_error(str(error), "Guard polling")
+		except frappe.QueryDeadlockError, frappe.QueryTimeoutError:
+			# A webhook job held a Pull Request row. The next poll gets the rest of this repository.
+			db.rollback()
+			continue
 		db.commit()
 
 
@@ -64,6 +68,8 @@ def poll_repository(repository: str) -> None:
 			from guard.review import pull_requests
 
 			pull_requests.upsert(repository, info)
+			# Release the row before the provider calls below.
+			db.commit()
 		_poll_comments(repository, full_name, info.number, adapter)
 		_poll_threads(repository, full_name, info.number, adapter)
 	_closed(repository, open_numbers, adapter, full_name)

@@ -13,15 +13,36 @@ if TYPE_CHECKING:
 	from guard.guard.doctype.pull_request.pull_request import PullRequest
 
 
-def find(repository: str, number: int) -> str | None:
-	name = db.value("Pull Request", {"repository": repository, "number": number}, "name")
-	return str(name) if name else None
+def find(repository: str, number: int, for_update: bool = False) -> str | None:
+	"""The name of the pull request record. `for_update` locks the row until the transaction ends."""
+	row = db.values(
+		"Pull Request", {"repository": repository, "number": number}, ("name",), for_update=for_update
+	)
+	return str(row["name"]) if row else None
 
 
 def upsert(repository: str, info: PullRequestInfo) -> "PullRequest":
-	name = find(repository, info.number)
+	"""Store the pull request.
+
+	GitHub sends some events of one pull request in the same second, and each one runs in its own
+	job. Each job locks the row, so the jobs write one after the other and not over each other. The
+	lock lasts until the transaction ends: commit before slow work.
+	"""
+	try:
+		return _upsert(repository, info, find(repository, info.number))
+	except frappe.UniqueValidationError:
+		# Another job inserted the pull request after `find`. Update that row. A plain read can miss
+		# it in an older snapshot, a locking read cannot.
+		frappe.clear_last_message()
+		return _upsert(repository, info, find(repository, info.number, for_update=True))
+
+
+def _upsert(repository: str, info: PullRequestInfo, name: str | None) -> "PullRequest":
+	# Only an existing row is locked. A locking read of a missing key locks a gap, and two jobs
+	# that both hold the gap and insert deadlock. The unique key orders inserts instead.
 	doc = cast(
-		"PullRequest", frappe.get_doc("Pull Request", name) if name else frappe.new_doc("Pull Request")
+		"PullRequest",
+		frappe.get_doc("Pull Request", name, for_update=True) if name else frappe.new_doc("Pull Request"),
 	)
 	doc.update(
 		{
