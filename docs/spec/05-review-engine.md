@@ -231,7 +231,7 @@ In this order:
 4. **Strictness.** 1 keeps all. 2 drops a P2 with confidence below 0.6 that no verifier confirmed, and a P2 that rests on library behavior. A P2 that the verifier confirmed is kept: it is correct and worth posting. A P2 marked `verify_failed` is kept too: the verifier was asked and gave no answer, which is no evidence against it. 3 keeps only P0 and P1.
 5. **Re-review.** On a later review, drop a P2 unless it touches a line added since the last reviewed commit.
 6. **Dedupe in the review.** Same path, overlapping lines and similar title: keep the higher severity.
-7. **Dedupe across reviews.** Skip a finding that matches a posted finding of an earlier review on the same pull request: the fingerprint is the same, or the path is the same and the titles are similar. The earlier finding counts when it is open, or when a person dismissed it (in Desk, by resolving its thread, or by answering its question). A match with an open finding means it still applies. A match with a dismissed finding is not posted again, and the earlier one stays dismissed.
+7. **Dedupe across reviews.** Skip a finding that matches a finding of an earlier review on the same pull request: the fingerprint is the same, or the path is the same and the titles are similar. The earlier finding counts when it is open, also when only the summary showed it, or when it was posted and a person dismissed it (in Desk, by resolving its thread, or by answering its question). A match with an open finding means it still applies. A match with a dismissed finding is not posted again, and the earlier one stays dismissed.
 8. **Suppression.** See [08-learning.md](08-learning.md).
 9. **Cap.** At most 40, 20 or 10 inline comments for strictness 1, 2 or 3. Sort by severity, then confidence.
 
@@ -239,7 +239,9 @@ Every dropped finding stays as a Review Finding with status Suppressed or Dismis
 
 ## Stage 8: Score
 
-First, Guard checks each open finding of earlier reviews at the new head. A finding that is fixed or no longer applies is closed. The ones that still apply stay open, and they count below like posted findings: the status check counts them too.
+First, a repeat often has other words or another anchor, and step 7 does not match it. So when new findings are left and earlier findings are open, the fast model gets both lists in one call and names each new finding that reports the problem of an earlier one. Guard skips those new findings, as in step 7, but not one that is more severe than its match: a wrong match must not hide a worse problem. The fact check below counts such a pair once.
+
+Then Guard checks each open finding of earlier reviews at the new head. A finding that is fixed or no longer applies is closed. The ones that still apply stay open, and they count below like posted findings: the status check counts them too.
 
 The agent gives a score. Guard then applies caps, over the posted findings and the earlier ones that still apply:
 
@@ -260,7 +262,7 @@ The agent gives its score and reason before its findings are checked, and it doe
 - **Held back** by the filter or by suppression, for example as minor or as already posted. Nothing showed that it is wrong, so it still counts.
 - **Open from an earlier review**, and it still applies. It is on the pull request, so it counts like a posted finding.
 
-The summary headline counts both: for example "no new findings · 2 open from earlier reviews (1 P1, 1 P2)".
+The summary headline counts both: for example "no new findings · 2 open from earlier reviews (1 P1, 1 P2)". The new summary replaces the earlier one, so it also lists the earlier findings, marked "(earlier review)": in the findings table with a link to the comment, or under "Comments outside the diff".
 
 The check answers the score that this evidence supports, and a new reason that names only what the evidence backs. Without a model, the agent score and reason stay.
 

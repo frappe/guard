@@ -13,6 +13,7 @@ DESCRIPTION_END = "<!-- guard:end -->"
 ALLOWED_TAGS = {"details", "summary", "sub", "h3", "table", "thead", "tbody", "tr", "td", "th", "br"}
 DIAGRAM_KEYWORDS = ("sequenceDiagram", "erDiagram", "classDiagram", "flowchart", "graph")
 DIAGRAM_MAX_LINES = 80
+EARLIER = "_(earlier review)_"
 
 
 def summary(run: ReviewRun, posted: list[Finding], review_number: int, finding_urls: dict[int, str]) -> str:
@@ -22,7 +23,13 @@ def summary(run: ReviewRun, posted: list[Finding], review_number: int, finding_u
 		_section(sections.get("summary"), "Summary", sanitize(run.verdict.summary) or "_No summary._")
 	)
 	parts.append(_section(sections.get("confidence"), "Confidence and Risk", _score_text(run)))
-	table = _findings_table(posted, finding_urls)
+	# The headline counts the open findings of earlier reviews. This summary replaces the one that
+	# listed them, so list them again: else the ones that only a summary showed are lost.
+	earlier = [Finding.from_row(row) for row in run.earlier_open]
+	urls = dict(finding_urls)
+	for finding, row in zip(earlier, run.earlier_open, strict=True):
+		urls[id(finding)] = str(row.get("comment_url") or "")
+	table = _findings_table(posted, urls, earlier)
 	if table:
 		parts.append(_section(sections.get("issues_table"), "Findings", table))
 	impact = impact_diagram(run.changed) if any(e.callers or e.external for e in run.changed) else ""
@@ -34,13 +41,14 @@ def summary(run: ReviewRun, posted: list[Finding], review_number: int, finding_u
 	diagram = clean_diagram(run.verdict.diagram)
 	if diagram and run.verdict.diagram_type != "none":
 		parts.append(_section(sections.get("diagram"), "Diagram", f"```mermaid\n{diagram}\n```"))
-	outside = [f for f in posted if f.outside_diff]
+	outside = [_outside(f) for f in posted if f.outside_diff]
+	outside += [_outside(f, EARLIER) for f in earlier if f.outside_diff]
 	if outside and run.settings.get("comments_outside_diff", True):
 		parts.append(
 			_section(
 				{"included": True, "collapsible": True, "default_open": False},
 				"Comments Outside the Diff",
-				"\n\n".join(_outside(f) for f in outside),
+				"\n\n".join(outside),
 			)
 		)
 	if run.context_used:
@@ -202,17 +210,19 @@ def _tier(run: ReviewRun) -> str:
 	return f" ({run.tier})" if run.tier in ("plus", "apex") else ""
 
 
-def _findings_table(findings: list[Finding], urls: dict[int, str]) -> str:
-	rows = [f for f in findings if not f.outside_diff]
+def _findings_table(findings: list[Finding], urls: dict[int, str], earlier: list[Finding]) -> str:
+	"""The findings of this review, then the open ones of earlier reviews, with a link to each comment."""
+	rows = [(f, "") for f in findings if not f.outside_diff]
+	rows += [(f, f" {EARLIER}") for f in earlier if not f.outside_diff]
 	if not rows:
 		return ""
 	lines = ["| Severity | File | Finding |", "| - | - | - |"]
-	for finding in rows:
+	for finding, note in rows:
 		title = sanitize(finding.title).replace("|", "\\|")
 		url = urls.get(id(finding)) or ""
 		link = f"[{title}]({url})" if url else title
 		lines.append(
-			f"| {MARKS.get(finding.severity, '')} {finding.severity} | `{finding.path}:{finding.start_line}` | {link} |"
+			f"| {MARKS.get(finding.severity, '')} {finding.severity} | `{finding.path}:{finding.start_line}` | {link}{note} |"
 		)
 	return "\n".join(lines)
 
@@ -228,8 +238,9 @@ def _important_files(run: ReviewRun) -> str:
 	return "\n".join(lines)
 
 
-def _outside(finding: Finding) -> str:
-	return f"{MARKS.get(finding.severity, '')} **{finding.severity}** `{finding.path}:{finding.start_line}` **{sanitize(finding.title)}**\n\n{sanitize(finding.body)}"
+def _outside(finding: Finding, note: str = "") -> str:
+	note = f" {note}" if note else ""
+	return f"{MARKS.get(finding.severity, '')} **{finding.severity}** `{finding.path}:{finding.start_line}` **{sanitize(finding.title)}**{note}\n\n{sanitize(finding.body)}"
 
 
 def _footer(run: ReviewRun, review_number: int) -> str:
