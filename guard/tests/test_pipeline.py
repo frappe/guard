@@ -798,6 +798,44 @@ class TestPipeline(PullRequestCase):
 		# One that stopped too often fails, so it cannot loop for ever.
 		self.assertEqual(db.value("Code Review", worn, "status"), "Failed")
 
+	def test_restarted_review_is_not_taken_for_dead_while_its_job_runs(self):
+		# suite #881: a deploy restarted a review, and the next check failed it after it posted.
+		from guard.review import jobs
+
+		dead = self.running_review("review")
+		# Rows outlive the test: fail_dead_reviews in a later test would start this one again.
+		self.addCleanup(db.set_values, "Code Review", dead, {"status": "Completed"})
+		running: set[str] = set()
+
+		def alive(job: str) -> bool:
+			# The jobs of other tests' reviews run: this test changes only its own review.
+			return job in running or not job.startswith(f"guard-review-{dead}-")
+
+		with (
+			patch("guard.review.jobs.frappe.enqueue") as enqueue,
+			patch("guard.review.jobs.is_job_enqueued", side_effect=alive),
+		):
+			jobs.fail_dead_reviews()
+			self.assertEqual(enqueue.call_args.kwargs["job_id"], jobs.job_id(dead, 1))
+			self.assertEqual(db.value("Code Review", dead, "attempt"), 1)
+			# The new job runs the review, and posts its result now.
+			db.set_values("Code Review", dead, {"status": "Running", "stage": "publish"})
+			running.add(jobs.job_id(dead, 1))
+			jobs.fail_dead_reviews()
+		self.assertEqual(
+			db.values("Code Review", dead, ("status", "stage")), {"status": "Running", "stage": "publish"}
+		)
+
+	def test_migrate_queues_the_dead_review_check(self):
+		from guard.review import jobs
+
+		with patch("guard.review.jobs.frappe.enqueue") as enqueue:
+			jobs.restart_dead_reviews()
+		enqueue.assert_called_once_with("guard.review.jobs.fail_dead_reviews", queue="short")
+		# A migrate without Redis goes on: the job runs every 5 minutes anyway.
+		with patch("guard.review.jobs.frappe.enqueue", side_effect=ConnectionError("down")):
+			jobs.restart_dead_reviews()
+
 	def test_reason_is_fact_checked_when_findings_were_dropped(self):
 		# erpnext #62149: one P1 posted, one refuted, and the reason said "several real gaps".
 		posted = dict(PROBLEM, severity="P1", title="Saving old bundles breaks")
