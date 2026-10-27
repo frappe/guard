@@ -137,7 +137,9 @@ Guard approves a pull request when every condition is true:
 7. The pull request is open, not a draft, and its head is still the reviewed commit.
 8. The pull request has no `do-not-merge` and no `manual-review` label.
 
-If any condition fails, Guard does not approve and does not comment. The approval review has no body.
+If any condition fails, Guard does not approve and posts no comment. The approval review has no body.
+
+The Auto-approve field of the Code Review keeps the result: "Approved", or "Not approved:" and the first condition that failed. Guard checks first that the pull request is open, that its head is the reviewed commit, that the review is clean (condition 3) and that the policy is on. When one of these fails, the reason is plain to see or does not matter. When a later condition fails, Guard adds the reason to the footer of the summary that the review wrote, for example "Not auto-approved: risk medium is above the ceiling low". It skips the note when another review of the pull request is queued or running, or is the latest one: that review owns the summary.
 
 When new commits arrive, Guard dismisses its earlier approval. The next passing review approves again.
 

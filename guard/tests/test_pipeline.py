@@ -1169,6 +1169,43 @@ class TestPipeline(PullRequestCase):
 		self.assertTrue(self.adapter.named("approve"))
 		self.assertEqual(self.adapter.named("status")[-1], "success")
 		self.assertTrue(db.value("Pull Request", self.pr, "guard_approved"))
+		self.assertEqual(db.value("Code Review", str(name), "approval"), "Approved")
+		summary = self.adapter.comments[str(db.value("Pull Request", self.pr, "summary_comment_id"))]
+		self.assertNotIn("auto-approved", summary)
+
+	def test_clean_review_tells_why_it_did_not_approve(self):
+		# pilot #705: a clean 5/5 review was not approved, and nothing said why.
+		self.commit_on_main({".guard/config.toml": AUTO_APPROVE})
+		name = self.review(
+			[[("submit_review", {"summary": "s", "confidence_score": 5, "risk_level": "medium"})]]
+		)
+		self.assertFalse(self.adapter.named("approve"))
+		reason = "risk medium is above the ceiling low"
+		self.assertEqual(db.value("Code Review", str(name), "approval"), f"Not approved: {reason}")
+		summary = self.adapter.comments[str(db.value("Pull Request", self.pr, "summary_comment_id"))]
+		self.assertTrue(summary.endswith(f" · Not auto-approved: {reason}</sub>"), summary[-300:])
+		self.assertEqual(db.value("Code Review", str(name), "body"), summary)
+
+	def test_approval_note_is_added_once_and_not_over_a_newer_review(self):
+		from guard.learning import approve
+
+		self.commit_on_main({".guard/config.toml": AUTO_APPROVE})
+		name = str(
+			self.review([[("submit_review", {"summary": "s", "confidence_score": 5, "risk_level": "high"})]])
+		)
+		comment = str(db.value("Pull Request", self.pr, "summary_comment_id"))
+		noted = self.adapter.comments[comment]
+		approve.maybe_approve(name)
+		self.assertEqual(self.adapter.comments[comment].count(approve.NOTE), 1)
+		# A newer review can publish its summary before it becomes the latest review.
+		plain_body = noted.split(" · " + approve.NOTE)[0] + "</sub>"
+		frappe.db.set_value("Code Review", name, "body", plain_body)
+		self.adapter.comments[comment] = "newer summary"
+		newer = self.running_review("review")
+		# Tests share one transaction: a running review left behind looks dead to later tests.
+		self.addCleanup(frappe.db.set_value, "Code Review", newer, "status", "Cancelled")
+		approve.maybe_approve(name)
+		self.assertEqual(self.adapter.comments[comment], "newer summary")
 
 	def test_auto_approve_waits_for_earlier_findings(self):
 		self.commit_on_main({".guard/config.toml": AUTO_APPROVE})
@@ -1197,6 +1234,11 @@ class TestPipeline(PullRequestCase):
 		self.assertIn("no new findings · 1 open from earlier reviews (1 P1)", summary)
 		self.assertEqual(self.adapter.named("status")[-1], "failure")
 		self.assertFalse(self.adapter.named("approve"))
+		# The headline already shows why: the summary does not say it again.
+		self.assertEqual(
+			db.value("Code Review", str(second), "approval"), "Not approved: the review is not a clean 5/5"
+		)
+		self.assertNotIn("auto-approved", summary)
 
 	def test_mention_answers_question(self):
 		from guard.conversation import threads

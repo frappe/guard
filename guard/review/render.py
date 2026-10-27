@@ -115,6 +115,13 @@ def fix_prompt(finding: Finding) -> str:
 	return text + "\nCheck the claim against the code first. Fix it only if it holds."
 
 
+def footer_note(body: str, note: str) -> str:
+	"""The summary with `note` at the end of its footer, or under it when the footer is hidden."""
+	if body.endswith("</sub>"):
+		return f"{body.removesuffix('</sub>')} · {sanitize(note)}</sub>"
+	return f"{body}\n\n<sub>{sanitize(note)}</sub>"
+
+
 def description(existing: str, body: str) -> str:
 	block = f"{DESCRIPTION_START}\n{body}\n{DESCRIPTION_END}"
 	pattern = re.compile(re.escape(DESCRIPTION_START) + r".*?" + re.escape(DESCRIPTION_END), re.DOTALL)

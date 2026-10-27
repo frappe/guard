@@ -15,6 +15,7 @@ class CodeReview(Document):
 
 		agent_rounds: DF.Int
 		agent_turns: DF.Int
+		approval: DF.SmallText | None
 		attempt: DF.Int
 		base_sha: DF.Data | None
 		body: DF.LongText | None
