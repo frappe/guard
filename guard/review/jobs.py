@@ -89,6 +89,10 @@ def enqueue_review(review: str, delay: int = 0, attempt: int = 0, tier: str = ""
 			{"attempt": attempt, "retry_at": add_to_date(now_datetime(), seconds=delay)},
 		)
 		return
+	if attempt:
+		# The job id holds the attempt. `fail_dead_reviews` looks for the job of the saved attempt, so
+		# without this it takes a restarted job that runs for a dead one.
+		db.set_values("Code Review", review, {"attempt": attempt})
 	frappe.enqueue(
 		"guard.review.pipeline.run_review",
 		queue=QUEUE_BY_TIER.get(tier, "default"),
@@ -109,6 +113,16 @@ def job_timeout(tier: str) -> int:
 
 def job_id(review: str, attempt: int) -> str:
 	return f"guard-review-{review}-{attempt}"
+
+
+def restart_dead_reviews() -> None:
+	"""After a migrate: queue `fail_dead_reviews` now. A site update stops the running review jobs, and
+	the dead reviews hold their review slots until the job runs."""
+	try:
+		frappe.enqueue("guard.review.jobs.fail_dead_reviews", queue="short")
+	except Exception as error:
+		# Redis can be down in a migrate. The job runs every 5 minutes anyway: do not stop the migrate.
+		frappe.logger("guard").warning(f"could not queue fail_dead_reviews after the migrate: {error}")
 
 
 def fail_dead_reviews() -> None:

@@ -38,6 +38,8 @@ A stopped review ends its check only when no newer review of the commit exists a
 
 The Code Review is the truth, not the RQ queue. Every minute, `resume_waiting` also queues again a Queued review that has had no job for 5 minutes: a request can die before its commit hooks queue the job, and Redis can lose its jobs. A deploy can start a second job of a review while the first still runs. The job that starts the review writes a claim to `job_id`. A job that finds a newer claim at a check stops, and writes nothing more to the review. Only one review runs for each pull request at a time.
 
+Every 5 minutes, and once after each migrate, `fail_dead_reviews` looks for the job of each Running review. The RQ job id holds the `attempt`, and each queued job saves its attempt to the Code Review, so the check looks for the job that really runs. A review whose job stopped before publish starts again with the next attempt, and goes on from its checkpoint. A review whose job stopped later, or that used up its `MAX_ATTEMPT` restarts and retries, fails. A site update stops the running jobs, and their reviews hold review slots until the check runs: the migrate of the update queues it at once.
+
 ### Failure
 
 - A gateway 402 or 429 puts the job back in the queue with a delay: 2, 10, 20, then 40 minutes. Rate limits can last an hour. Before that, the HTTP client waits for a short time, and calls that ran side by side go again one at a time, so the turns already done are kept.

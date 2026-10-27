@@ -56,6 +56,9 @@ def after_migrate():
 	from guard.indexing.vectors import VectorStore
 
 	VectorStore.ensure_table()
+	from guard.review.jobs import restart_dead_reviews
+
+	restart_dead_reviews()
 
 
 def create_roles():
