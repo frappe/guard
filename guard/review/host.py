@@ -39,6 +39,10 @@ POLL = 5  # seconds between two looks at the queue and the threads
 SCAN = 50  # jobs at the front of the queue that a host looks at
 ALIVE_TTL = 120  # seconds that the mark of a running review lives without a refresh
 FREE_TTL = 30  # seconds that the free thread count of a host lives without a refresh
+# Seconds that a queued host offers its threads. It can wait that long for a worker. After that, a
+# review queues the next host.
+QUEUED_FREE_TTL = 600
+IDLE = 15  # seconds that a host with nothing to run waits for one more review before it ends
 MARGIN = 60  # seconds a host keeps free at the end of its job
 
 # Take one free thread of a host, when it has one. Atomic, so two requests do not take the same one.
@@ -51,6 +55,12 @@ return -1
 RELEASE = """
 if redis.call('GET', KEYS[1]) == ARGV[1] then return redis.call('DEL', KEYS[1]) end
 return 0
+"""
+# Offer no threads, and return the count from before: lower than the host told means a reservation.
+CLOSE = """
+local free = redis.call('GET', KEYS[1])
+redis.call('SET', KEYS[1], 0, 'EX', ARGV[1])
+return free
 """
 # Renew the mark, unless a newer job of the review owns it now.
 RENEW = """
@@ -88,46 +98,46 @@ def free_key(queue: str, index: int) -> str:
 def ensure_host(queue: str) -> None:
 	"""Make sure that a host can take the review job just queued on `queue`.
 
-	A queued host takes it when it starts, and a running host with a free thread at its next look.
-	Else queue a new host, at the front: the next free worker becomes a host, not a single review.
+	Call it after the job is in the queue (`jobs.host_for`). A host with a free thread takes the job
+	at its next look: a queued host when it starts, a running host within seconds. Else queue a new
+	host, at the front: the next free worker becomes a host, not a single review.
 	"""
-	# Once in a request: the host is queued at the commit, so a second look would not see it yet.
-	ensured: set[str] = frappe.flags.setdefault("guard_hosts_ensured", set())
-	if queue in ensured:
-		return
-	ensured.add(queue)
 	unused: list[int] = []
 	for index in range(MAX_HOSTS):
 		job = get_job(host_job_id(queue, index))
 		status = job.get_status(refresh=False) if job else None
-		if status == JobStatus.QUEUED:
-			return
-		if status == JobStatus.STARTED and job is not None:
+		if status in (JobStatus.QUEUED, JobStatus.STARTED) and job is not None:
 			if reserve(queue, index):
 				return
-			if not _host_is_dead(job, queue, index):
+			if status == JobStatus.QUEUED or not _host_is_dead(job, queue, index):
 				continue
 			# RQ keeps the job of a killed worker as started for hours. Its index is free again.
 			job.delete()
 		unused.append(index)
 	if not unused:
 		return
+	index = unused[0]
 	frappe.enqueue(
 		"guard.review.host.serve",
 		queue=queue,
 		timeout=HOST_TIMEOUT,
-		job_id=host_job_id(queue, unused[0]),
+		job_id=host_job_id(queue, index),
 		deduplicate=True,
 		at_front=True,
-		enqueue_after_commit=True,
 		queue_name=queue,
-		index=unused[0],
+		index=index,
 	)
+	# One thread is for this review. The next reviews take the others before the host starts.
+	_redis().set(_key(free_key(queue, index)), guard_settings.reviews_per_worker() - 1, ex=QUEUED_FREE_TTL)
 
 
 def reserve(queue: str, index: int) -> bool:
 	"""Take a free thread of the host: the next review job of this queue is for it."""
-	return int(_redis().eval(RESERVE, 1, _key(free_key(queue, index)))) >= 0
+	return reserve_key(free_key(queue, index))
+
+
+def reserve_key(name: str) -> bool:
+	return int(_redis().eval(RESERVE, 1, _key(name))) >= 0
 
 
 def _host_is_dead(job: Job, queue: str, index: int) -> bool:
@@ -155,6 +165,8 @@ class Host:
 		self.free = free
 		self.site = str(frappe.local.site)
 		self.running: list[Hosted] = []
+		self.told = 0  # the free threads that the last mark told
+		self.idle_since = 0.0
 
 	def serve(self) -> None:
 		# This job reads nothing more from the database. An open transaction for hours holds back
@@ -165,12 +177,29 @@ class Host:
 		try:
 			while True:
 				took = self.step()
-				if not self.running and not took:
+				if self.running or took:
+					self.idle_since = 0.0
+				elif self.may_end():
 					return
 				time.sleep(POLL)
 		finally:
 			if self.free:
-				_redis().delete(_key(self.free))
+				# 0, not deleted: a host that is still started without the key looks dead.
+				_redis().set(_key(self.free), 0, ex=FREE_TTL)
+
+	def may_end(self) -> bool:
+		"""End after `IDLE` seconds with nothing to run, unless a review took a thread since the last
+		mark: its job is in the queue, and this host must take it."""
+		self.idle_since = self.idle_since or time.time()
+		if time.time() - self.idle_since < IDLE:
+			return False
+		if not self.free:
+			return True
+		before = _redis().eval(CLOSE, 1, _key(self.free), FREE_TTL)
+		if before is not None and int(before) < self.told:
+			self.idle_since = 0.0
+			return False
+		return True
 
 	def step(self) -> bool:
 		"""One look at the threads and the queue. True when a review started.
@@ -192,7 +221,11 @@ class Host:
 		"""Start reviews on the free threads. True when one started."""
 		took = False
 		while len(self.running) < self.size and (taken := self.take()):
-			self.start(*taken)
+			try:
+				self.start(*taken)
+			except Exception:
+				self.give_back(*taken)
+				raise
 			took = True
 		return took
 
@@ -246,6 +279,11 @@ class Host:
 		hosted.thread.start()
 		self.running.append(hosted)
 
+	def give_back(self, job: Job, hosted: Hosted) -> None:
+		"""Queue a taken job again, when its thread did not start."""
+		self.queue.enqueue_job(job, at_front=True)
+		_redis().eval(RELEASE, 1, _key(alive_key(hosted.review, hosted.attempt)), hosted.token)
+
 	def reap(self) -> None:
 		for hosted in [h for h in self.running if not h.thread.is_alive()]:
 			_redis().eval(RELEASE, 1, _key(alive_key(hosted.review, hosted.attempt)), hosted.token)
@@ -256,8 +294,8 @@ class Host:
 		for hosted in self.running:
 			_redis().eval(RENEW, 1, _key(alive_key(hosted.review, hosted.attempt)), hosted.token, ALIVE_TTL)
 		if self.free:
-			free = self.size - len(self.running) if time.time() < self.ends_at else 0
-			_redis().set(_key(self.free), free, ex=FREE_TTL)
+			self.told = self.size - len(self.running) if time.time() < self.ends_at else 0
+			_redis().set(_key(self.free), self.told, ex=FREE_TTL)
 
 
 def run_job(queued: dict[str, Any]) -> None:

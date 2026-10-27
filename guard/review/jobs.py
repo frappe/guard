@@ -1,5 +1,6 @@
 """Create and queue Code Reviews, and the work that runs after one."""
 
+from collections.abc import Callable
 from typing import Any
 
 import frappe
@@ -177,11 +178,21 @@ def host_for(queue: str) -> None:
 	"""
 	if queue not in REVIEW_QUEUES or guard_settings.reviews_per_worker() < 2:
 		return
-	try:
-		ensure_host(queue)
-	except Exception as error:
-		# The review job is queued, and a worker runs it alone.
-		frappe.logger("guard").warning(f"could not queue a review host on {queue}: {error}")
+
+	def ensure() -> None:
+		try:
+			ensure_host(queue)
+		except Exception as error:
+			# The review job is queued, and a worker runs it alone.
+			frappe.logger("guard").warning(f"could not queue a review host on {queue}: {error}")
+
+	after_enqueues(ensure)
+
+
+def after_enqueues(action: Callable[[], None]) -> None:
+	"""Run `action` after the jobs queued at the commit, in the same list as `frappe.enqueue` uses."""
+	callbacks = getattr(frappe.local, "deferred_enqueue_after_commit", None)
+	(callbacks or frappe.db.after_commit).add(action)
 
 
 def job_timeout(tier: str) -> int:
@@ -282,11 +293,15 @@ def resume_waiting() -> None:
 		filters=[["status", "=", "Queued"], *db.due("retry_at")],
 		fields=["name", "attempt", "tier", "stage"],
 	)
+	from guard.review import state
+
 	for row in rows:
 		values: dict[str, Any] = {"retry_at": None}
 		if row.stage == WAITING_FOR_PUSHES:
 			values["stage"] = ""  # it waits for a worker now
-		db.set_values("Code Review", row.name, values)
+		# Under the row lock: a review cancelled since the select stays cancelled.
+		if not state.move(row.name, values, allowed=("Queued",)):
+			continue
 		enqueue_review(row.name, attempt=row.attempt or 0, tier=row.tier or "")
 	requeue_lost()
 

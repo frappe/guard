@@ -90,6 +90,7 @@ class TestHost(IntegrationTestCase):
 			# The real `run_review`: it must take the timeout that the host passes.
 			patch("guard.review.pipeline.ReviewPipeline.run", new=classmethod(run)),
 			patch.object(host, "POLL", 0.05),
+			patch.object(host, "IDLE", 0),
 		):
 			host.Host(self.queue, 2, 3600, "guard-test-host-free").serve()
 		self.assertEqual(sorted(name for name, *_ in seen), ["guard-review-CR-A", "guard-review-CR-B"])
@@ -98,7 +99,8 @@ class TestHost(IntegrationTestCase):
 		self.assertEqual(sorted(kwargs["timeout"] for *_, kwargs in seen), [1500, 1800])
 		self.assertEqual(self.queue.get_job_ids(), [])
 		self.assertFalse(jobs.has_job("CR-A", 0))
-		self.assertFalse(redis().exists("guard-test-host-free"))
+		# An ended host offers no threads.
+		self.assertEqual(redis().get(redis_key("guard-test-host-free")), b"0")
 
 	def test_an_ended_thread_keeps_the_mark_of_a_newer_job(self):
 		# A park keeps the attempt: a newer job of the review can run while the old thread ends.
@@ -114,8 +116,29 @@ class TestHost(IntegrationTestCase):
 		self.assertEqual(redis().get(redis_key(host.alive_key("CR-OLD", 0))), b"newer")
 
 	def test_a_host_with_nothing_to_take_ends(self):
-		with patch.object(host, "POLL", 0.05):
+		with patch.object(host, "POLL", 0.05), patch.object(host, "IDLE", 0):
 			host.Host(self.queue, 2, 3600).serve()
+
+	def test_a_job_whose_thread_does_not_start_goes_back_to_the_queue(self):
+		wanted = self.add("CR-THREAD")
+		hosted = host.Host(self.queue, 2, 3600)
+		with patch.object(threading.Thread, "start", side_effect=RuntimeError("can't start new thread")):
+			self.assertFalse(hosted.step())
+		self.assertEqual(self.queue.get_job_ids(), [wanted.id])
+		self.assertTrue(jobs.has_job("CR-THREAD", 0))  # queued in RQ again
+		self.assertFalse(host.is_hosted("CR-THREAD", 0))
+
+	def test_an_idle_host_waits_for_a_review_that_took_its_thread(self):
+		hosted = host.Host(self.queue, 2, 3600, "guard-test-host-free")
+		hosted.mark()
+		with patch.object(host, "IDLE", 0):
+			# `ensure_host` took a thread, and the review job is not in the queue yet.
+			self.assertTrue(host.reserve_key("guard-test-host-free"))
+			self.assertFalse(hosted.may_end())
+			hosted.mark()
+			self.assertTrue(hosted.may_end())
+		# A host that ends offers no threads, so the next review queues a new host.
+		self.assertFalse(host.reserve_key("guard-test-host-free"))
 
 
 class TestEnsureHost(UnitTestCase):
@@ -138,14 +161,12 @@ class TestEnsureHost(UnitTestCase):
 					)
 			return None
 
-		# Each call stands for a new request.
-		frappe.flags.pop("guard_hosts_ensured", None)
 		with (
 			patch("guard.review.host.get_job", side_effect=job_of),
 			patch("guard.review.host.frappe.enqueue") as enqueue,
+			patch("guard.settings.reviews_per_worker", return_value=2),
 		):
 			host.ensure_host("guard-base")
-		frappe.flags.pop("guard_hosts_ensured", None)
 		self.deleted = deleted
 		return [call.kwargs["index"] for call in enqueue.call_args_list]
 
@@ -159,9 +180,13 @@ class TestEnsureHost(UnitTestCase):
 		self.assertEqual(self.ensure({0: JobStatus.STARTED}), [1])
 		self.assertEqual(self.ensure({0: JobStatus.FINISHED}), [0])
 
-	def test_no_host_is_queued_when_one_can_take_the_review(self):
+	def test_a_queued_host_offers_its_other_threads(self):
+		# Reviews queued in one cron run: a host of 2 threads takes two of them, then a new host.
+		self.assertEqual(self.ensure({}), [0])
 		self.assertEqual(self.ensure({0: JobStatus.QUEUED}), [])
+		self.assertEqual(self.ensure({0: JobStatus.QUEUED}), [1])
 		# Also when the queued host has a higher index than a free one.
+		self.free(1, 1)
 		self.assertEqual(self.ensure({1: JobStatus.QUEUED}), [])
 
 	def test_each_review_takes_one_free_thread(self):
@@ -176,33 +201,26 @@ class TestEnsureHost(UnitTestCase):
 		self.assertEqual(self.ensure({0: JobStatus.STARTED}, started_ago=host.FREE_TTL * 3), [0])
 		self.assertEqual(self.deleted, [host.host_job_id("guard-base", 0)])
 
-	def test_a_request_looks_once_for_each_queue(self):
-		frappe.flags.pop("guard_hosts_ensured", None)
-		with (
-			patch("guard.review.host.get_job", return_value=None),
-			patch("guard.review.host.frappe.enqueue") as enqueue,
-		):
-			host.ensure_host("guard-base")
-			host.ensure_host("guard-base")
-		frappe.flags.pop("guard_hosts_ensured", None)
-		enqueue.assert_called_once()
-
 	def test_only_review_queues_get_hosts_and_an_error_does_not_fail_the_caller(self):
+		later: list = []
 		with (
+			patch("guard.review.jobs.after_enqueues", side_effect=later.append),
 			patch("guard.settings.reviews_per_worker", return_value=4),
 			patch("guard.review.jobs.ensure_host", side_effect=ConnectionError("redis")) as ensure,
 		):
 			jobs.host_for("default")
 			jobs.host_for("long")
-			ensure.assert_not_called()
 			jobs.host_for("guard-plus")
+			# After the commit, behind the review job: a host that looks then sees the job.
+			ensure.assert_not_called()
+			[action() for action in later]
 		ensure.assert_called_once_with("guard-plus")
 		with (
 			patch("guard.settings.reviews_per_worker", return_value=1),
-			patch("guard.review.jobs.ensure_host") as ensure,
+			patch("guard.review.jobs.after_enqueues") as after,
 		):
 			jobs.host_for("guard-plus")
-		ensure.assert_not_called()
+		after.assert_not_called()
 
 
 class TestParserThreads(UnitTestCase):

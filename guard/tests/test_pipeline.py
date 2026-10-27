@@ -310,6 +310,29 @@ class TestPipeline(PullRequestCase):
 		self.assertEqual(enqueue.call_args.kwargs["delay"], 0)
 		state.move(str(name), {"status": "Cancelled"})
 
+	def test_a_review_cancelled_while_it_waits_stays_cancelled(self):
+		doc = frappe.get_doc(
+			{
+				"doctype": "Code Review",
+				"pull_request": self.pr,
+				"repository": self.repository,
+				"source": "pull_request",
+				"status": "Cancelled",
+				"stage": state.REPLACED,
+				"trigger": "push",
+			}
+		).insert(ignore_permissions=True)
+		# The cron read the row while it still waited, and the newer push cancelled it after that.
+		read = frappe._dict(name=doc.name, attempt=0, tier="", stage=jobs.WAITING_FOR_PUSHES)
+		with (
+			patch("guard.review.jobs.frappe.get_all", return_value=[read]),
+			patch("guard.review.jobs.requeue_lost"),
+			patch("guard.review.jobs.enqueue_review") as enqueue,
+		):
+			jobs.resume_waiting()
+		enqueue.assert_not_called()
+		self.assertEqual(db.value("Code Review", str(doc.name), "stage"), state.REPLACED)
+
 	def test_bulk_retry_makes_one_review_for_each_pull_request(self):
 		from guard.api.ui import retry_reviews
 
