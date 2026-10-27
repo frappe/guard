@@ -66,6 +66,7 @@ A review that a push starts reads only the changes since the last completed revi
 
 - The trigger is `push`. A mention, a manual review and the first review read the whole diff, so a person can always ask for a full pass.
 - The last completed review reviewed `last_reviewed_sha`, and that commit is an ancestor of the new head.
+- The agent of the last review took turns. A verdict from the graph alone means that no model read the code.
 - The merge base did not change. After a rebase, a force push or a merge of the base branch, the diff since the last review holds changes that are not of the pull request.
 - The diff since `last_reviewed_sha` changes at least one reviewed file of the pull request. Else the review reads the whole diff, so that the commit gets a check.
 
@@ -87,7 +88,7 @@ When the result is `auto`, Guard computes a score:
 
 Less than 2 points gives base, or plus on the first review of a pull request: a small diff can still hide a cross-file bug. Less than 5 gives plus. Otherwise apex.
 
-On a push re-review, the lines, files, paths and contract changes of the score and the tier rules come from the delta: a small fix after a large change is small.
+On a push re-review, the lines, files, paths and contract changes of the score and the tier rules come from the delta: a small fix after a large change is small. So a risky path or a path tier rule counts only when the push changes that path.
 
 ## Stage 3: Fresh index
 

@@ -1,5 +1,10 @@
 """Prompts for the review agent and the verifier."""
 
+import re
+
+# A closing tag in untrusted text would end its data block early.
+CLOSE_DATA = re.compile(r"</(\s*)data", re.IGNORECASE)
+
 REVIEWER = """You are Guard, a senior engineer who reviews pull requests for this team.
 You have the full codebase graph: definitions, callers, callees, imports and similar code.
 Review the change the way the best reviewer on the team would.
@@ -152,5 +157,6 @@ def system_prompt(strictness: int, instructions: str = "", risk_definitions: str
 
 
 def data(label: str, text: str) -> str:
-	"""Wrap untrusted text in a labeled data block."""
-	return f'<data label="{label}">\n{text.strip()}\n</data>'
+	"""Wrap untrusted text in a labeled data block. The text cannot close the block."""
+	text = CLOSE_DATA.sub(r"<\\/\1data", text.strip())
+	return f'<data label="{label}">\n{text}\n</data>'

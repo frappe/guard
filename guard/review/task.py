@@ -171,8 +171,8 @@ def _delta(run: ReviewRun) -> str:
 def _changed(run: ReviewRun) -> str:
 	blocks = []
 	# On a re-review, only the entities of the files in the diff: the others were reviewed before.
-	paths = set(run.paths) if run.delta else None
-	entities = [e for e in run.changed if paths is None or e.path in paths]
+	names = run.delta.names if run.delta else None
+	entities = [e for e in run.changed if names is None or e.path in names]
 	for entity in entities[:25]:
 		block = [entity.label]
 		if entity.contract_changed and entity.base:

@@ -257,7 +257,7 @@ class ReviewPipeline:
 			run.rule_files = rule_files.collect(run.paths, run.head, run.list_dir)
 		# The graph and the checks see the whole pull request. The agents look at the delta only.
 		focus = run.delta.paths if run.delta else run.paths
-		focus_changed = [e for e in run.changed if e.path in focus]
+		focus_changed = [e for e in run.changed if e.path in run.delta.names] if run.delta else run.changed
 		self.pick_tier(run, focus_changed)
 		if not self.credits_allow(run):
 			return
@@ -760,18 +760,23 @@ class ReviewPipeline:
 		"""The changes of a push since the last completed review, or None to review the whole diff.
 
 		None after a rebase, a force push or a merge of the base branch: the diff since the last
-		review then holds changes that are not of the pull request. A push that changes no reviewed
-		file also gets a whole review, so that its commit gets a check.
+		review then holds changes that are not of the pull request. Also None when no model read the
+		last review. A push that changes no reviewed file also gets a whole review, so that its commit
+		gets a check.
 		"""
 		if self.review.trigger != "push" or not pr.latest_review or not pr.last_reviewed_sha:
 			return None
 		last = db.values(
-			"Code Review", str(pr.latest_review), ("status", "head_sha", "merge_base_sha", "summary")
+			"Code Review",
+			str(pr.latest_review),
+			("status", "head_sha", "merge_base_sha", "summary", "agent_turns"),
 		)
 		since = str(pr.last_reviewed_sha)
+		# A review without agent turns had only the graph: no model read the code at `since`.
 		if (
 			not last
 			or last.get("status") != "Completed"
+			or not last.get("agent_turns")
 			or last.get("head_sha") != since
 			or last.get("merge_base_sha") != merge_base
 			or since == head

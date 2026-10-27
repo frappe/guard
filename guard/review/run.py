@@ -62,6 +62,11 @@ class Delta:
 	def paths(self) -> list[str]:
 		return [f.path for f in self.files]
 
+	@property
+	def names(self) -> set[str]:
+		"""The paths and the old paths: an entity that a rename removes has the old path."""
+		return {p for f in self.files for p in (f.path, f.old_path) if p}
+
 
 def _choice(value: Any, allowed: tuple[str, ...], default: str) -> str:
 	return value if isinstance(value, str) and value in allowed else default
