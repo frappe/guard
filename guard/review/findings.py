@@ -283,3 +283,13 @@ def score_cap(findings: list[Finding], earlier: list[str] | None = None) -> int:
 	if severities:
 		return 4
 	return 5
+
+
+def only_minor_held_back(findings: list[Finding], earlier: list[str] | None = None) -> bool:
+	"""Nothing is posted or open, and each finding that was held back is a P2. The scale gives 5 with
+	P2 points left, so points that the pull request never sees must not keep the score lower.
+	Refuted findings are no evidence."""
+	if earlier or any(f.kept for f in findings):
+		return False
+	held = [f for f in findings if not f.status_reason.startswith("verifier:")]
+	return bool(held) and all(f.severity == "P2" for f in held)

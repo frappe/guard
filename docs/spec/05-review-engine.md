@@ -244,6 +244,8 @@ The summary headline counts both: for example "no new findings · 2 open from ea
 
 The check answers the score that this evidence supports, and a new reason that names only what the evidence backs. Without a model, the agent score and reason stay.
 
+When nothing is posted, no earlier finding is open, and each held-back finding is a P2, no check runs: the score is 5, as the scale allows with only P2 points left. Points that the pull request never sees must not fail its status check.
+
 ## Stage 9: Publish
 
 ### Summary comment

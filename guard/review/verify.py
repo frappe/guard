@@ -8,7 +8,7 @@ import frappe
 
 from guard.llm.client import LLMClient, parse_json
 from guard.llm.types import ChatResult, Message
-from guard.review.findings import SEVERITIES, Finding, score_cap, similar_titles
+from guard.review.findings import SEVERITIES, Finding, only_minor_held_back, score_cap, similar_titles
 from guard.review.prompts import VERDICT, VERIFIER, data
 from guard.review.rule_files import project_rules
 from guard.review.run import ReviewRun
@@ -26,6 +26,8 @@ LIBRARY_CONFIDENCE = 0.5
 BATCH = 6
 # The start of an unusable answer goes to the Error Log, enough to see what went wrong.
 LOGGED_ANSWER = 1000
+# The reason of a score that only held-back P2 points kept lower.
+MINOR_REASON = "Nothing is posted, and the only points that this review held back are minor."
 
 
 def verify(run: ReviewRun) -> None:
@@ -114,10 +116,16 @@ def check_verdict(run: ReviewRun) -> None:
 	reason can name issues that the pull request never sees. A finding that is held back, for
 	example as minor, still counts: nothing showed that it is wrong. The reviewer does not see
 	the open findings of earlier reviews, so the check counts the ones that still apply. Without
-	a model the score and reason stay as they are.
+	a model the score and reason stay as they are. When only P2 points were held back, the score is
+	5 without a model.
 	"""
 	verdict = run.verdict
 	if not verdict.submitted:
+		return
+	if only_minor_held_back(run.findings, [row["severity"] for row in run.earlier_open]):
+		if verdict.confidence_score < 5:
+			verdict.confidence_score = 5
+			verdict.confidence_reason = MINOR_REASON
 		return
 	dropped = any(not f.kept for f in run.findings)
 	cap = score_cap(run.findings, [row["severity"] for row in run.earlier_open])

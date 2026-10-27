@@ -12,7 +12,7 @@ from guard.graph.queries import Link
 from guard.llm.client import ChatRequest, LLMClient, use_responder
 from guard.llm.types import ChatResult, GatewayBilling, GatewayBusy, Message, ToolCall, Usage
 from guard.providers.base import ProviderComment, ProviderError
-from guard.review import jobs, state, trigger
+from guard.review import jobs, state, trigger, verify
 from guard.review import pipeline as pipeline_module
 from guard.review.agent import Agent
 from guard.review.context import BuiltContext
@@ -668,8 +668,9 @@ class TestPipeline(PullRequestCase):
 		):
 			second = trigger.consider(self.pr, "open", manual=True, requested_by="ada")
 		self.assertEqual(self.row(second)["posted_count"], 0)
-		# No model checks the score here, and a held-back P2 is no proof that it is wrong.
-		self.assertEqual(self.row(second)["confidence_score"], 4)
+		# erpnext #62627: a held-back P2 kept the score at 4, and the check failed with no findings.
+		self.assertEqual(self.row(second)["confidence_score"], 5)
+		self.assertEqual(self.adapter.checks[-1][1:3], ("success", "5/5 · 0 open finding(s)"))
 
 	def test_score_of_a_refuted_finding_is_fact_checked(self):
 		# erpnext #62149: every finding was refuted or held back, and the score of 3 stayed.
@@ -691,23 +692,22 @@ class TestPipeline(PullRequestCase):
 		self.assertIn("refuted: the caller passes notify", check.messages[-1].content)
 		self.assertIn("Reason: Callers break.", check.messages[-1].content)
 
-	def test_fact_check_keeps_a_score_that_held_back_findings_back(self):
+	def test_held_back_p2_points_alone_score_5_without_a_fact_check(self):
 		self.review([[("submit_review", {"summary": "s", "confidence_score": 5})]])
-		checked = '{"score": 4, "reason": "A naming point is left."}'
+		verdict = {"summary": "s", "confidence_score": 4, "confidence_reason": "A naming point is left."}
 		requests = self.online_review(
-			[[("report_finding", PROBLEM), ("submit_review", {"summary": "s", "confidence_score": 4})]],
-			{"verify": '[{"index": 0, "valid": true}]', "verdict": checked},
+			[[("report_finding", PROBLEM), ("submit_review", verdict)]],
+			{"verify": '[{"index": 0, "valid": true}]', "verdict": '{"score": 4, "reason": "r"}'},
 			manual=True,
 		)
 		latest = frappe.get_all(
 			"Code Review",
 			filters={"pull_request": self.pr},
-			fields=["confidence_score"],
+			fields=["confidence_score", "confidence_reason"],
 			order_by="creation desc",
 		)[0]
-		self.assertEqual(latest.confidence_score, 4)
-		[check] = [r for r in requests if r.purpose == "verdict"]
-		self.assertIn("held back: re-reviews post P2 only on new lines", check.messages[-1].content)
+		self.assertEqual((latest.confidence_score, latest.confidence_reason), (5, verify.MINOR_REASON))
+		self.assertFalse([r for r in requests if r.purpose == "verdict"])
 
 	def test_no_fact_check_when_posted_findings_back_the_score(self):
 		finding = dict(PROBLEM, severity="P1")

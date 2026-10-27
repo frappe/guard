@@ -9,7 +9,7 @@ from guard.git.diff import parse_diff
 from guard.llm.client import ChatRequest, LLMClient, use_responder
 from guard.llm.types import ChatResult, Usage
 from guard.review import checks, verify
-from guard.review.findings import Finding, FindingFilter
+from guard.review.findings import Finding, FindingFilter, only_minor_held_back
 from guard.review.rule_files import ProjectRule, collect, project_rules
 from guard.review.run import ReviewRun
 
@@ -117,6 +117,21 @@ These rules are mandatory for agents changing this repo:
 
 
 class TestRuleFilter(UnitTestCase):
+	def test_only_minor_held_back(self):
+		held, refuted, posted = finding("P2"), finding("P1"), finding("P2")
+		held.drop("Suppressed", "re-reviews post P2 only on new lines")
+		refuted.drop("Dismissed", "verifier: the caller passes notify")
+		self.assertTrue(only_minor_held_back([held, refuted]))
+		# A posted finding or an earlier open one is on the pull request: the score cap counts it.
+		self.assertFalse(only_minor_held_back([held, posted]))
+		self.assertFalse(only_minor_held_back([held], ["P2"]))
+		# Nothing held back: the fact check decides.
+		self.assertFalse(only_minor_held_back([refuted]))
+		self.assertFalse(only_minor_held_back([]))
+		major = finding("P1")
+		major.drop("Suppressed", "matches a dismissed finding")
+		self.assertFalse(only_minor_held_back([held, major]))
+
 	def test_a_project_rule_break_is_a_p2_that_stays(self):
 		# Like a rule comment of another reviewer: a P2 that caps the score at 4, posted whatever
 		# the model's confidence, and of any comment type. Strictness 3 posts no P2.
