@@ -24,7 +24,7 @@ from guard.review.run import Delta, ReviewRun, Verdict
 from guard.settings import GatewayConfig
 from guard.tests.cases import AUTO_APPROVE, MODELS, PullRequestCase
 from guard.tests.fakes import dsml, scripted
-from guard.utils import db
+from guard.utils import cache, db
 
 PROBLEM = {
 	"path": "app/models.py",
@@ -846,6 +846,7 @@ class TestPipeline(PullRequestCase):
 
 		with (
 			patch("guard.review.jobs.get_queues_timeout", return_value=DEDICATED),
+			patch("guard.review.jobs.has_workers", return_value=True),
 			patch("guard.review.jobs.frappe.enqueue", side_effect=enqueue),
 		):
 			name = self.review([])
@@ -866,6 +867,7 @@ class TestPipeline(PullRequestCase):
 			name = self.review([])
 		with (
 			patch("guard.review.jobs.get_queues_timeout", return_value=DEDICATED),
+			patch("guard.review.jobs.has_workers", return_value=True),
 			patch("guard.review.jobs.enqueue_review") as enqueue,
 		):
 			ReviewPipeline.run(str(name))
@@ -1775,6 +1777,11 @@ DEDICATED = {name: 300 for name in ("short", "default", "long", *jobs.REVIEW_QUE
 
 
 class TestReviewQueues(UnitTestCase):
+	def setUp(self):
+		workers = patch("guard.review.jobs.has_workers", return_value=True)
+		workers.start()
+		self.addCleanup(workers.stop)
+
 	def test_a_bench_with_dedicated_queues_uses_them(self):
 		with patch("guard.review.jobs.get_queues_timeout", return_value=DEDICATED):
 			self.assertEqual(jobs.review_queue(""), "guard-review")
@@ -1801,12 +1808,44 @@ class TestReviewQueues(UnitTestCase):
 			self.assertIsNone(jobs.handoff_queue("", "plus"))
 			self.assertIsNone(jobs.handoff_queue("base", "plus"))
 
+	def test_a_queue_with_no_worker_falls_back_to_the_shared_one(self):
+		# A self-hosted bench can name the queues in its config and run no worker for them.
+		with (
+			patch("guard.review.jobs.get_queues_timeout", return_value=DEDICATED),
+			patch("guard.review.jobs.has_workers", side_effect=lambda queue: queue != "guard-apex"),
+		):
+			self.assertEqual(jobs.review_queue("apex"), "long")
+			self.assertEqual(jobs.review_queue("plus"), "guard-plus")
+			# An apex review must not hold the intake worker for its whole run.
+			self.assertEqual(jobs.handoff_queue("", "apex"), "long")
+
 	def test_the_moved_job_counts_as_the_job_of_the_review(self):
 		# Else `requeue_lost` and `fail_dead_reviews` queue a second job while it waits.
 		moved = jobs.job_id("CR-1", 2, moved=True)
 		with patch("guard.review.jobs.is_job_enqueued", side_effect=lambda job: job == moved):
 			self.assertTrue(jobs.has_job("CR-1", 2))
 			self.assertFalse(jobs.has_job("CR-1", 1))
+
+
+class TestQueueWorkers(UnitTestCase):
+	def test_a_count_of_workers_is_kept_for_a_minute(self):
+		self.addCleanup(cache.delete, "guard-queue-workers:guard-plus")
+		cache.delete("guard-queue-workers:guard-plus")
+		with (
+			patch("guard.review.jobs.get_queue"),
+			patch("guard.review.jobs.get_workers", return_value=[]) as workers,
+		):
+			self.assertFalse(jobs.has_workers("guard-plus"))
+			self.assertFalse(jobs.has_workers("guard-plus"))
+		workers.assert_called_once()
+		# Redis down: the shared queue, and nothing kept.
+		cache.delete("guard-queue-workers:guard-plus")
+		with (
+			patch("guard.review.jobs.get_queue"),
+			patch("guard.review.jobs.get_workers", side_effect=ConnectionError("down")),
+		):
+			self.assertFalse(jobs.has_workers("guard-plus"))
+		self.assertIsNone(cache.get("guard-queue-workers:guard-plus"))
 
 
 class TestDeadline(UnitTestCase):
