@@ -71,6 +71,17 @@ Guard uses the Frappe RQ workers. It adds no new process.
 | `default` | Reviews (base, plus, and new reviews with no tier yet), thread replies, chat answers, addressed checks | 30 min, 2 h for a review with no tier yet |
 | `long` | Full indexing, apex reviews, knowledge base builds, sandbox runs | 2 h |
 
+A bench can also have dedicated review queues: workers for them in the `workers` key of `common_site_config.json`. Guard uses each one that the bench has and that a worker listens on. For the others it uses the shared queue above: `default`, or `long` for apex. So a self-hosted bench needs no new queue, and a queue in the config with no worker running, for example before `bench setup supervisor`, does not hold reviews. Guard counts the workers of a queue again each minute.
+
+| Queue | Jobs | Timeout |
+| - | - | - |
+| `guard-review` | New reviews with no tier yet, up to the gate | 2 h |
+| `guard-base` | Base reviews | 30 min |
+| `guard-plus` | Plus reviews | 30 min |
+| `guard-apex` | Apex reviews | 2 h |
+
+A job queued with no tier moves the review after the gate, when its tier has a dedicated queue. An intake job also moves the review to the shared queue when its tier has no worker, so a long review does not hold the intake worker. A job queued for a requested tier moves too when the gate picks a higher one, because a request sets only the lowest tier. The move: the review goes back to Queued with the stage `waiting for <queue>`, and a job on that queue reviews it. The new job does the stages before the agents again. They take seconds, and the index is fresh. The moved job has its own RQ job id (`-moved` at the end), because the first job still runs when it is queued. A moved job does not move again, so a review moves at most once in an attempt. Retries and restarts know the tier, so they go to its queue at once. A review that runs inline, as in an eval, never moves. The worker count of each queue limits the reviews of its tier that run at a time. `max_concurrent_reviews` still limits all of them together, and a review in the intake job counts as running. So set it to the sum of the review workers, the intake workers included, or more.
+
 The gate picks the tier inside the review job, so a new review gets the timeout of apex. The agents stop 6 minutes before the job timeout, or the base and plus limit of 30 minutes, and submit what they have. The apex parts may use two thirds of that time, and the pass across the parts the rest. A job that the worker kills loses all of its work.
 
 Thread replies and addressed checks wait for a busy or failing gateway, as reviews do. The job stores an attempt and a retry time, and stops. A job every minute queues the work again when the retry time has passed. After 120 s, 10 min and 30 min, the last attempt fails and logs its traceback.

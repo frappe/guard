@@ -4,11 +4,20 @@ from typing import Any
 
 import frappe
 from frappe.utils import add_to_date, now_datetime, time_diff_in_seconds
-from frappe.utils.background_jobs import is_job_enqueued
+from frappe.utils.background_jobs import get_queue, get_queues_timeout, get_workers, is_job_enqueued
 
-from guard.utils import db
+from guard.utils import cache, db
 
-QUEUE_BY_TIER = {"apex": "long"}
+# Dedicated review queues, used when the bench has workers for them (`workers` in
+# common_site_config.json). A review with no tier yet starts on the intake queue. The gate picks the
+# tier in that job, and the review then moves to the queue of its tier.
+INTAKE_QUEUE = "guard-review"
+TIER_QUEUES = {"base": "guard-base", "plus": "guard-plus", "apex": "guard-apex"}
+REVIEW_QUEUES = (INTAKE_QUEUE, *TIER_QUEUES.values())
+# The shared queues, on a bench without a dedicated queue.
+SHARED_QUEUES = {"apex": "long"}
+# Seconds that a count of the workers of a queue holds: one Redis read a minute, not one per review.
+WORKERS_TTL = 60
 DEAD_AFTER = 600  # seconds past the job timeout
 # Stages that post nothing yet. A review whose job stopped in one of them can start again.
 BEFORE_PUBLISH = ("prepare", "start", "index", "context", "review", "verify", "filter")
@@ -80,8 +89,51 @@ def _dashboard_status_check(repository: str) -> bool:
 	return bool(get_effective(team).get("status_check"))
 
 
-def enqueue_review(review: str, delay: int = 0, attempt: int = 0, tier: str = "") -> None:
-	"""Queue a review now, or mark it to resume after `delay` seconds."""
+def review_queue(tier: str) -> str:
+	"""The queue for a review job of `tier`: its dedicated queue when the bench has one, else a shared one."""
+	queue = TIER_QUEUES.get(tier, INTAKE_QUEUE)
+	if queue in get_queues_timeout() and has_workers(queue):
+		return queue
+	return SHARED_QUEUES.get(tier, "default")
+
+
+def has_workers(queue: str) -> bool:
+	"""A worker listens on the queue now. A bench can name a queue in its config and run no worker for
+	it, for example before `bench setup supervisor`. A job on that queue would wait for ever."""
+	key = f"guard-queue-workers:{queue}"
+	known = cache.get(key)
+	if known is not None:
+		return bool(known)
+	try:
+		count = len(get_workers(get_queue(queue)))
+	except Exception:
+		# Redis is down. The shared queue is the safe answer, and the next review looks again.
+		return False
+	cache.set(key, count, WORKERS_TTL)
+	return bool(count)
+
+
+def handoff_queue(queued_tier: str, tier: str, moved: bool = False) -> str | None:
+	"""The queue to move a review to after the gate picked `tier`, or None to go on in this job.
+
+	A job queued with no tier moves, and so does one queued for a requested tier when the gate picks a
+	higher one. A job on the intake queue also moves to a shared queue, when its tier has no worker: an
+	apex review must not hold the intake worker. On a bench with shared queues only, no job moves. A
+	moved job does not move again, also when the gate picks another tier in it.
+	"""
+	current, queue = review_queue(queued_tier), review_queue(tier)
+	if moved or queue == current or not {current, queue} & set(REVIEW_QUEUES):
+		return None
+	return queue
+
+
+def enqueue_review(
+	review: str, delay: int = 0, attempt: int = 0, tier: str = "", moved: bool = False
+) -> None:
+	"""Queue a review now, or mark it to resume after `delay` seconds.
+
+	`moved` is for the job that takes over from an intake job, on the queue of the tier.
+	"""
 	if delay and not frappe.flags.in_test:
 		db.set_values(
 			"Code Review",
@@ -95,14 +147,16 @@ def enqueue_review(review: str, delay: int = 0, attempt: int = 0, tier: str = ""
 		db.set_values("Code Review", review, {"attempt": attempt})
 	frappe.enqueue(
 		"guard.review.pipeline.run_review",
-		queue=QUEUE_BY_TIER.get(tier, "default"),
+		queue=review_queue(tier),
 		timeout=job_timeout(tier),
-		job_id=job_id(review, attempt),
+		job_id=job_id(review, attempt, moved),
 		deduplicate=True,
 		enqueue_after_commit=True,
 		now=bool(frappe.flags.in_test),
 		review=review,
 		attempt=attempt,
+		tier=tier,
+		moved=moved,
 	)
 
 
@@ -111,8 +165,14 @@ def job_timeout(tier: str) -> int:
 	return 1800 if tier in ("base", "plus") else 7200
 
 
-def job_id(review: str, attempt: int) -> str:
-	return f"guard-review-{review}-{attempt}"
+def job_id(review: str, attempt: int, moved: bool = False) -> str:
+	"""The RQ job id. A moved job has its own id: the intake job still runs when it is queued."""
+	return f"guard-review-{review}-{attempt}" + ("-moved" if moved else "")
+
+
+def has_job(review: str, attempt: int) -> bool:
+	"""A job of this attempt is queued or runs, on the intake queue or on the queue of its tier."""
+	return is_job_enqueued(job_id(review, attempt)) or is_job_enqueued(job_id(review, attempt, True))
 
 
 def restart_dead_reviews() -> None:
@@ -141,7 +201,7 @@ def fail_dead_reviews() -> None:
 	)
 	for row in rows:
 		attempt = row.attempt or 0
-		alive = is_job_enqueued(job_id(row.name, attempt))
+		alive = has_job(row.name, attempt)
 		age = time_diff_in_seconds(now_datetime(), row.started_at) if row.started_at else 0
 		if alive and age < job_timeout(row.tier or "") + DEAD_AFTER:
 			continue
@@ -213,7 +273,7 @@ def requeue_lost() -> None:
 	)
 	for row in rows:
 		attempt = row.attempt or 0
-		if not is_job_enqueued(job_id(row.name, attempt)):
+		if not has_job(row.name, attempt):
 			enqueue_review(row.name, attempt=attempt, tier=row.tier or "")
 
 

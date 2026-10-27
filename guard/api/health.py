@@ -74,14 +74,25 @@ def check_failure_rate() -> None:
 	)
 
 
+def queue_names() -> list[str]:
+	"""The shared queues, and the dedicated review queues that the bench has."""
+	from frappe.utils.background_jobs import get_queues_timeout
+
+	from guard.review.jobs import REVIEW_QUEUES
+
+	configured = get_queues_timeout()
+	return [*QUEUES, *(name for name in REVIEW_QUEUES if name in configured)]
+
+
 def _queues() -> list[dict[str, Any]]:
 	from frappe.utils.background_jobs import get_queue, get_workers
 	from rq.registry import StartedJobRegistry
 
+	names = queue_names()
 	try:
 		workers = get_workers()
 		rows = []
-		for name in QUEUES:
+		for name in names:
 			queue = get_queue(name)
 			rows.append(
 				{
@@ -93,7 +104,7 @@ def _queues() -> list[dict[str, Any]]:
 			)
 		return rows
 	except Exception as error:  # Redis down is itself the answer
-		return [{"queue": name, "error": str(error)[:200]} for name in QUEUES]
+		return [{"queue": name, "error": str(error)[:200]} for name in names]
 
 
 def _reviews(hours: int = 24) -> dict[str, int]:
