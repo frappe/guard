@@ -6,6 +6,7 @@ from typing import Any
 
 import frappe
 
+from guard import settings as guard_settings
 from guard.llm.client import LLMClient, parse_json
 from guard.llm.types import ChatResult, Message
 from guard.review.findings import SEVERITIES, Finding, only_minor_held_back, score_cap, similar_titles
@@ -28,13 +29,16 @@ BATCH = 6
 LOGGED_ANSWER = 1000
 # The reason of a score that only held-back P2 points kept lower.
 MINOR_REASON = "Nothing is posted, and the only points that this review held back are minor."
+# The checks read a few findings with their code. The plus model does that well, and the apex
+# model costs more for each token and thinks longer.
+CHECK_TIERS = {"apex": "plus"}
 
 
 def verify(run: ReviewRun) -> None:
 	candidates = [f for f in run.findings if f.kept and (run.tier != "base" or f.severity == "P0")]
 	if not candidates:
 		return
-	client = LLMClient(tier=run.tier, purpose="verify", usage=run.usage)
+	client = LLMClient(tier=check_tier(run.tier), purpose="verify", usage=run.usage)
 	if not client.online:
 		return
 	rules = {rule.id: rule.text for rule in project_rules(run.rule_files)}
@@ -50,6 +54,15 @@ def verify(run: ReviewRun) -> None:
 				_apply(run, finding, answers[index])
 			else:
 				finding.verify_failed = True
+
+
+def check_tier(tier: str) -> str:
+	"""The tier of the model that checks the findings and the score of a review of `tier`.
+
+	A tier without a model falls back to a lower one. So without a plus model, apex keeps its own.
+	"""
+	check = CHECK_TIERS.get(tier, tier)
+	return check if guard_settings.gateway().models.get(check) else tier
 
 
 def _prompt(
@@ -131,7 +144,7 @@ def check_verdict(run: ReviewRun) -> None:
 	cap = score_cap(run.findings, [row["severity"] for row in run.earlier_open])
 	if verdict.confidence_score >= cap and not dropped and not run.earlier_open:
 		return
-	client = LLMClient(tier=run.tier, purpose="verdict", usage=run.usage)
+	client = LLMClient(tier=check_tier(run.tier), purpose="verdict", usage=run.usage)
 	if not client.online:
 		return
 	claim = (

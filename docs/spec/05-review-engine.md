@@ -101,7 +101,7 @@ For one hour after an index run fails, reviews go on without the graph and do no
 
 ## Stage 4: Context
 
-`guard.review.context.build` collects these items and `guard.review.task.compose` writes them into the first message. Each item has a priority. Guard drops the lowest priority items until the message fits the budget: 12,000 tokens for base, 20,000 for plus, 32,000 for apex. The agent sends the first message again on every turn, so the budget is small. The model reads more with its tools.
+`guard.review.context.build` collects these items and `guard.review.task.compose` writes them into the first message. Each item has a priority. Guard drops the lowest priority items until the message fits the budget: 12,000 tokens for base, 20,000 for plus, 32,000 for apex. Each part of an apex review reviews at most 8 files and gets the budget of plus. The agent sends the first message again on every turn, so the budget is small. The model reads more with its tools.
 
 The annotated diff shows up to 22 head lines around each hunk, past the 3 lines that git gives. When these lines take more than half of the budget, each hunk gets 10 lines, and then none. The changed files are not sent apart from the diff, so the model reads each line once.
 
@@ -169,7 +169,9 @@ The graph tools are there only when the repository has an index. Thread answers 
 
 ### Turn limit
 
-The agent stops at `submit_review` or at the turn limit of the tier. At the limit, Guard sends one more request that allows only `submit_review`. The Anthropic front does not force the call, because Claude 5 models refuse a forced tool. The prompt asks for the call. When no verdict comes, the graph verdict is used.
+The agent stops at `submit_review` or at the turn limit of the tier. At the limit, Guard sends up to two requests that ask for the last `report_finding` calls and `submit_review`. When no verdict comes, it sends one more request that forces `submit_review`. The Anthropic front does not force the call, because Claude 5 models refuse a forced tool. The prompt asks for the call. When no verdict comes, the graph verdict is used.
+
+These requests send all the tools, and the agent refuses the tools that read: "You have no turns left". The next request can then still report findings. The prompt cache starts with the tools. With fewer tools, the whole conversation would go again at more than the full price.
 
 ### Old tool output and the prompt cache
 
@@ -181,7 +183,7 @@ Each turn sends the whole conversation again. When the gateway reads no part of 
 | - | - | - | - |
 | base | `base_model` | `max_turns_base` | One agent. |
 | plus | `plus_model` | `max_turns_plus` | One agent, then verification. |
-| apex | `apex_model` | Half of `max_turns_apex` for each pass, at least `max_turns_base` | One agent for each area of 8 files, at most 6 areas, then one cross-cutting agent that reads the area verdicts and the impact graph, then verification. |
+| apex | `apex_model` | Half of `max_turns_apex` for each pass, at least `max_turns_base` | One agent for each area of 8 files, at most 6 areas, then one cross-cutting agent that reads the area verdicts and the impact graph, then verification with `plus_model`. |
 
 An apex review with more than 8 files sorts the files by risk. Broken callers, callers not updated, contract changes, callers and changed entities come first, then the number of changed lines. The 6 areas take the riskiest 48 files. The cross-cutting agent reviews the other files. Its diff starts with them, and its task lists them.
 
@@ -206,7 +208,7 @@ The system prompt tells the agent to:
 
 ## Stage 6: Verify
 
-For plus and apex, Guard sends each finding with its code and context to the tier model. The model answers `valid`, a corrected severity and a confidence. Guard drops findings that are not valid. Base reviews verify only P0 findings. A finding from a project rule goes to the verifier with the rule text.
+For plus and apex, Guard sends each finding with its code and context to the tier model. An apex review uses the plus model here and in the fact check of the score: the check reads a few findings with their code, and the apex model costs more and thinks longer. Without a `plus_model`, apex uses its own model. Guard Usage prices these tokens as apex tokens, so the cost estimate of an apex review is a little high. The model answers `valid`, a corrected severity and a confidence. Guard drops findings that are not valid. Base reviews verify only P0 findings. A finding from a project rule goes to the verifier with the rule text.
 
 The findings go in batches of 6, one call for each batch, side by side. With one call for all findings, a large review often got an answer that was cut short, and then no finding was checked. Guard does not use an answer that stopped at its token limit. When an answer is cut short, is not JSON, or leaves out findings, Guard writes it to the Error Log ("Guard verifier"), with the review, the stop reason and the start of the answer. The findings that it leaves out are marked `verify_failed`. They keep the severity and confidence of the reviewer.
 

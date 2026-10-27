@@ -21,6 +21,13 @@ NUDGE = (
 	"Not submitted. Your summary describes issues, but you reported no findings. "
 	"Call report_finding once for each issue, on the changed line it concerns, then call submit_review again."
 )
+OUT_OF_TURNS = (
+	"You have no turns left, and this tool did not run. In this answer, call report_finding for each "
+	"issue you found, then submit_review."
+)
+# The tool choice of each call after the turn limit. A call that reads gets OUT_OF_TURNS, and the
+# next call can still report. The last call forces the verdict.
+CLOSE_CHOICES = ("required", "required", "submit_review")
 
 
 def _mentions_issues(arguments: dict[str, Any]) -> bool:
@@ -228,6 +235,7 @@ class Agent:
 		self.messages: list[Message] = [Message("system", self.system, cache=True)]
 		self.reported: set[str] = set()
 		self.nudged = False
+		self.closing = False  # out of turns: only report_finding and submit_review run
 		self.tool_turns: list[list[int]] = []  # the message indexes of each turn's tool output
 		self.caching = False  # the gateway read part of a prompt from its cache
 		self.breakpoint: Message | None = None
@@ -320,6 +328,8 @@ class Agent:
 				return NUDGE
 			self.verdict = Verdict.from_arguments(args)
 			return "review submitted"
+		if self.closing:
+			return OUT_OF_TURNS
 		answer = read_tool(run, name, args)
 		if answer is not None:
 			return answer
@@ -373,26 +383,27 @@ def run_together(
 
 
 def _close(agents: list[Agent], client: Any, specs: list[ToolSpec]) -> None:
-	"""Out of turns: one call to report what is left, then one forced verdict. No nudge here."""
-	if not agents:
-		return
-	final_tools = [s for s in specs if s.name in ("report_finding", "submit_review")]
+	"""Out of turns: calls to report what is left, until a verdict comes. No nudge here.
+
+	The calls send all the tools, and the agent refuses the ones that read. The prompt cache starts
+	with the tools: with fewer tools, the whole conversation goes again at more than the full price.
+	"""
 	for agent in agents:
 		agent.nudged = True
+		agent.closing = True
 		agent.messages.append(Message("user", FORCE_SUBMIT))
-	results = client.chat_many([a.messages for a in agents], tools=final_tools, tool_choice="required")
-	for agent, result in zip(agents, results, strict=True):
-		agent.messages.append(result.as_message())
-		for call in result.tool_calls:
-			agent.messages.append(agent._dispatch(call.name, call.arguments, call.id))
-	left = [a for a in agents if not a.verdict.submitted]
-	if not left:
-		return
-	submit = [s for s in specs if s.name == "submit_review"]
-	verdicts = client.chat_many([a.messages for a in left], tools=submit, tool_choice="submit_review")
-	for agent, verdict in zip(left, verdicts, strict=True):
-		for call in verdict.tool_calls:
-			agent._dispatch(call.name, call.arguments, call.id)
+	for choice in CLOSE_CHOICES:
+		left = [a for a in agents if not a.verdict.submitted]
+		if not left:
+			return
+		results = client.chat_many([a.messages for a in left], tools=specs, tool_choice=choice)
+		for agent, result in zip(left, results, strict=True):
+			agent.messages.append(result.as_message())
+			for call in result.tool_calls:
+				agent.messages.append(agent._dispatch(call.name, call.arguments, call.id))
+			if not result.tool_calls:
+				# The next request must end with a user turn, not with this answer.
+				agent.messages.append(Message("user", FORCE_SUBMIT))
 
 
 def read_tool(run: ReviewRun, name: str, args: dict[str, Any]) -> str | None:

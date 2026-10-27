@@ -41,7 +41,7 @@ from guard.review.agent import Agent, run_together, tools
 from guard.review.findings import FindingFilter, score_cap
 from guard.review.publish import Publisher, remove_eyes, set_status
 from guard.review.run import Delta, ReviewRun, Verdict
-from guard.review.task import compose
+from guard.review.task import BUDGET_TOKENS, compose
 from guard.utils import db
 from guard.utils.redact import redact
 
@@ -54,6 +54,9 @@ AREA_FILES = 8
 # Parts of an apex review. A larger pull request gets parts for its riskiest files, and the pass
 # across the parts reviews the rest: the cost stays bounded.
 MAX_AREAS = 6
+# A part reviews at most AREA_FILES files, so the context budget of plus is enough. Each part
+# sends its task again on every turn.
+PART_TOKENS = BUDGET_TOKENS["plus"]
 # Time kept after the agents for verification, stale checks and publishing.
 FINISH_SECONDS = 360
 MAX_REST_NAMES = 60
@@ -534,7 +537,7 @@ class ReviewPipeline:
 				run.files = files
 				what = f"Review only the files in this diff part ({number}). Submit a verdict for this part."
 				restored = self.restore(part, saved, "parts", number - 1)
-				tasks.append(None if restored else compose(run, built, what))
+				tasks.append(None if restored else compose(run, built, what, PART_TOKENS))
 			self.watched = ("parts", parts)
 			# The pass across the parts needs time too: the parts may use two thirds of what is left.
 			areas_until = time.time() + (deadline - time.time()) * 2 / 3

@@ -66,7 +66,7 @@ On a new review Guard edits the same summary comment. It does not post a second 
 | - | - | - |
 | base | 1 | One agent pass with full graph context. |
 | plus | 3 | More agent turns, a stronger model, and a verification pass that removes false positives. |
-| apex | 10 | Per-area agent passes, a cross-cutting pass, a verification pass, the strongest model. |
+| apex | 10 | Per-area agent passes, a cross-cutting pass, the strongest model, and a verification pass with the plus model. |
 | auto | 1, 3 or 10 | Guard picks a tier from size, risk and complexity. |
 
 - The tier that runs is the highest of: dashboard tier, repository override, directory configs that the pull request touches, a matching tier rule, and a request in the trigger comment.
