@@ -18,6 +18,7 @@ from guard.review.agent import Agent
 from guard.review.context import BuiltContext
 from guard.review.pipeline import ReviewPipeline
 from guard.review.prompt import ContextPack
+from guard.review.prompts import data
 from guard.review.run import ReviewRun
 from guard.tests.cases import AUTO_APPROVE, PullRequestCase
 from guard.tests.fakes import dsml, scripted
@@ -868,7 +869,7 @@ class TestPipeline(PullRequestCase):
 			.name
 		)
 
-	def online_review(self, steps, answers, manual=False):
+	def online_review(self, steps, answers, manual=False, event="open"):
 		"""Run a review with the clients online, and return every model request."""
 		requests = []
 		respond = scripted(steps, answers)
@@ -879,10 +880,67 @@ class TestPipeline(PullRequestCase):
 
 		with (
 			patch.object(LLMClient, "online", new_callable=PropertyMock, return_value=True),
+			# The test site reviews only opened pull requests by itself.
+			patch("guard.config.gate.event_allowed", return_value=True),
 			use_responder(record),
 		):
-			trigger.consider(self.pr, "open", manual=manual, requested_by="ada" if manual else "")
+			trigger.consider(self.pr, event, manual=manual, requested_by="ada" if manual else "")
 		return requests
+
+	def push_and_review(self, files, manual=False):
+		"""Review the pull request, push `files`, and return the task of the agent of the re-review."""
+		self.review([[("submit_review", {"summary": "First pass.", "confidence_score": 4})]])
+		self.repo.commit(files, "push")
+		frappe.db.set_value("Pull Request", self.pr, "head_sha", self.repo.head())
+		requests = self.online_review(
+			[[("submit_review", {"summary": "s", "confidence_score": 5})]], {}, manual=manual, event="push"
+		)
+		return next(r for r in requests if r.purpose == "review").messages[1].content
+
+	def test_a_push_rereview_reads_only_the_changes_since_the_last_review(self):
+		reviewed = self.repo.head()
+		task = self.push_and_review({"app/extra.py": "VALUE = 1\n"})
+		self.assertIn(f"Annotated diff (changes since {reviewed[:7]})", task)
+		self.assertIn("### app/extra.py", task)
+		self.assertNotIn("### app/models.py", task)
+		self.assertIn("not changed since:\n- app/models.py (+1 -1)", task)
+		[first, second] = frappe.get_all(
+			"Code Review", filters={"pull_request": self.pr}, fields=["tier", "summary"], order_by="creation"
+		)
+		self.assertIn(f"Summary of the last review:\n{data('last summary', first.summary)}", task)
+		self.assertEqual((first.tier, second.tier), ("plus", "base"), "the tier of the delta")
+
+	def test_a_mention_rereview_reads_the_whole_diff(self):
+		task = self.push_and_review({"app/extra.py": "VALUE = 1\n"}, manual=True)
+		self.assertNotIn("changes since", task)
+		self.assertIn("### app/models.py", task)
+
+	def test_a_force_push_reads_the_whole_diff(self):
+		self.review([[("submit_review", {"summary": "First pass.", "confidence_score": 4})]])
+		self.repo.git("reset", "-q", "--hard", self.base)
+		self.repo.commit({"app/extra.py": "VALUE = 1\n"}, "start again")
+		frappe.db.set_value("Pull Request", self.pr, "head_sha", self.repo.head())
+		requests = self.online_review(
+			[[("submit_review", {"summary": "s", "confidence_score": 5})]], {}, event="push"
+		)
+		task = next(r for r in requests if r.purpose == "review").messages[1].content
+		self.assertNotIn("changes since", task)
+
+	def test_a_push_after_a_merge_of_the_base_branch_reads_the_whole_diff(self):
+		# The diff since the last review then holds the changes of the base branch.
+		self.review([[("submit_review", {"summary": "First pass.", "confidence_score": 4})]])
+		self.repo.git("checkout", "-q", "main")
+		self.repo.commit({"app/base.py": "BASE = 1\n"}, "on main")
+		self.repo.git("checkout", "-q", "feature")
+		self.repo.git("merge", "-q", "--no-edit", "main")
+		frappe.db.set_value("Pull Request", self.pr, "head_sha", self.repo.head())
+		requests = self.online_review(
+			[[("submit_review", {"summary": "s", "confidence_score": 5})]], {}, event="push"
+		)
+		task = next(r for r in requests if r.purpose == "review").messages[1].content
+		self.assertNotIn("changes since", task)
+		self.assertIn("### app/models.py", task)
+		self.assertNotIn("### app/base.py", task)
 
 	def test_rereview_posts_p2_on_new_lines(self):
 		self.review([[("submit_review", {"summary": "s", "confidence_score": 5})]])

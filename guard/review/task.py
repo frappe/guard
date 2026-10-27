@@ -2,7 +2,7 @@
 
 from guard.review import checks, rule_files
 from guard.review.context import BuiltContext, excerpt
-from guard.review.prompts import TASK, data
+from guard.review.prompts import DELTA, TASK, data
 from guard.review.run import ReviewRun
 
 DIFF_LIMIT = 120_000
@@ -15,6 +15,8 @@ CHARS_PER_TOKEN = 4
 HUNK_PADS = (22, 10)
 HUNK_PAD = HUNK_PADS[0]
 MAX_RULES = 80
+MAX_REST = 100  # names of the files not changed since the last review
+SUMMARY_LIMIT = 4000  # characters of the last summary on a re-review
 # Lower number = more important. Files beyond the budget are left out, least important first.
 PRIORITY = (
 	("project rule file", 1),
@@ -41,6 +43,7 @@ def compose(run: ReviewRun, built: BuiltContext, extra: str = "") -> str:
 	if run.commits:
 		meta.append("Commits:\n" + "\n".join(f"- {c.subject}" for c in run.commits[-30:]))
 	parts.append("Pull request:\n" + data("pull request", "\n".join(meta) + "\n\n" + (run.description or "")))
+	parts.append(_delta(run))
 	parts.append(_rules(run))
 	parts.append(_project_rules(run))
 	if run.frappe_app:
@@ -65,7 +68,8 @@ def compose(run: ReviewRun, built: BuiltContext, extra: str = "") -> str:
 	used = sum(len(p) for p in parts) + len(diff) + len(extra)
 	budget = total - used
 	parts += context_files(built, budget)
-	parts.append("Annotated diff:\n" + data("diff", diff))
+	since = f" (changes since {run.delta.since[:7]})" if run.delta else ""
+	parts.append(f"Annotated diff{since}:\n" + data("diff", diff))
 	if extra:
 		parts.append(extra)
 	return "\n\n".join(p for p in parts if p)
@@ -149,9 +153,27 @@ def _project_rules(run: ReviewRun) -> str:
 	)
 
 
+def _delta(run: ReviewRun) -> str:
+	"""On a push re-review: what was reviewed before, and the files that did not change since."""
+	if not run.delta:
+		return ""
+	parts = [DELTA.format(since=run.delta.since[:7])]
+	if run.delta.summary:
+		parts.append(
+			"Summary of the last review:\n" + data("last summary", run.delta.summary[:SUMMARY_LIMIT])
+		)
+	if run.delta.rest:
+		names = "\n".join(f"- {name}" for name in run.delta.rest[:MAX_REST])
+		parts.append("Other changed files of the pull request, not changed since:\n" + names)
+	return "\n\n".join(parts)
+
+
 def _changed(run: ReviewRun) -> str:
 	blocks = []
-	for entity in run.changed[:25]:
+	# On a re-review, only the entities of the files in the diff: the others were reviewed before.
+	paths = set(run.paths) if run.delta else None
+	entities = [e for e in run.changed if paths is None or e.path in paths]
+	for entity in entities[:25]:
 		block = [entity.label]
 		if entity.contract_changed and entity.base:
 			block.append(f"  before: {entity.base.signature}")

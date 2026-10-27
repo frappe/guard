@@ -84,6 +84,11 @@ for all of them in one turn. `read_file` reads several ranges of a file in one c
 as soon as you are sure of it.
 Report findings with `report_finding`, then call `submit_review`."""
 
+DELTA = """This is a re-review. Guard reviewed this pull request at commit {since}. The diff below
+shows only the changes since then: review these changes. The rest of the pull request was reviewed
+before. Read it with the tools when a change depends on it. In `submit_review`, write the summary and
+the verdict for the whole pull request as it is now. Start from the summary of the last review."""
+
 FORCE_SUBMIT = "You have used your turns. Report any issue you found with `report_finding` now, and call `submit_review` with your verdict."
 
 VERIFIER = """You check review findings for false positives.

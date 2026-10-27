@@ -57,7 +57,19 @@ The next job runs the stages before the agents as usual. Then it reads the check
 2. Run `git diff --find-renames <merge base> <head>`. Parse it into files, hunks and lines with head and base line numbers.
 3. Resolve the config for each changed file ([06-configuration.md](06-configuration.md)). Drop files that match `ignore_patterns`.
 4. Merge the config at the pull request level: maximum strictness, highest tier, union of comment types.
-5. Pick the tier (below).
+5. On a push re-review, find the delta (below).
+6. Pick the tier (below).
+
+### Push re-review
+
+A review that a push starts reads only the changes since the last completed review. Guard uses this delta when all of these are true:
+
+- The trigger is `push`. A mention, a manual review and the first review read the whole diff, so a person can always ask for a full pass.
+- The last completed review reviewed `last_reviewed_sha`, and that commit is an ancestor of the new head.
+- The merge base did not change. After a rebase, a force push or a merge of the base branch, the diff since the last review holds changes that are not of the pull request.
+- The diff since `last_reviewed_sha` changes at least one reviewed file of the pull request. Else the review reads the whole diff, so that the commit gets a check.
+
+The delta changes only what the agents read. The task shows the annotated diff since `last_reviewed_sha`, the changed entities of those files, the names of the other changed files, and the summary of the last review. The agent writes the summary and the verdict for the whole pull request. The graph, the blast radius, the deterministic checks, the anchors and the filters still use the whole diff. Context files come from the entities of the delta files. Apex areas split the delta files.
 
 ### Tier selection
 
@@ -74,6 +86,8 @@ When the result is `auto`, Guard computes a score:
 | A risky label (`security`, `breaking`) | 2 |
 
 Less than 2 points gives base, or plus on the first review of a pull request: a small diff can still hide a cross-file bug. Less than 5 gives plus. Otherwise apex.
+
+On a push re-review, the lines, files, paths and contract changes of the score and the tier rules come from the delta: a small fix after a large change is small.
 
 ## Stage 3: Fresh index
 

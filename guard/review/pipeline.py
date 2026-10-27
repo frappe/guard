@@ -13,7 +13,7 @@ from guard.config.resolver import ConfigResolver
 from guard.git.diff import FileDiff, parse_diff
 from guard.git.repository import store_for
 from guard.git.store import GitStore
-from guard.graph.overlay import PullRequestGraph
+from guard.graph.overlay import ChangedEntity, PullRequestGraph
 from guard.graph.queries import CodeGraph
 from guard.indexing import frappe_plugin
 from guard.indexing.indexer import IndexBusy, IndexFailed
@@ -40,7 +40,7 @@ from guard.review import (
 from guard.review.agent import Agent, run_together, tools
 from guard.review.findings import FindingFilter, score_cap
 from guard.review.publish import Publisher, remove_eyes, set_status
-from guard.review.run import ReviewRun, Verdict
+from guard.review.run import Delta, ReviewRun, Verdict
 from guard.review.task import compose
 from guard.utils import db
 from guard.utils.redact import redact
@@ -255,7 +255,10 @@ class ReviewPipeline:
 		run.blast = overlay.blast_radius(run.changed)
 		if run.settings.get("include_rule_files", True):
 			run.rule_files = rule_files.collect(run.paths, run.head, run.list_dir)
-		self.pick_tier(run)
+		# The graph and the checks see the whole pull request. The agents look at the delta only.
+		focus = run.delta.paths if run.delta else run.paths
+		focus_changed = [e for e in run.changed if e.path in focus]
+		self.pick_tier(run, focus_changed)
 		if not self.credits_allow(run):
 			return
 		linked = (
@@ -267,11 +270,11 @@ class ReviewPipeline:
 		team = db.value("Code Repository", run.repository, "team") if run.repository else None
 		built = context.build(
 			run.head,
-			run.changed,
+			focus_changed,
 			run.blast,
 			run.graph,
 			run.cfg,
-			run.paths,
+			focus,
 			linked,
 			run.full_name,
 			team,
@@ -405,6 +408,7 @@ class ReviewPipeline:
 		)
 		run.notes = list(config.errors)
 		run.fresh_lines = self.get_fresh_lines(store, pr.last_reviewed_sha or "", head)
+		run.delta = self.get_delta(store, pr, head, merge_base, run.files)
 		if adapter and self.review.head_sha and self.review.head_sha != head:
 			self.leave_old_check(adapter, full_name, str(self.review.head_sha), head)
 		self.review.db_set(
@@ -426,7 +430,9 @@ class ReviewPipeline:
 			return None
 		return run
 
-	def pick_tier(self, run: ReviewRun) -> None:
+	def pick_tier(self, run: ReviewRun, changed: list[ChangedEntity]) -> None:
+		"""A push re-review gets the tier of its delta: a small fix after a large change is small."""
+		files = run.delta.files if run.delta else run.files
 		facts = gate.PullRequestFacts(
 			repository=run.full_name,
 			title=run.title,
@@ -435,16 +441,16 @@ class ReviewPipeline:
 			base_branch=run.base_branch,
 			head_branch=run.head_branch,
 			labels=run.labels,
-			paths=[p for f in run.files for p in {f.path, f.old_path} if p],
-			additions=sum(f.additions for f in run.files),
-			deletions=sum(f.deletions for f in run.files),
+			paths=[p for f in files for p in {f.path, f.old_path} if p],
+			additions=sum(f.additions for f in files),
+			deletions=sum(f.deletions for f in files),
 		)
 		from guard.guard.doctype.review_settings.review_settings import get_effective
 
 		team = db.value("Code Repository", run.repository, "team") if run.repository else None
 		rules = gate.dashboard_rules(get_effective(team))
 		tier_rules = [r.review_tier for r in rules if r.review_tier and gate.rule_matches(r, facts)]
-		contracts = sum(1 for e in run.changed if e.contract_changed)
+		contracts = sum(1 for e in changed if e.contract_changed)
 		run.tier = gate.select_tier(
 			run.cfg,
 			tier_rules,
@@ -482,6 +488,16 @@ class ReviewPipeline:
 		return False
 
 	def agent(self, run: ReviewRun, built: context.BuiltContext) -> None:
+		"""Run the agents. On a push re-review, they read the diff since the last review."""
+		whole = run.files
+		if run.delta is not None:
+			run.files = run.delta.files
+		try:
+			self.run_agents(run, built)
+		finally:
+			run.files = whole
+
+	def run_agents(self, run: ReviewRun, built: context.BuiltContext) -> None:
 		from guard.guard.doctype.review_settings.review_settings import get_effective
 
 		team = db.value("Code Repository", run.repository, "team") if run.repository else None
@@ -737,6 +753,39 @@ class ReviewPipeline:
 		if not last_sha or not store.has_commit(last_sha):
 			return {}
 		return {f.path: f.added_lines() for f in parse_diff(store.diff(last_sha, head))}
+
+	def get_delta(
+		self, store: GitStore, pr: "PullRequest", head: str, merge_base: str, files: list[FileDiff]
+	) -> Delta | None:
+		"""The changes of a push since the last completed review, or None to review the whole diff.
+
+		None after a rebase, a force push or a merge of the base branch: the diff since the last
+		review then holds changes that are not of the pull request. A push that changes no reviewed
+		file also gets a whole review, so that its commit gets a check.
+		"""
+		if self.review.trigger != "push" or not pr.latest_review or not pr.last_reviewed_sha:
+			return None
+		last = db.values(
+			"Code Review", str(pr.latest_review), ("status", "head_sha", "merge_base_sha", "summary")
+		)
+		since = str(pr.last_reviewed_sha)
+		if (
+			not last
+			or last.get("status") != "Completed"
+			or last.get("head_sha") != since
+			or last.get("merge_base_sha") != merge_base
+			or since == head
+			or not store.has_commit(since)
+			or not store.is_ancestor(since, head)
+		):
+			return None
+		reviewed = {f.path for f in files}
+		changed = [f for f in parse_diff(store.diff(since, head)) if f.path in reviewed and not f.is_binary]
+		if not changed:
+			return None
+		paths = {f.path for f in changed}
+		rest = [f"{f.path} (+{f.additions} -{f.deletions})" for f in files if f.path not in paths]
+		return Delta(since, changed, str(last.get("summary") or ""), rest)
 
 	def review_number(self) -> int:
 		if not self.review.pull_request:

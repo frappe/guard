@@ -49,6 +49,20 @@ class Verdict:
 		)
 
 
+@dataclass
+class Delta:
+	"""The changes of a push since the last completed review, which reviewed the commit `since`."""
+
+	since: str
+	files: list[FileDiff]  # the diff since `since`, of the reviewed files
+	summary: str = ""  # the summary of the last review
+	rest: list[str] = field(default_factory=list)  # the other changed files of the pull request
+
+	@property
+	def paths(self) -> list[str]:
+		return [f.path for f in self.files]
+
+
 def _choice(value: Any, allowed: tuple[str, ...], default: str) -> str:
 	return value if isinstance(value, str) and value in allowed else default
 
@@ -85,6 +99,9 @@ class ReviewRun:
 	rule_files: list[tuple[str, str]] = field(default_factory=list)  # (path, text) of CLAUDE.md and similar
 	# Head lines added since the last reviewed commit. None on a first review.
 	fresh_lines: dict[str, set[int]] | None = None
+	# On a push re-review: the agents read only this diff. `files` stays the whole pull request,
+	# for the graph, the checks, the anchors and the filters. None for a full review.
+	delta: Delta | None = None
 	usage: Usage = field(default_factory=Usage)
 	turns: int = 0  # model turns of all review agents
 	rounds: int = 0  # rounds of the agents: in a round, each busy agent takes one turn
