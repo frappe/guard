@@ -44,7 +44,8 @@ def consider(
 	number = int(pr.number or 0)
 	store.fetch_branches(str(pr.base_branch or ""))
 	head = store.fetch_pull(adapter.pull_ref(number), number) if adapter else str(pr.head_sha)
-	merge_base = store.merge_base(store.rev_parse(f"refs/heads/{pr.get('base_branch')}"), head)
+	base = store.rev_parse(f"refs/heads/{pr.get('base_branch')}")
+	merge_base = store.merge_base(base, head)
 	files = parse_diff(store.diff(merge_base, head))
 	paths = [p for f in files for p in {f.path, f.old_path} if p]
 	config = ConfigResolver.from_store(repository, store, head).resolve_pr([f.path for f in files])
@@ -56,6 +57,7 @@ def consider(
 		base_branch=str(pr.base_branch or ""),
 		head_branch=str(pr.head_branch or ""),
 		is_draft=bool(pr.is_draft) and not force_draft,
+		conflicts=not manual and store.conflicts(base, head),
 		labels=list(frappe.parse_json(pr.labels or "[]") or []),
 		paths=paths,
 		additions=sum(f.additions for f in files),

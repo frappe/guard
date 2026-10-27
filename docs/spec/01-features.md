@@ -11,6 +11,7 @@ Guard reviews a pull request when a configured event happens.
 - Events: `open` (opened, reopened, marked ready, trigger label added), `push` (a push that adds commits), `rebase` (a push that rewrites history).
 - Each event implies the events before it. `["rebase"]` means all three. `[]` means never.
 - Guard skips draft pull requests unless `review_drafts` is true or the trigger comment asks for a draft review.
+- Guard skips a pull request that has merge conflicts with its target branch. A push that fixes the conflicts starts the review. A trigger comment reviews it anyway.
 - Guard adds the 👀 reaction when it starts and replaces it with 👍 when it is done. On failure it adds 😕.
 - A review on a medium pull request finishes in less than 5 minutes with the base tier.
 

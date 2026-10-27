@@ -22,7 +22,7 @@ from guard.review.prompt import ContextFile, ContextPack
 from guard.review.prompts import data
 from guard.review.run import Delta, ReviewRun, Verdict
 from guard.settings import GatewayConfig
-from guard.tests.cases import AUTO_APPROVE, PullRequestCase
+from guard.tests.cases import AUTO_APPROVE, MODELS, PullRequestCase
 from guard.tests.fakes import dsml, scripted
 from guard.utils import db
 
@@ -1157,6 +1157,16 @@ class TestPipeline(PullRequestCase):
 		frappe.db.set_value("Pull Request", self.pr, "is_draft", 0)
 		frappe.db.set_value("Code Repository", self.repository, "reviews_enabled", 0)
 		self.assertIsNone(trigger.consider(self.pr, "open"))
+
+	def test_gate_skips_conflicts_unless_asked(self):
+		self.repo.git("checkout", "-q", "main")
+		self.repo.commit(
+			{"app/models.py": MODELS.replace("(user, email):", "(user, email, source):")}, "add source"
+		)
+		self.assertIsNone(trigger.consider(self.pr, "open"))
+		self.assertEqual(self.adapter.named("status"), ["skipped"])
+		# A person who asks for a review gets one.
+		self.assertTrue(trigger.consider(self.pr, "open", manual=True, requested_by="ada"))
 
 	def test_skipped_review_marks_the_commit(self):
 		frappe.db.set_value("Pull Request", self.pr, "is_draft", 1)

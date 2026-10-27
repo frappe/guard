@@ -117,6 +117,21 @@ class GitStore:
 			return False
 		return True
 
+	def conflicts(self, base: str, head: str) -> bool:
+		"""True when a merge of `head` into `base` has conflicts. An error counts as no conflict."""
+		try:
+			process = subprocess.run(
+				["git", "-C", str(self.path), *NO_GC, "merge-tree", "--write-tree", "--quiet", base, head],
+				capture_output=True,
+				timeout=TIMEOUT,
+				env=self._env(),
+				check=False,
+			)
+		except subprocess.TimeoutExpired:
+			return False
+		# Exit code 1 with no message is a conflict. A bad ref also exits with 1, but prints why.
+		return process.returncode == 1 and not process.stderr.strip()
+
 	def refs(self, prefix: str) -> list[str]:
 		return self._git("for-each-ref", "--format=%(refname)", prefix).split()
 

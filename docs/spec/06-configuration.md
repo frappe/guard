@@ -199,9 +199,10 @@ Guard decides to review in this order. The first "no" stops it.
 3. The credit cap allows the tier.
 4. For automatic events only:
    1. The pull request is not a draft, or `review_drafts` is on.
-   2. The event is in the merged `auto_review`.
-   3. The config filters pass: labels, authors, branches, keywords.
-   4. The dashboard filter rules pass (below).
+   2. The pull request merges into the target branch without conflicts (`git merge-tree` on the mirror).
+   3. The event is in the merged `auto_review`.
+   4. The config filters pass: labels, authors, branches, keywords.
+   5. The dashboard filter rules pass (below).
 5. For manual triggers: only `exclude_branches` and `exclude_authors` apply.
 
 ### Dashboard filter rules

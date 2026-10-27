@@ -177,6 +177,9 @@ class TestGate(UnitTestCase):
 		self.assertFalse(gate.check(self.facts(), self.config, "rebase", False, []).allowed)
 		self.assertFalse(gate.check(self.facts(is_draft=True), self.config, "open", False, []).allowed)
 		self.assertTrue(gate.check(self.facts(is_draft=True), self.config, "open", True, []).allowed)
+		result = gate.check(self.facts(conflicts=True), self.config, "push", False, [])
+		self.assertEqual(result.reason, "merge conflicts with the target branch")
+		self.assertTrue(gate.check(self.facts(conflicts=True), self.config, "open", True, []).allowed)
 
 	def test_filters(self):
 		result = gate.check(self.facts(author="dependabot[bot]"), self.config, "open", False, [])

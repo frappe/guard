@@ -24,6 +24,7 @@ class PullRequestFacts:
 	base_branch: str
 	head_branch: str
 	is_draft: bool = False
+	conflicts: bool = False  # a merge into the target branch has conflicts
 	labels: list[str] = field(default_factory=list)
 	paths: list[str] = field(default_factory=list)  # every changed path, both sides of renames
 	additions: int = 0
@@ -61,6 +62,8 @@ def check(
 		return GateResult(True, tier_rules=tier_rules)
 	if facts.is_draft and not settings["review_drafts"]:
 		return GateResult(False, "draft pull request")
+	if facts.conflicts:
+		return GateResult(False, "merge conflicts with the target branch")
 	if not event_allowed(settings, event):
 		return GateResult(False, f"automatic review is off for `{event}`")
 	ok, reason = filters_pass(settings, facts)
