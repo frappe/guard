@@ -141,6 +141,8 @@ The indexer writes these with bulk inserts. Names are content hashes, so a re-in
 
 `addressed_attempt` and `addressed_retry_at` hold the next try of an addressed check that met a busy or failing gateway. `addressed_since` is the `before` commit of the first push that was not checked.
 
+A repository has one row for each pull request number: a unique index on `repository, number` makes sure. Events of one pull request often arrive in the same second, each in its own job. `pull_requests.upsert` locks an existing row, so these jobs write one after the other. The second job to insert a new row meets the unique index and updates the row of the first one. The lock lasts until the transaction ends, so a caller commits before slow work.
+
 ### Code Review
 
 | Field | Type | Notes |
@@ -261,7 +263,7 @@ Each index serves a known query. Rules:
 - Do not wrap an indexed column in a function in `WHERE`. For example, use `col != ''`, not `IFNULL(col, '') != ''`. Both skip NULL.
 - The graph tables take bulk writes, so add an index there only for a query on the review or index path.
 
-`install.COMPOSITE_INDEXES` holds the composite indexes. `after_migrate` creates them, and replaces an index whose columns changed.
+`install.COMPOSITE_INDEXES` holds the composite indexes, and `install.UNIQUE_INDEXES` the indexes that also stop duplicate rows. `after_migrate` creates them, and replaces an index whose columns or uniqueness changed.
 
 | Table | Composite index | Queries |
 | - | - | - |
@@ -279,7 +281,7 @@ Each index serves a known query. Rules:
 | Review Finding | `pull_request, status` | Open findings of a pull request |
 | Review Finding | `repository, creation` | Noisy comment types |
 | Review Finding | `status, posted` | Open findings number cards |
-| Pull Request | `repository, number` | Lookup by provider number |
+| Pull Request | UNIQUE `repository, number` | Lookup by provider number, one row for each pull request |
 | Pull Request | `repository, state, merged_at`; `state, merged_at` | Polling of open pull requests, merged pull requests in a window |
 | Pull Request Comment | `repository, author` | Feature tips |
 | Knowledge Base Document | `repository, path` | Read and list documents |
