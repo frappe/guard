@@ -603,6 +603,71 @@ class TestPipeline(PullRequestCase):
 			["dismissed earlier on this pull request"],
 		)
 
+	def test_rereview_dedupes_and_lists_a_finding_that_only_the_summary_showed(self):
+		# pilot #705: a finding outside the diff was counted again by each review, and the new
+		# summary no longer showed the earlier one.
+		outside = dict(MISSED_NOTIFY, path="app/service.py", start_line=6, confidence=0.9)
+		verdict = {"summary": "s", "confidence_score": 3}
+		self.review([[("report_finding", outside), ("submit_review", verdict)]])
+		with use_responder(scripted([[("report_finding", outside), ("submit_review", verdict)]])):
+			second = trigger.consider(self.pr, "open", manual=True, requested_by="ada")
+		self.assertEqual(
+			frappe.get_all("Review Finding", filters={"code_review": second}, pluck="status_reason"),
+			["already reported on this pull request"],
+		)
+		summary = self.adapter.comments[self.adapter.named("update_comment")[-1]]
+		self.assertIn("no new findings · 1 open from earlier reviews (1 P1)", summary)
+		self.assertIn(f"**{outside['title']}** _(earlier review)_", summary)
+		self.assertEqual(self.adapter.checks[-1][2], "3/5 · 1 open finding(s)")
+
+	def test_rereview_drops_a_repeat_in_other_words(self):
+		self.review(
+			[[("report_finding", MISSED_NOTIFY), ("submit_review", {"summary": "s", "confidence_score": 3})]]
+		)
+		[url] = frappe.get_all("Review Finding", filters={"pull_request": self.pr}, pluck="comment_url")
+		repeat = dict(
+			MISSED_NOTIFY, path="app/service.py", start_line=6, title="service.py breaks on the new flag"
+		)
+		requests = self.online_review(
+			[[("report_finding", repeat), ("submit_review", {"summary": "s", "confidence_score": 3})]],
+			{"repeats": '{"repeats": [{"new": 0, "earlier": 0}]}'},
+			manual=True,
+		)
+		[ask] = [r for r in requests if r.purpose == "repeats"]
+		self.assertIn(MISSED_NOTIFY["title"], ask.messages[-1].content)
+		self.assertIn(repeat["title"], ask.messages[-1].content)
+		statuses = frappe.get_all(
+			"Review Finding",
+			filters={"pull_request": self.pr},
+			fields=["title", "status"],
+			order_by="creation",
+		)
+		self.assertEqual([r.status for r in statuses], ["Open", "Dismissed"])
+		summary = self.adapter.comments[self.adapter.named("update_comment")[-1]]
+		self.assertIn("no new findings · 1 open from earlier reviews (1 P1)", summary)
+		self.assertIn(f"[{MISSED_NOTIFY['title']}]({url}) _(earlier review)_", summary)
+		self.assertNotIn(repeat["title"], summary)
+		self.assertEqual(self.adapter.checks[-1][2], "3/5 · 1 open finding(s)")
+		[check] = [r for r in requests if r.purpose == "verdict"]
+		self.assertIn("repeats an open finding of an earlier review", check.messages[-1].content)
+
+	def test_a_repeat_match_does_not_hide_a_more_severe_finding(self):
+		self.review(
+			[[("report_finding", PROBLEM), ("submit_review", {"summary": "s", "confidence_score": 4})]]
+		)
+		self.online_review(
+			[[("report_finding", MISSED_NOTIFY), ("submit_review", {"summary": "s", "confidence_score": 3})]],
+			# A wrong match, and an index that is out of range.
+			{"repeats": '{"repeats": [{"new": 0, "earlier": 0}, {"new": 3, "earlier": 0}]}'},
+			manual=True,
+		)
+		statuses = frappe.get_all(
+			"Review Finding", filters={"pull_request": self.pr}, fields=["severity", "status", "posted"]
+		)
+		self.assertEqual(
+			sorted((r.severity, r.status, r.posted) for r in statuses), [("P1", "Open", 1), ("P2", "Open", 1)]
+		)
+
 	def test_rereview_resolves_fixed_findings(self):
 		finding = {
 			"path": "app/models.py",

@@ -9,7 +9,14 @@ import frappe
 from guard import settings as guard_settings
 from guard.llm.client import LLMClient, parse_json
 from guard.llm.types import ChatResult, Message
-from guard.review.findings import SEVERITIES, Finding, only_minor_held_back, score_cap, similar_titles
+from guard.review.findings import (
+	REPORTED,
+	SEVERITIES,
+	Finding,
+	only_minor_held_back,
+	score_cap,
+	similar_titles,
+)
 from guard.review.prompts import VERDICT, VERIFIER, data
 from guard.review.rule_files import project_rules
 from guard.review.run import ReviewRun
@@ -155,18 +162,8 @@ def check_verdict(run: ReviewRun) -> None:
 	if not run.findings:
 		parts.append("The reviewer reported no findings.")
 	for offset, row in enumerate(run.earlier_open, len(run.findings)):
-		line = row["start_line"] or 1  # an Int column
-		earlier = Finding(
-			str(row["path"]),
-			line,
-			line,
-			str(row["severity"]),
-			"logic",
-			str(row["title"]),
-			str(row["body"] or ""),
-		)
 		parts.append(
-			_item(run, offset, earlier)
+			_item(run, offset, Finding.from_row(row))
 			+ "\n"
 			+ data(f"what happened to finding {offset}", "open from an earlier review: it still applies")
 		)
@@ -184,6 +181,9 @@ def _checked(run: ReviewRun, index: int, finding: Finding) -> str:
 		fate = "posted"
 	elif finding.status_reason.startswith("verifier:"):
 		fate = f"refuted: {finding.status_reason.removeprefix('verifier:').strip()}"
+	elif finding.status_reason == REPORTED:
+		# The earlier finding is in the list as open: one problem must not count twice.
+		fate = "held back: it repeats an open finding of an earlier review, which counts instead"
 	else:
 		fate = f"held back: {finding.status_reason}"
 	return _item(run, index, finding) + "\n" + data(f"what happened to finding {index}", fate)

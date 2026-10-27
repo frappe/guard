@@ -12,6 +12,8 @@ COMMENT_TYPES = ("logic", "syntax", "style")
 CAPS = {1: 40, 2: 20, 3: 10}
 MAX_PLACES = 10  # other places that one grouped finding lists
 MARKS = {"P0": "🔴", "P1": "🟠", "P2": "🟡"}
+# The reason of a finding that repeats an open finding of an earlier review.
+REPORTED = "already reported on this pull request"
 
 
 @dataclass
@@ -38,6 +40,21 @@ class Finding:
 	status_reason: str = ""
 	sandbox_log: str = ""
 	extra: dict[str, Any] = field(default_factory=dict)
+
+	@classmethod
+	def from_row(cls, row: dict[str, Any]) -> "Finding":
+		"""A Review Finding row of an earlier review, with the fields that the summary and the checks read."""
+		line = int(row.get("start_line") or 1)
+		return cls(
+			str(row["path"]),
+			line,
+			int(row.get("end_line") or line),
+			str(row["severity"]),
+			"logic",
+			str(row["title"]),
+			str(row.get("body") or ""),
+			outside_diff=bool(row.get("outside_diff")),
+		)
 
 	@property
 	def is_security(self) -> bool:
@@ -225,7 +242,7 @@ class FindingFilter:
 					if row.get("status") == "Dismissed":
 						finding.drop("Dismissed", "dismissed earlier on this pull request")
 					else:
-						finding.drop("Dismissed", "already reported on this pull request")
+						finding.drop("Dismissed", REPORTED)
 						self.reraised.add(str(row.get("name")))
 					break
 
