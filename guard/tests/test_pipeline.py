@@ -282,6 +282,34 @@ class TestPipeline(PullRequestCase):
 		frappe.db.set_single_value("Guard Settings", "max_concurrent_reviews", 0)  # no limit
 		self.assertEqual(self.row(self.review([]))["status"], "Completed")
 
+	def test_a_push_review_waits_for_more_pushes(self):
+		frappe.db.set_single_value("Guard Settings", "push_review_delay", 120)
+		self.addCleanup(frappe.db.set_single_value, "Guard Settings", "push_review_delay", 120)
+		with (
+			patch("guard.config.gate.event_allowed", return_value=True),
+			patch("guard.review.jobs.enqueue_review") as enqueue,
+		):
+			pushed = trigger.consider(self.pr, "push")
+			newer = trigger.consider(self.pr, "rebase")
+			# The newer push replaced the waiting review before it cost anything.
+			self.assertEqual(self.row(pushed)["status"], "Cancelled")
+			self.assertEqual(db.value("Code Review", str(newer), "stage"), jobs.WAITING_FOR_PUSHES)
+			asked = trigger.consider(self.pr, "push", manual=True, requested_by="ada")
+			opened = trigger.consider(self.pr, "open")
+		delays = [(c.args[0], c.kwargs["delay"]) for c in enqueue.call_args_list]
+		# A request and an opened pull request start at once.
+		self.assertEqual(delays, [(pushed, 120), (newer, 120), (asked, 0), (opened, 0)])
+		state.move(str(opened), {"status": "Cancelled"})
+
+		frappe.db.set_single_value("Guard Settings", "push_review_delay", 0)
+		with (
+			patch("guard.config.gate.event_allowed", return_value=True),
+			patch("guard.review.jobs.enqueue_review") as enqueue,
+		):
+			name = trigger.consider(self.pr, "push")
+		self.assertEqual(enqueue.call_args.kwargs["delay"], 0)
+		state.move(str(name), {"status": "Cancelled"})
+
 	def test_bulk_retry_makes_one_review_for_each_pull_request(self):
 		from guard.api.ui import retry_reviews
 
@@ -327,6 +355,11 @@ class TestPipeline(PullRequestCase):
 			).insert(ignore_permissions=True)
 		data = health.status()
 		self.assertEqual([q["queue"] for q in data["queues"]], ["short", "default", "long"])
+		in_flight = data["metrics"]["in_flight"]
+		self.assertEqual(
+			in_flight["slots"], frappe.db.get_single_value("Guard Settings", "max_concurrent_reviews")
+		)
+		self.assertEqual((in_flight["waiting_for_slot"], in_flight["per_worker"]), (0, 1))
 		self.assertGreaterEqual(data["reviews"].get("Failed", 0), health.ALERT_MIN + 1)
 		self.assertIn("LLMError: Gateway answered 404", [f["cause"] for f in data["failures"]])
 		self.assertGreater(data["failure_rate"]["rate"], health.ALERT_RATE)
@@ -1654,6 +1687,7 @@ class TestApexAreas(IntegrationTestCase):
 			pipeline.save_usage = lambda: None
 			pipeline.current = run
 			pipeline.started = time.time()
+			pipeline.timeout = 0
 			return pipeline, run
 
 		with use_responder(respond):
@@ -1695,6 +1729,7 @@ class TestApexAreas(IntegrationTestCase):
 		pipeline.check_cancel = lambda lock=False: None
 		pipeline.current = None
 		pipeline.started = time.time()
+		pipeline.timeout = 0
 		with use_responder(respond):
 			pipeline.agent(run, BuiltContext(ContextPack()))
 		parts = [t for t in tasks if "diff part" in t]
@@ -1734,6 +1769,7 @@ class TestApexAreas(IntegrationTestCase):
 		pipeline.check_cancel = lambda lock=False: None
 		pipeline.current = None
 		pipeline.started = time.time()
+		pipeline.timeout = 0
 		with use_responder(respond):
 			pipeline.agent(run, BuiltContext(ContextPack(files=[big])))
 		parts = [t for t in tasks if "diff part" in t]
@@ -1856,11 +1892,15 @@ class TestDeadline(UnitTestCase):
 	def test_the_job_timeout_bounds_the_deadline(self):
 		pipeline = ReviewPipeline.__new__(ReviewPipeline)
 		pipeline.started = 1000.0
+		pipeline.timeout = 0
 		job = SimpleNamespace(timeout=1800)
 		with patch("rq.get_current_job", return_value=job):
 			self.assertEqual(pipeline.deadline("apex"), 1000 + 1800 - pipeline_module.FINISH_SECONDS)
 		with patch("rq.get_current_job", return_value=None):
 			self.assertEqual(pipeline.deadline("apex"), 1000 + 7200 - pipeline_module.FINISH_SECONDS)
+			# On a thread of a host, RQ knows only the host job: the host passes the timeout of the review job.
+			pipeline.timeout = 1800
+			self.assertEqual(pipeline.deadline("apex"), 1000 + 1800 - pipeline_module.FINISH_SECONDS)
 
 	def test_no_turn_starts_after_the_deadline(self):
 		run = ReviewRun(None, None, "", lambda path: "a = 1", lambda path: None, lambda path: [], "", "")

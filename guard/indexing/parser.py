@@ -1,6 +1,7 @@
 """Parse one source file into entities and raw edges."""
 
 import re
+import threading
 from collections import Counter
 from dataclasses import dataclass, field
 from functools import cache
@@ -32,6 +33,8 @@ KINDS = {
 }
 DOTTED_STRING = re.compile(r"""['"]([a-z_][\w]*(?:\.[\w]+){2,})['"]""")
 SCRIPT_BLOCK = re.compile(r"<script[^>]*>(.*?)</script>", re.DOTALL)
+# The parsers of each thread: see `_parser`.
+_local = threading.local()
 MEMBER_TYPES = {
 	"attribute",
 	"member_expression",
@@ -351,9 +354,12 @@ def _walk(node: ts.Node):
 		stack.extend(current.children)
 
 
-@cache
 def _parser(language: str) -> ts.Parser:
-	return pack.get_parser(language)  # type: ignore[arg-type]
+	"""A parser for this thread. A parser is not safe to share: one worker can run reviews on threads."""
+	parsers: dict[str, ts.Parser] = _local.__dict__.setdefault("parsers", {})
+	if language not in parsers:
+		parsers[language] = pack.get_parser(language)  # type: ignore[arg-type]
+	return parsers[language]
 
 
 @cache

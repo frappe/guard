@@ -171,6 +171,7 @@ frappe.pages["guard-health"].on_page_load = function (wrapper) {
 
 	const render_metrics = (m, label) => {
 		const s = m.summary;
+		const f = m.in_flight;
 		const ended = s.completed + s.failed;
 		const cards = [
 			card(
@@ -182,6 +183,17 @@ frappe.pages["guard-health"].on_page_load = function (wrapper) {
 				__("In flight"),
 				__("{0} running", [m.in_flight.running]),
 				__("{0} queued", [m.in_flight.queued])
+			),
+			card(
+				__("Review slots"),
+				f.slots
+					? __("{0} of {1} used", [f.running, f.slots])
+					: __("{0} used, no limit", [f.running]),
+				__("{0} wait for a slot, {1} for more pushes; {2} per worker", [
+					f.waiting_for_slot,
+					f.waiting_for_pushes,
+					f.per_worker,
+				])
 			),
 			card(
 				__("Review time"),
@@ -265,6 +277,14 @@ frappe.pages["guard-health"].on_page_load = function (wrapper) {
 		if (rate.ended && rate.rate > 0.2)
 			alerts.push(
 				__("{0} of {1} reviews failed in the last hour.", [rate.failed, rate.ended])
+			);
+		const waiting = data.metrics.in_flight.waiting_for_slot;
+		if (waiting)
+			alerts.push(
+				__(
+					"{0} reviews wait for a free review slot. Raise Max Concurrent Reviews in Guard Settings if the workers and the AI gateway can take more.",
+					[waiting]
+				)
 			);
 		const banner = alerts.length
 			? `<div class="alert alert-danger">${alerts.join("<br>")}</div>`

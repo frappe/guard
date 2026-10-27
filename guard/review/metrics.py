@@ -109,11 +109,28 @@ def _stage_seconds(value: Any) -> dict[str, float]:
 
 
 def _in_flight() -> dict[str, int]:
+	"""Reviews that run and wait now, why they wait, and the limits on how many run."""
+	from guard.review.jobs import WAITING_FOR_PUSHES, WAITING_FOR_SLOT
+
 	rows = db.rows(
-		"SELECT status, COUNT(*) FROM `tabCode Review` WHERE status IN ('Queued', 'Running') GROUP BY status"
+		"""SELECT status, stage, COUNT(*) FROM `tabCode Review` WHERE status IN ('Queued', 'Running')
+		GROUP BY status, stage"""
 	)
-	counts = {str(status): int(n) for status, n in rows}
-	return {"queued": counts.get("Queued", 0), "running": counts.get("Running", 0)}
+	counts: dict[tuple[str, str], int] = {
+		(str(status), str(stage or "")): int(n) for status, stage, n in rows
+	}
+
+	def count(status: str, stage: str | None = None) -> int:
+		return sum(n for (s, g), n in counts.items() if s == status and stage in (None, g))
+
+	return {
+		"queued": count("Queued"),
+		"running": count("Running"),
+		"waiting_for_slot": count("Queued", WAITING_FOR_SLOT),
+		"waiting_for_pushes": count("Queued", WAITING_FOR_PUSHES),
+		"slots": guard_settings.max_concurrent_reviews(),
+		"per_worker": guard_settings.reviews_per_worker(),
+	}
 
 
 def _stats(reviews: list[Review], prices: guard_settings.PriceList) -> dict[str, Any]:
