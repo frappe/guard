@@ -33,8 +33,10 @@ class AnthropicDialect:
 		tool_choice: str | None,
 		max_tokens: int,
 		temperature: float,
+		effort: str,
 	) -> ChatResult:
 		# No `temperature`: Claude 5 models answer 400 to any value other than the default.
+		# No `effort` yet: `THINKING_ROOM` is the same for every tier.
 		system = [m for m in messages if m.role == "system"]
 		body: dict[str, Any] = {
 			"model": model,
