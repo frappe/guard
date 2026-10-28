@@ -6,6 +6,9 @@ from typing import Any
 from guard.llm.http import get_json, post_json
 from guard.llm.types import ChatResult, Message, ToolCall, ToolSpec, Usage
 
+# Reasoning counts against `max_tokens`. Without this room, a short answer can end in its reasoning.
+REASONING_ROOM = 16_000
+
 
 class OpenAIDialect:
 	def __init__(self, url: str, api_key: str, timeout: int):
@@ -21,13 +24,16 @@ class OpenAIDialect:
 		tool_choice: str | None,
 		max_tokens: int,
 		temperature: float,
+		effort: str,
 	) -> ChatResult:
-		body: dict[str, Any] = {
-			"model": model,
-			"messages": [_message(m) for m in messages],
-			"max_tokens": max_tokens,
-			"temperature": temperature,
-		}
+		body: dict[str, Any] = {"model": model, "messages": [_message(m) for m in messages]}
+		if effort:
+			# No `temperature`: reasoning models answer 400 to it at any effort other than `none`.
+			body["reasoning_effort"] = effort
+			body["max_tokens"] = max_tokens + REASONING_ROOM
+		else:
+			body["max_tokens"] = max_tokens
+			body["temperature"] = temperature
 		if tools:
 			body["tools"] = [_tool(t) for t in tools]
 			if tool_choice:
