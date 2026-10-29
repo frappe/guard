@@ -181,6 +181,7 @@ A repository has one row for each pull request number: a unique index on `reposi
 | `credits`, `input_tokens`, `output_tokens` | Int | `input_tokens` is the whole prompt of every call. Token and turn counts add up over all attempts, also the ones that failed, were cancelled or were killed. Guard writes them before each agent turn. |
 | `cached_tokens` | Int | The part of `input_tokens` that the gateway read from its prompt cache |
 | `agent_turns` | Int | Model turns of the review agents |
+| `agent_round_limit` | Int | Rounds that the agents of the review can take: the turn limit, lower on a re-review of a push or a backport, or both passes of an apex review in parts. A push lets a review finish after half of them. |
 | `usage_detail` | JSON | `reasoning_tokens`; `purposes`: for each purpose of a call (`review`, `verify`, `verdict`, `stale`, ...), its `calls`, `input`, `cached`, `output` and `reasoning` tokens; `tools`: for each agent tool, its `calls` and the `chars` of output. Adds up over all attempts, as the token counts do. |
 | `agent_rounds` | Int | Rounds of the review agents. In a round, each busy agent takes one turn, so an apex review has fewer rounds than turns. |
 | `review_number` | Int | 1 for the first review of a pull request. |

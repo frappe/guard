@@ -33,7 +33,7 @@ WAITING_FOR_PUSHES = "waiting for more pushes"
 WAITING_FOR_SLOT = "waiting for a free review slot"
 WAITING_FOR_LAST = "waiting for the last review to finish"
 # A push does not replace a running review in these stages, or in the review stage after half of its
-# turns: most of its tokens are spent. It posts on its commit, and the review of the push waits for
+# agent rounds (`agent_round_limit`): most of its tokens are spent. It posts on its commit, and the review of the push waits for
 # it and then reads only the changes since.
 FINISHING_STAGES = ("verify", "filter")
 
@@ -62,7 +62,7 @@ def create_review(
 	older = frappe.get_all(
 		"Code Review",
 		filters={"pull_request": pull_request, "status": ["in", ["Queued", "Running"]]},
-		fields=["name", "status", "stage", "tier", "agent_rounds"],
+		fields=["name", "status", "stage", "tier", "agent_rounds", "agent_round_limit"],
 	)
 	doc = frappe.get_doc(
 		{
@@ -103,9 +103,9 @@ def finishes_first(row: Any) -> bool:
 		return False
 	if row.stage in FINISHING_STAGES:
 		return True
-	return row.stage == "review" and 2 * (row.agent_rounds or 0) >= guard_settings.max_turns(
-		row.tier or "base"
-	)
+	# The limit of the review itself: a re-review of a push gets fewer turns than its tier.
+	limit = row.agent_round_limit or guard_settings.max_turns(row.tier or "base")
+	return row.stage == "review" and 2 * (row.agent_rounds or 0) >= limit
 
 
 def _dashboard_status_check(repository: str) -> bool:

@@ -13,6 +13,7 @@ class CodeReview(Document):
 	if TYPE_CHECKING:
 		from frappe.types import DF
 
+		agent_round_limit: DF.Int
 		agent_rounds: DF.Int
 		agent_turns: DF.Int
 		approval: DF.SmallText | None

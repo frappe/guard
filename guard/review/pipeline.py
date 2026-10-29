@@ -640,6 +640,7 @@ class ReviewPipeline:
 			run.verdict = Verdict(**saved["verdict"])
 			return
 		if single:
+			self.set_round_limit(run, turns)
 			final = Agent(run, system, turns)
 			task = None if self.restore(final, saved, "final") else compose(run, built)
 			self.watched = ("final", [final])
@@ -647,6 +648,7 @@ class ReviewPipeline:
 			return
 		# Each part, and the pass across the parts, reviews less than the whole: half the turns.
 		turns = min(max(turns // 2, guard_settings.max_turns("base")), cap)
+		self.set_round_limit(run, 2 * turns)  # the parts take their rounds together, then the pass across
 		all_files = run.files
 		in_areas = {f.path for files in areas for f in files}
 		rest = [f for f in ranked if f.path not in in_areas]
@@ -683,6 +685,12 @@ class ReviewPipeline:
 		self.check_cancel()
 		final.run_loop(task, deadline, self.between_turns)
 		run.files = all_files
+
+	@staticmethod
+	def set_round_limit(run: ReviewRun, rounds: int) -> None:
+		"""Save the rounds that the agents can take. A push lets the review finish after half of them."""
+		if run.review is not None:
+			db.set_values("Code Review", str(run.review.name), {"agent_round_limit": rounds})
 
 	def open_checkpoint(self, run: ReviewRun, system: str, areas: list[list[str]]) -> dict[str, Any] | None:
 		"""Start the checkpoints of this run. Return the saved one when it matches, with its findings in the run."""

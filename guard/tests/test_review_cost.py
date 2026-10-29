@@ -206,15 +206,18 @@ class TestRepeatReviews(ReviewCostCase):
 		frappe.db.set_value("Pull Request", self.pr, "head_sha", self.repo.head())
 		reads = [[("read_file", {"path": "app/models.py", "start_line": n})] for n in range(1, 20)]
 		self.online_review(reads, event="push")
-		self.assertEqual(
-			db.value("Code Review", self.reviews()[-1].name, "agent_turns"), pipeline.DELTA_TURNS
-		)
+		row = db.values("Code Review", self.reviews()[-1].name, ("agent_turns", "agent_round_limit")) or {}
+		self.assertEqual((row["agent_turns"], row["agent_round_limit"]), (pipeline.DELTA_TURNS,) * 2)
 
 	def test_a_push_lets_a_review_that_is_nearly_done_finish(self):
 		frappe.db.set_single_value("Guard Settings", "push_review_delay", 0)
 		self.addCleanup(frappe.db.set_single_value, "Guard Settings", "push_review_delay", 120)
 		finishing = self.insert_review(status="Running", stage="verify", tier="plus")
 		early = self.insert_review(status="Running", stage="review", tier="plus", agent_rounds=1)
+		# A re-review of a push has fewer rounds than its tier: 3 of 5 is past half.
+		delta = self.insert_review(
+			status="Running", stage="review", tier="plus", agent_rounds=3, agent_round_limit=5
+		)
 		real, later = jobs.enqueue_review, []
 
 		def enqueue(review, delay=0, attempt=0, tier=""):
@@ -232,10 +235,12 @@ class TestRepeatReviews(ReviewCostCase):
 		self.assertEqual(later, [(newer, pipeline.SLOT_WAIT)])
 		self.assertEqual(db.value("Code Review", finishing, "status"), "Running")
 		self.assertEqual(db.value("Code Review", early, "status"), "Cancelled")
+		self.assertEqual(db.value("Code Review", delta, "status"), "Running")
 		# The review of the push waits for it, and then reads only the changes since.
 		row = db.values("Code Review", str(newer), ("status", "stage")) or {}
 		self.assertEqual((row["status"], row["stage"]), ("Queued", jobs.WAITING_FOR_LAST))
 		state.move(finishing, {"status": "Completed"})
+		state.move(delta, {"status": "Completed"})
 		state.move(str(newer), {"status": "Cancelled"})
 
 
