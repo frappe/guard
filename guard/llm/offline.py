@@ -16,7 +16,6 @@ class OfflineDialect:
 		tool_choice: str | None,
 		max_tokens: int,
 		temperature: float,
-		effort: str,
 	) -> ChatResult:
 		forced = next((t for t in tools or [] if t.name == tool_choice), None)
 		if forced:

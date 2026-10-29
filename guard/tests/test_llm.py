@@ -11,7 +11,7 @@ from guard.llm.anthropic_dialect import _result as anthropic_result
 from guard.llm.client import PARALLEL_CALLS, ChatRequest, LLMClient, parse_json, use_responder
 from guard.llm.embeddings import hash_embedding, tokens
 from guard.llm.offline import OfflineDialect
-from guard.llm.openai_dialect import REASONING_ROOM, OpenAIDialect
+from guard.llm.openai_dialect import OpenAIDialect
 from guard.llm.openai_dialect import _result as openai_result
 from guard.llm.types import (
 	ChatResult,
@@ -73,13 +73,13 @@ class TestEmbeddings(UnitTestCase):
 
 class TestOffline(UnitTestCase):
 	def test_forced_tool_gets_defaults(self):
-		result = OfflineDialect().chat("m", [Message("user", "hi")], [SUBMIT], "submit_review", 100, 0, "")
+		result = OfflineDialect().chat("m", [Message("user", "hi")], [SUBMIT], "submit_review", 100, 0)
 		self.assertEqual(result.tool_calls[0].name, "submit_review")
 		self.assertEqual(result.tool_calls[0].arguments["confidence_score"], 0)
 		self.assertEqual(result.tool_calls[0].arguments["risk_level"], "critical")
 
 	def test_unforced_returns_nothing(self):
-		result = OfflineDialect().chat("m", [Message("user", "hi")], [SUBMIT], None, 100, 0, "")
+		result = OfflineDialect().chat("m", [Message("user", "hi")], [SUBMIT], None, 100, 0)
 		self.assertEqual(result.tool_calls, [])
 
 
@@ -168,7 +168,7 @@ class TestDialects(UnitTestCase):
 		submit = ToolSpec("submit_review", "verdict", {"type": "object"})
 		with patch("guard.llm.anthropic_dialect.post_json", side_effect=post):
 			result = AnthropicDialect("https://gw", "k", 30).chat(
-				"claude-opus-5-5", [Message("user", "review")], [submit], "submit_review", 100, 0.1, "high"
+				"claude-opus-5-5", [Message("user", "review")], [submit], "submit_review", 100, 0.1
 			)
 		# Claude 5 models refuse a temperature and a forced tool, and think within `max_tokens`.
 		self.assertNotIn("temperature", bodies[0])
@@ -179,36 +179,6 @@ class TestDialects(UnitTestCase):
 		converted = _messages([result.as_message(), Message("tool", "ok", tool_call_id="x")])
 		self.assertEqual(converted[0]["content"][:2], thinking)
 		self.assertEqual(converted[0]["content"][2]["type"], "tool_use")
-
-	def test_openai_request_sends_the_reasoning_effort(self):
-		bodies: list[dict] = []
-
-		def post(url, body, headers, timeout):
-			bodies.append(body)
-			return {"choices": [{"message": {"content": "ok"}}], "usage": {}}
-
-		dialect = OpenAIDialect("https://gw", "k", 30)
-		with patch("guard.llm.openai_dialect.post_json", side_effect=post):
-			dialect.chat("m", [Message("user", "hi")], None, None, 100, 0.1, "high")
-			dialect.chat("m", [Message("user", "hi")], None, None, 100, 0.1, "")
-		# Reasoning models refuse a temperature with an effort, and reason within `max_tokens`.
-		self.assertEqual(bodies[0]["reasoning_effort"], "high")
-		self.assertNotIn("temperature", bodies[0])
-		self.assertEqual(bodies[0]["max_tokens"], 100 + REASONING_ROOM)
-		self.assertNotIn("reasoning_effort", bodies[1])
-		self.assertEqual((bodies[1]["max_tokens"], bodies[1]["temperature"]), (100, 0.1))
-
-	def test_effort_follows_the_tier_and_fast_calls_think_least(self):
-		efforts: list[str] = []
-
-		def respond(request: ChatRequest) -> ChatResult:
-			efforts.append(request.effort)
-			return ChatResult("ok", [], Usage())
-
-		with use_responder(respond):
-			for client in (LLMClient("base"), LLMClient("plus"), LLMClient("apex"), LLMClient.fast()):
-				client.complete("system", "prompt")
-		self.assertEqual(efforts, ["medium", "medium", "high", "low"])
 
 	def test_models_use_the_auth_of_the_dialect(self):
 		import httpx
