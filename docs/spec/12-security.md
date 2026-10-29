@@ -32,9 +32,9 @@ Four settings, each `Everyone`, `Organization members` or `Guard users`:
 | `chat_permission` | Who gets an answer to a question |
 | `teach_permission` | Whose feedback becomes learning |
 
-- `Organization members`: Guard asks the provider if the login is a member of the team namespace. It caches the answer for one hour.
+- `Organization members`: Guard asks the provider if the login is a member of the team namespace, or has write access to the repository. Outside maintainers are often collaborators and not members. Guard caches each answer for one hour. When the provider cannot answer, Guard does not cache it, and the login does not pass.
 - `Guard users`: the login is on a Guard User record.
-- A person outside a permission gets no reply and no error.
+- A person outside a permission gets no reply and no error. The one exception: a person who resolves the thread of a finding without `teach_permission` gets a reply ([07-conversations.md](07-conversations.md#resolved-threads)).
 
 ## Secrets
 

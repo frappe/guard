@@ -218,12 +218,61 @@ def _show_finding(finding: str, pull_request: str, sync_thread: bool = True) -> 
 
 
 def recount_check(adapter: ProviderAdapter, full_name: str, pull_request: str) -> None:
-	"""Set the check of the head again, with the open findings now. Only when the last review of the
-	head completed: else a review runs and sets the check when it ends, or the check shows a failure."""
+	"""Set the check of the head again, with the open findings now, from the last completed review of the
+	head. Not when the last review of the head is queued or runs, because it sets the check when it
+	ends, or failed, because the check shows the failure. A newer skipped or cancelled review leaves the
+	result of the completed one on the check."""
 	head = str(db.value("Pull Request", pull_request, "head_sha") or "")
 	latest = _reviews_of(pull_request, head, "")
-	if latest and latest[0]["status"] == "Completed" and latest[0]["check_run_id"]:
-		_show_result(adapter, full_name, pull_request, head, latest[0], str(latest[0]["check_run_id"]))
+	if not latest or latest[0]["status"] in ("Queued", "Running", "Failed"):
+		return
+	completed = db.dict_rows(
+		"""SELECT name, confidence_score, check_run_id, config_snapshot FROM `tabCode Review`
+		WHERE pull_request = %s AND head_sha = %s AND status = 'Completed'
+		ORDER BY creation DESC LIMIT 1""",
+		(pull_request, head),
+	)
+	if not completed:
+		return
+	review = completed[0]
+	# The setting, not the id, tells if the review shows a check. A token install keeps no id, because a
+	# commit status has none. A review that found the check turned off keeps the id of the check that
+	# it ended as skipped.
+	snapshot = frappe.parse_json(review["config_snapshot"] or "{}") or {}
+	if not snapshot.get("status_check", True):
+		return
+	severities = [
+		str(row[0])
+		for row in db.rows(
+			"SELECT severity FROM `tabReview Finding` WHERE pull_request = %s AND status = 'Open'",
+			(pull_request,),
+		)
+	]
+	# The reviews of a commit share its check. The newest id is the one the commit shows.
+	check_id = check_of(pull_request, head) or str(review["check_run_id"] or "")
+	_show_result(adapter, full_name, pull_request, head, review, check_id, severities)
+
+
+def keep_thread_open(pull_request: str, thread_id: str, body: str) -> None:
+	"""A person resolved the thread of a finding that stays open. Reopen the thread and reply `body`,
+	so the provider does not show it closed while the finding still fails the check."""
+	from guard.providers.base import ProviderComment
+
+	try:
+		provider = _provider(pull_request)
+		if not provider:
+			return
+		adapter, full_name, number = provider
+		adapter.unresolve_thread(full_name, number, thread_id)
+		adapter.reply_to_comment(
+			full_name,
+			number,
+			ProviderComment(id=thread_id, kind="inline", author="", body="", thread_id=thread_id),
+			body,
+		)
+	except Exception as error:
+		# The finding stays open either way. Polling and the next commit must go on.
+		frappe.log_error(redact(str(error)), "Guard finding")
 
 
 def end_check(
@@ -257,11 +306,19 @@ def _show_result(
 	sha: str,
 	review: dict[str, Any],
 	check_id: str,
+	open_severities: list[str] | None = None,
 ) -> None:
+	"""The result of a completed review on its check. With `open_severities`, the findings that are open
+	now set the score: a person closed or reopened one, and the score of the review counts the old ones.
+	Else closing every finding could never pass the check."""
+	from guard.review.findings import score_cap
 	from guard.review.publish import open_finding_count, set_status
 
-	score = int(review["confidence_score"] or 0)
-	open_count = open_finding_count(pull_request)
+	if open_severities is None:
+		score = int(review["confidence_score"] or 0)
+		open_count = open_finding_count(pull_request)
+	else:
+		score, open_count = score_cap([], open_severities), len(open_severities)
 	set_status(
 		adapter,
 		full_name,

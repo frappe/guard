@@ -10,12 +10,12 @@ from guard.learning import addressed, feedback, memories, memory_writer, suggest
 from guard.llm.client import ChatRequest, use_responder
 from guard.llm.embeddings import Embedder
 from guard.llm.types import GatewayBusy
-from guard.providers.base import ProviderComment, Reaction, ReviewThread
-from guard.review import jobs, trigger
+from guard.providers.base import ProviderComment, ProviderError, Reaction, ReviewThread
+from guard.review import jobs, permissions, trigger
 from guard.tests.cases import PullRequestCase
 from guard.tests.fakes import scripted
 from guard.tests.utils import TempRepo, make_repository
-from guard.utils import db
+from guard.utils import cache, db
 from guard.webhooks import github, handler, polling
 
 FINDING = {
@@ -502,21 +502,67 @@ class TestResolvedThreads(LearningCase):
 		finding, thread_id = self.posted_finding()
 		self.assertTrue(self.resolve(thread_id, "ada"))
 		self.assertEqual(self.status(finding), ("Dismissed", "thread resolved by ada"))
-		self.assertIn("0 open finding(s)", self.adapter.checks[-1][2])
+		# The review scored 3/5 for the P1. With no finding open, the check passes.
+		self.assertEqual(self.adapter.checks[-1][1:3], ("success", "5/5 · 0 open finding(s)"))
 		# The thread is already resolved on the provider: Guard does not resolve it again.
 		self.assertFalse(self.adapter.named("resolve"))
 		self.assertTrue(self.resolve(thread_id, "ada", "unresolved"))
 		self.assertEqual(self.status(finding), ("Open", "thread reopened by ada"))
-		self.assertIn("1 open finding(s)", self.adapter.checks[-1][2])
+		self.assertEqual(self.adapter.checks[-1][1:3], ("failure", "3/5 · 1 open finding(s)"))
 		self.assertFalse(self.adapter.named("unresolve"))
 
 	def test_guard_and_people_without_teach_permission_do_not_close_findings(self):
 		finding, thread_id = self.posted_finding()
 		frappe.db.set_single_value("Guard Settings", "bot_logins", "guard-bot")
 		self.assertFalse(self.resolve(thread_id, "guard-bot"))
+		self.assertFalse(self.adapter.named("unresolve"))
 		frappe.db.set_single_value("Guard Settings", "teach_permission", "Guard users")
-		self.assertFalse(self.resolve(thread_id, "stranger"))
+		self.assertTrue(self.resolve(thread_id, "stranger"))
 		self.assertEqual(self.status(finding)[0], "Open")
+		# The provider must not show the thread closed while the finding still fails the check.
+		self.assertEqual(self.adapter.named("unresolve"), [thread_id])
+		[reply] = self.adapter.named("reply")
+		self.assertIn("@stranger, only people with a Guard account can close", reply)
+
+	def test_a_collaborator_with_write_access_closes_findings_as_a_member_does(self):
+		finding, thread_id = self.posted_finding()
+		frappe.db.set_single_value("Guard Settings", "teach_permission", "Organization members")
+		with patch.object(self.adapter, "is_member", return_value=False):
+			with patch.object(self.adapter, "can_write", return_value=True):
+				self.assertTrue(self.resolve(thread_id, "outside-maintainer"))
+		self.assertEqual(self.status(finding), ("Dismissed", "thread resolved by outside-maintainer"))
+		self.assertFalse(self.adapter.named("unresolve"))
+
+	def test_a_resolve_by_a_reader_names_members_and_writers(self):
+		finding, thread_id = self.posted_finding()
+		frappe.db.set_single_value("Guard Settings", "teach_permission", "Organization members")
+		with patch.object(self.adapter, "is_member", return_value=False):
+			self.assertTrue(self.resolve(thread_id, "reader"))
+		self.assertEqual(self.status(finding)[0], "Open")
+		[reply] = self.adapter.named("reply")
+		self.assertIn("only members of the acme organization and people with write access to acme/", reply)
+
+	def test_a_resolve_that_the_provider_cannot_check_reopens_the_thread_without_a_no(self):
+		finding, thread_id = self.posted_finding()
+		frappe.db.set_single_value("Guard Settings", "teach_permission", "Organization members")
+		with patch.object(self.adapter, "is_member", side_effect=ProviderError("rate limited", 403)):
+			self.assertTrue(self.resolve(thread_id, "maybe-member"))
+		self.assertEqual(self.status(finding)[0], "Open")
+		# A webhook comes once: a thread left resolved would stay closed on an open finding.
+		self.assertEqual(self.adapter.named("unresolve"), [thread_id])
+		[reply] = self.adapter.named("reply")
+		self.assertIn("@maybe-member, I could not check", reply)
+		self.assertNotIn("only members", reply)
+		self.assertIsNone(cache.get("guard:member:acme:maybe-member"))
+
+	def test_a_repository_without_a_provider_caches_no_permission_answer(self):
+		frappe.db.set_single_value("Guard Settings", "teach_permission", "Organization members")
+		with patch("guard.review.permissions.adapter_for_repository", return_value=None):
+			# No answer, not a no: a resolve gets the reply for an unchecked permission.
+			with self.assertRaises(ProviderError):
+				permissions.passes("teach", "no-provider", self.repository)
+			self.assertFalse(permissions.allowed("teach", "no-provider", self.repository))
+		self.assertIsNone(cache.get("guard:member:acme:no-provider"))
 
 	def test_reopening_a_thread_does_not_reopen_a_finding_closed_another_way(self):
 		finding, thread_id = self.posted_finding()
@@ -532,3 +578,12 @@ class TestResolvedThreads(LearningCase):
 		self.adapter.threads = [ReviewThread(thread_id, resolved=False)]
 		polling._poll_threads(self.repository, "acme/app", 7, self.adapter)
 		self.assertEqual(self.status(finding), ("Open", "thread reopened"))
+
+	def test_polling_reopens_a_thread_that_nobody_known_resolved(self):
+		finding, thread_id = self.posted_finding()
+		self.adapter.threads = [ReviewThread(thread_id, resolved=True, resolved_by="")]
+		polling._poll_threads(self.repository, "acme/app", 7, self.adapter)
+		self.assertEqual(self.status(finding)[0], "Open")
+		self.assertEqual(self.adapter.named("unresolve"), [thread_id])
+		[reply] = self.adapter.named("reply")
+		self.assertTrue(reply.startswith("I could not tell who resolved this thread"))

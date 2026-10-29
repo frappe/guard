@@ -184,6 +184,11 @@ class ProviderAdapter:
 		return []
 
 	def is_member(self, namespace: str, login: str) -> bool:
+		"""Raise ProviderError when the provider cannot tell."""
+		raise NotImplementedError
+
+	def can_write(self, repo: str, login: str) -> bool:
+		"""True when the login can push to the repository. Raise ProviderError when the provider cannot tell."""
 		raise NotImplementedError
 
 	def pull_ref(self, number: int) -> str:

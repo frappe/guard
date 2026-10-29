@@ -39,6 +39,7 @@ PATCHED = (
 	"guard.conversation.threads",
 	"guard.conversation.acks",
 	"guard.learning.addressed",
+	"guard.review.permissions",
 )
 
 
