@@ -6,7 +6,7 @@ import frappe
 from frappe.tests import IntegrationTestCase
 
 from guard.providers import sync
-from guard.providers.base import RepositoryInfo
+from guard.providers.base import ProviderError, RepositoryInfo
 from guard.utils import db
 from guard.webhooks import github, handler
 
@@ -82,6 +82,84 @@ class TestInstallationSync(IntegrationTestCase):
 		self.installation("installation", "deleted", login="ac_e")
 		self.assertFalse(enabled(near))
 		self.assertTrue(enabled(self.kept))
+
+	def added(self, *full_names: str) -> None:
+		# New repositories follow auto-enable, and an index would clone them. These tests only check rows.
+		with patch("guard.indexing.jobs.enqueue_index"):
+			self._added(full_names)
+
+	def _added(self, full_names: tuple[str, ...]) -> None:
+		self.installation(
+			"installation_repositories",
+			"added",
+			repository_selection="all",
+			repositories_added=[{"id": 3, "full_name": name, "private": True} for name in full_names],
+			repositories_removed=[],
+		)
+
+	def resolve(self, full_name: str, error: ProviderError) -> str | None:
+		# Events without a clone URL make Guard read the repository from GitHub.
+		adapter = MagicMock()
+		adapter.get_repository.side_effect = error
+		with patch.object(sync, "adapter_for_provider", return_value=adapter):
+			return sync.resolve_repository(PROVIDER, RepositoryInfo(full_name, "4", "", "", ""), "acme")
+
+	def test_event_for_a_repository_github_does_not_show_is_ignored(self):
+		name = "acme/advisory-fork"
+		self.assertIsNone(self.resolve(name, ProviderError(f"GET /repos/{name}: 404", 404)))
+		self.assertFalse(sync.find_repository(PROVIDER, name))
+
+	def test_event_fails_on_an_error_other_than_404(self):
+		name = "acme/new"
+		with self.assertRaises(ProviderError):
+			self.resolve(name, ProviderError(f"GET /repos/{name}: 502", 502))
+		self.assertFalse(sync.find_repository(PROVIDER, name))
+
+	def test_added_repositories_skip_one_that_github_does_not_show(self):
+		# A security advisory fork is in the event, but GET /repos returns 404 for it.
+		def get_repository(full_name: str) -> RepositoryInfo:
+			if full_name == "acme/advisory-fork":
+				raise ProviderError(f"GET /repos/{full_name}: 404", 404)
+			return info(full_name)
+
+		adapter = MagicMock()
+		adapter.get_repository.side_effect = get_repository
+		with patch.object(sync, "adapter_for_provider", return_value=adapter):
+			self.added("acme/first", "acme/advisory-fork", "acme/last")
+		self.assertTrue(sync.find_repository(PROVIDER, "acme/first"))
+		self.assertTrue(sync.find_repository(PROVIDER, "acme/last"))
+		self.assertFalse(sync.find_repository(PROVIDER, "acme/advisory-fork"))
+
+	def test_added_repositories_fail_on_an_error_other_than_404(self):
+		adapter = MagicMock()
+		adapter.get_repository.side_effect = ProviderError("GET /repos/acme/first: 403 rate limit", 403)
+		with patch.object(sync, "adapter_for_provider", return_value=adapter):
+			with self.assertRaises(ProviderError):
+				self.added("acme/first")
+
+	def test_failed_listing_falls_back_to_one_call_each(self):
+		names = [f"acme/app-{n}" for n in range(sync.BULK_LOOKUP + 1)]
+		adapter = MagicMock()
+		adapter.list_repositories.side_effect = ProviderError("GET /installation/repositories: 502", 502)
+		adapter.get_repository.side_effect = info
+		with patch.object(sync, "adapter_for_provider", return_value=adapter):
+			self.added(*names)
+		self.assertEqual(adapter.get_repository.call_count, len(names))
+		for name in names:
+			self.assertTrue(sync.find_repository(PROVIDER, name))
+
+	def test_many_added_repositories_are_read_with_one_listing(self):
+		names = [f"acme/app-{n}" for n in range(sync.BULK_LOOKUP + 1)]
+		adapter = MagicMock()
+		adapter.list_repositories.return_value = [info(name) for name in names[1:]]
+		adapter.get_repository.side_effect = info
+		with patch.object(sync, "adapter_for_provider", return_value=adapter):
+			self.added(*names)
+		adapter.list_repositories.assert_called_once_with("acme")
+		# Only the repository that the listing leaves out costs a call of its own.
+		adapter.get_repository.assert_called_once_with(names[0])
+		for name in names:
+			self.assertTrue(sync.find_repository(PROVIDER, name))
 
 	def test_suspended_installation_keeps_reviews_on(self):
 		self.installation("installation", "suspend")
