@@ -77,7 +77,10 @@ def resolve_repository(
 		return name
 	team = ensure_team(provider, namespace or info.full_name.split("/")[0], installation_id)
 	if not info.clone_url:
-		info = adapter_for_provider(provider, team).get_repository(info.full_name)
+		full = _visible_repository(adapter_for_provider(provider, team), info.full_name)
+		if not full:
+			return None
+		info = full
 	return ensure_repository(provider, info, team)
 
 
@@ -178,15 +181,19 @@ def _with_details(
 		if info.clone_url:
 			result.append(info)
 			continue
-		full = listed.get(info.full_name.casefold())
-		if not full:
-			try:
-				full = adapter.get_repository(info.full_name)
-			except ProviderError as error:
-				# Other errors, such as a rate limit or an outage, fail the delivery, so they stay visible.
-				if error.status != 404:
-					raise
-				frappe.log_error(title="Guard sync", message=redact(str(error)))
-				continue
-		result.append(full)
+		full = listed.get(info.full_name.casefold()) or _visible_repository(adapter, info.full_name)
+		if full:
+			result.append(full)
 	return result
+
+
+def _visible_repository(adapter: ProviderAdapter, full_name: str) -> RepositoryInfo | None:
+	"""The repository from GitHub, or None when GitHub does not show it (404)."""
+	try:
+		return adapter.get_repository(full_name)
+	except ProviderError as error:
+		# Other errors, such as a rate limit or an outage, fail the delivery, so they stay visible.
+		if error.status != 404:
+			raise
+		frappe.log_error(title="Guard sync", message=redact(str(error)))
+		return None

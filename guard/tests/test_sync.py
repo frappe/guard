@@ -97,6 +97,24 @@ class TestInstallationSync(IntegrationTestCase):
 			repositories_removed=[],
 		)
 
+	def resolve(self, full_name: str, error: ProviderError) -> str | None:
+		# Events without a clone URL make Guard read the repository from GitHub.
+		adapter = MagicMock()
+		adapter.get_repository.side_effect = error
+		with patch.object(sync, "adapter_for_provider", return_value=adapter):
+			return sync.resolve_repository(PROVIDER, RepositoryInfo(full_name, "4", "", "", ""), "acme")
+
+	def test_event_for_a_repository_github_does_not_show_is_ignored(self):
+		name = "acme/advisory-fork"
+		self.assertIsNone(self.resolve(name, ProviderError(f"GET /repos/{name}: 404", 404)))
+		self.assertFalse(sync.find_repository(PROVIDER, name))
+
+	def test_event_fails_on_an_error_other_than_404(self):
+		name = "acme/new"
+		with self.assertRaises(ProviderError):
+			self.resolve(name, ProviderError(f"GET /repos/{name}: 502", 502))
+		self.assertFalse(sync.find_repository(PROVIDER, name))
+
 	def test_added_repositories_skip_one_that_github_does_not_show(self):
 		# A security advisory fork is in the event, but GET /repos returns 404 for it.
 		def get_repository(full_name: str) -> RepositoryInfo:
