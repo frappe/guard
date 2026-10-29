@@ -10,6 +10,7 @@ from guard.config.globs import match_filter
 from guard.config.resolver import ConfigResolver
 from guard.git.diff import parse_diff
 from guard.git.repository import store_for
+from guard.git.store import GitError
 from guard.guard.doctype.review_settings.review_settings import get_effective
 from guard.providers import adapter_for_repository
 from guard.review import permissions
@@ -51,7 +52,8 @@ def consider(
 	merge_base = store.merge_base(base, head)
 	files = parse_diff(store.diff(merge_base, head))
 	paths = [p for f in files for p in {f.path, f.old_path} if p]
-	config = ConfigResolver.from_store(repository, store, head).resolve_pr([f.path for f in files])
+	# Config from the base branch, so a pull request cannot change how Guard reviews it.
+	config = ConfigResolver.from_store(repository, store, base).resolve_pr([f.path for f in files])
 	facts = gate.PullRequestFacts(
 		repository=str(repo.get("full_name")),
 		title=str(pr.title or ""),
@@ -133,10 +135,13 @@ def push_kind(repository: str, before: str | None, after: str | None) -> str:
 
 def trigger_label(pull_request: str, label: str) -> bool:
 	"""A label in the `labels` filter counts as an `open` event."""
-	repository = str(db.value("Pull Request", pull_request, "repository"))
+	pr = db.values("Pull Request", pull_request, ("repository", "base_branch")) or {}
+	repository = str(pr.get("repository"))
 	store = store_for(repository)
-	head = str(db.value("Pull Request", pull_request, "head_sha") or "")
-	if not head or not store.has_commit(head):
+	# The mirror's base branch is enough here: `consider` fetches it again before the gate.
+	try:
+		base = store.rev_parse(f"refs/heads/{pr.get('base_branch')}")
+	except GitError:
 		return False
-	config = ConfigResolver.from_store(repository, store, head).resolve("")
+	config = ConfigResolver.from_store(repository, store, base).resolve("")
 	return any(match_filter(label, [pattern]) for pattern in config.settings.get("labels") or [])

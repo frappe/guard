@@ -7,6 +7,7 @@ import frappe
 from guard.config import gate
 from guard.config.resolver import ConfigResolver
 from guard.git.repository import store_for
+from guard.git.store import GitError
 from guard.providers import adapter_for_repository
 from guard.providers.base import ProviderError
 from guard.review import render, state
@@ -119,10 +120,15 @@ def check(review: "CodeReview", pr: "PullRequest") -> tuple[bool, str]:
 		return False, STILL_OPEN
 	store = store_for(str(pr.repository))
 	paths = [c["path"] for c in frappe.parse_json(review.changed_files or "[]") or []]
-	# Policy from the base branch, so a pull request cannot loosen it for itself.
-	policy = ConfigResolver.from_store(
-		str(pr.repository), store, str(review.merge_base_sha)
-	).auto_approve_policy(paths)
+	# Config from the head of the base branch, so a pull request cannot loosen the policy for itself, and a
+	# branch made before the policy changed gets the current policy.
+	try:
+		base = store.rev_parse(f"refs/heads/{pr.base_branch}")
+	except GitError:
+		# The base branch is gone from the mirror. The merge base is on it too.
+		base = str(review.merge_base_sha)
+	resolver = ConfigResolver.from_store(str(pr.repository), store, base)
+	policy = resolver.auto_approve_policy(paths)
 	if not policy.get("enabled"):
 		return False, POLICY_OFF
 	if pr.is_draft:
@@ -149,8 +155,7 @@ def check(review: "CodeReview", pr: "PullRequest") -> tuple[bool, str]:
 	ok, reason = gate.auto_approve_filters_pass(policy.get("filters") or {}, facts)
 	if not ok:
 		return False, reason
-	config = ConfigResolver.from_store(str(pr.repository), store, str(review.head_sha)).resolve_pr(paths)
-	ok, reason = gate.filters_pass(config.settings, facts)
+	ok, reason = gate.filters_pass(resolver.resolve_pr(paths).settings, facts)
 	return (ok, reason) if not ok else (True, "")
 
 

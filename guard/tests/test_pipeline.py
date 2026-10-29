@@ -1253,6 +1253,13 @@ class TestPipeline(PullRequestCase):
 		self.assertIn("Code changes without tests", body)
 		self.assertIn("**Project rule:** [CLAUDE.md line 1](https://github.test/", body)
 
+	def test_pull_request_cannot_change_its_project_rules(self):
+		self.repo.commit({"CLAUDE.md": "- Always add tests for behavior changes.\n"}, "add a rule")
+		frappe.db.set_value("Pull Request", self.pr, "head_sha", self.repo.head())
+		name = self.review([[("submit_review", {"summary": "s", "confidence_score": 5})]])
+		self.assertEqual(self.row(name)["posted_count"], 0)
+		self.assertEqual(self.row(name)["confidence_score"], 5)
+
 	def test_verifier_keeps_p0_for_a_proven_break(self):
 		finding = {
 			"path": "app/models.py",
@@ -1366,6 +1373,31 @@ class TestPipeline(PullRequestCase):
 		self.repo.git("checkout", "-q", "feature")
 		self.repo.git("merge", "-q", "main", "-m", "merge main")
 		frappe.db.set_value("Pull Request", self.pr, "head_sha", self.repo.head())
+
+	def test_pull_request_cannot_change_its_config(self):
+		# The dashboard said Never, and a .guard/config.toml from before a policy change turned reviews on.
+		settings = frappe.get_doc("Review Settings", "Organization")
+		before = settings.get("auto_review")
+		settings.set("auto_review", "Never")
+		settings.save(ignore_permissions=True)
+		try:
+			self.repo.commit(
+				{".guard/config.toml": 'auto_review = ["open", "push"]\nstrictness = 3\n'}, "turn on reviews"
+			)
+			frappe.db.set_value("Pull Request", self.pr, "head_sha", self.repo.head())
+			self.assertIsNone(trigger.consider(self.pr, "open"))
+			self.assertFalse(frappe.db.exists("Code Review", {"pull_request": self.pr}))
+			# A config on the base branch turns them on, also when the branch does not have it yet.
+			self.repo.git("checkout", "-q", "main")
+			self.repo.commit({"guard.toml": 'auto_review = ["open"]\n'}, "turn on reviews on main")
+			self.repo.git("checkout", "-q", "feature")
+			name = self.review([[("submit_review", {"summary": "s", "confidence_score": 5})]])
+			self.assertEqual(self.row(name)["status"], "Completed")
+			# The other settings of the branch do not apply either.
+			self.assertNotEqual(db.value("Code Review", str(name), "strictness"), 3)
+		finally:
+			settings.set("auto_review", before)
+			settings.save(ignore_permissions=True)
 
 	def test_auto_approve_clean_low_risk(self):
 		self.commit_on_main({".guard/config.toml": AUTO_APPROVE})
