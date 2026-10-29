@@ -24,7 +24,6 @@ class ChatRequest:
 	tools: list[ToolSpec] | None
 	tool_choice: str | None
 	purpose: str
-	effort: str = ""
 
 
 Responder = Callable[[ChatRequest], ChatResult]
@@ -32,10 +31,6 @@ _responder: Responder | None = None
 # Model calls of one job in flight at once. A review holds one of `max_concurrent_reviews`
 # slots, so the gateway sees at most this many calls for each slot.
 PARALLEL_CALLS = 4
-# How long a model thinks before it answers, for each tier. Reasoning tokens bill as output, so a
-# higher effort costs more and takes longer. Fast calls are short checks and need little thought.
-EFFORT = {"base": "medium", "plus": "medium", "apex": "high"}
-FAST_EFFORT = "low"
 
 
 class Dialect(Protocol):
@@ -47,7 +42,6 @@ class Dialect(Protocol):
 		tool_choice: str | None,
 		max_tokens: int,
 		temperature: float,
-		effort: str,
 	) -> ChatResult: ...
 
 
@@ -66,17 +60,11 @@ class LLMClient:
 	"""Chat with one model through the gateway. Adds token use to `usage`."""
 
 	def __init__(
-		self,
-		tier: str = "base",
-		model: str | None = None,
-		purpose: str = "",
-		usage: Usage | None = None,
-		effort: str | None = None,
+		self, tier: str = "base", model: str | None = None, purpose: str = "", usage: Usage | None = None
 	):
 		self.config = guard_settings.gateway()
 		self.model = model or self.config.model_for(tier)
 		self.purpose = purpose
-		self.effort = effort or EFFORT.get(tier, EFFORT["base"])
 		self.usage = usage if usage is not None else Usage()
 		self.dialect = self._dialect()
 		self.parallel = PARALLEL_CALLS
@@ -84,8 +72,7 @@ class LLMClient:
 	@classmethod
 	def fast(cls, purpose: str = "", usage: Usage | None = None) -> "LLMClient":
 		config = guard_settings.gateway()
-		model = config.fast_model or config.model_for("base")
-		return cls(model=model, purpose=purpose, usage=usage, effort=FAST_EFFORT)
+		return cls(model=config.fast_model or config.model_for("base"), purpose=purpose, usage=usage)
 
 	@property
 	def online(self) -> bool:
@@ -152,13 +139,9 @@ class LLMClient:
 		temperature: float,
 	) -> ChatResult:
 		if _responder:
-			result = _responder(
-				ChatRequest(self.model, messages, tools, tool_choice, self.purpose, self.effort)
-			)
+			result = _responder(ChatRequest(self.model, messages, tools, tool_choice, self.purpose))
 		else:
-			result = self.dialect.chat(
-				self.model, messages, tools, tool_choice, max_tokens, temperature, self.effort
-			)
+			result = self.dialect.chat(self.model, messages, tools, tool_choice, max_tokens, temperature)
 		return markup.recover(result, tools)
 
 	def _record(self, results: list[ChatResult]) -> list[ChatResult]:
