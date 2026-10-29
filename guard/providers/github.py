@@ -217,6 +217,17 @@ class GitHubAdapter(ProviderAdapter):
 			raise
 		return True
 
+	def can_write(self, repo: str, login: str) -> bool:
+		try:
+			data = self.request("GET", f"/repos/{repo}/collaborators/{login}/permission") or {}
+		except ProviderError as error:
+			# 404 is GitHub's answer for a login that is not a user.
+			if error.status == 404:
+				return False
+			raise
+		# `permission` is the old scale: the maintain role shows as write, triage as read.
+		return data.get("permission") in ("admin", "write")
+
 	def pull_ref(self, number: int) -> str:
 		return f"refs/pull/{number}/head"
 

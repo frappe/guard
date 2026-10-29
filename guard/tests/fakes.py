@@ -68,6 +68,9 @@ class FakeAdapter(ProviderAdapter):
 	def is_member(self, namespace: str, login: str) -> bool:
 		return True
 
+	def can_write(self, repo: str, login: str) -> bool:
+		return False
+
 	def commit_url(self, repo: str, sha: str) -> str:
 		return f"https://github.test/{repo}/commit/{sha}"
 

@@ -524,6 +524,24 @@ class TestResolvedThreads(LearningCase):
 		[reply] = self.adapter.named("reply")
 		self.assertIn("@stranger, only people with a Guard account can close", reply)
 
+	def test_a_collaborator_with_write_access_closes_findings_as_a_member_does(self):
+		finding, thread_id = self.posted_finding()
+		frappe.db.set_single_value("Guard Settings", "teach_permission", "Organization members")
+		with patch.object(self.adapter, "is_member", return_value=False):
+			with patch.object(self.adapter, "can_write", return_value=True):
+				self.assertTrue(self.resolve(thread_id, "outside-maintainer"))
+		self.assertEqual(self.status(finding), ("Dismissed", "thread resolved by outside-maintainer"))
+		self.assertFalse(self.adapter.named("unresolve"))
+
+	def test_a_resolve_by_a_reader_names_members_and_writers(self):
+		finding, thread_id = self.posted_finding()
+		frappe.db.set_single_value("Guard Settings", "teach_permission", "Organization members")
+		with patch.object(self.adapter, "is_member", return_value=False):
+			self.assertTrue(self.resolve(thread_id, "reader"))
+		self.assertEqual(self.status(finding)[0], "Open")
+		[reply] = self.adapter.named("reply")
+		self.assertIn("only members of the acme organization and people with write access to acme/", reply)
+
 	def test_a_resolve_stays_unanswered_when_the_provider_cannot_tell_membership(self):
 		finding, thread_id = self.posted_finding()
 		frappe.db.set_single_value("Guard Settings", "teach_permission", "Organization members")
