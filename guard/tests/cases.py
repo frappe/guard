@@ -10,7 +10,7 @@ from guard.providers.base import PullRequestInfo
 from guard.review import pull_requests, trigger
 from guard.tests.fakes import FakeAdapter, scripted
 from guard.tests.utils import TempRepo, make_repository
-from guard.utils import cache, db
+from guard.utils import db
 
 MODELS = """def get_user(user_id):
     return {"id": user_id}
@@ -48,8 +48,7 @@ class PullRequestCase(IntegrationTestCase):
 	def setUp(self):
 		frappe.db.set_single_value("Guard Settings", "learn_from_activity", 1)
 		# The breaker state lives in the cache and outlives a test.
-		for key in (breaker.FAILURES, breaker.OPEN, breaker.OUTAGE):
-			cache.delete(key)
+		breaker.reset()
 		self.repo = TempRepo({"app/__init__.py": "", "app/models.py": MODELS, "app/service.py": SERVICE})
 		self.base = self.repo.head()
 		self.repository = make_repository(self.repo, full_name=f"acme/{frappe.generate_hash(length=6)}")

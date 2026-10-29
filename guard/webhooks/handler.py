@@ -239,7 +239,7 @@ def handle_comment(pull_request: str, comment: dict, attempt: int = 0) -> None:
 		if attempt >= len(COMMENT_RETRY_DELAYS):
 			threads.give_up(pull_request, parsed)
 			raise
-		delay = max(busy.retry_after, COMMENT_RETRY_DELAYS[attempt], breaker.wait_seconds())
+		delay = max(busy.retry_after, COMMENT_RETRY_DELAYS[attempt], breaker.wait_seconds([busy.ai_provider]))
 		name = db.value(
 			"Pull Request Comment", {"pull_request": pull_request, "provider_comment_id": parsed.id}, "name"
 		)

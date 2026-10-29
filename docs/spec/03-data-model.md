@@ -8,12 +8,12 @@ All DocTypes are in the module "Guard". Field lists show the main fields only. S
 
 | Field | Type | Notes |
 | - | - | - |
-| `gateway_url` | Data | AI gateway base URL, for example a Grove gateway. |
-| `gateway_api_key` | Password | |
-| `gateway_dialect` | Select | `openai`, `anthropic` |
-| `base_model`, `plus_model`, `apex_model` | Data | Model id for each tier, `<provider>/<name>`. |
-| `fast_model` | Data | Classifiers, titles, small summaries. |
+| `default_ai_provider` | Link AI Provider | Serves every model whose AI provider field is blank. Blank means offline. |
+| `request_timeout` | Int | Seconds for one request to an AI provider. Default 300. |
+| `base_model`, `plus_model`, `apex_model` | Data | Model id for each tier, as its AI provider names it. |
+| `fast_model` | Data | Classifiers, titles, small summaries. Blank uses the base tier. |
 | `embedding_model` | Data | Blank means hash embeddings. |
+| `base_ai_provider`, `plus_ai_provider`, `apex_ai_provider`, `fast_ai_provider`, `embedding_ai_provider` | Link AI Provider | The AI provider of each model. Blank uses `default_ai_provider`. |
 | `embedding_dimensions` | Int | Size of the vector column. Changing it rebuilds vectors. |
 | `max_turns_base`, `max_turns_plus`, `max_turns_apex` | Int | Agent turn limits. Defaults 10, 16, 24. |
 | `<tier>_input_price`, `<tier>_cached_input_price`, `<tier>_output_price` | Float | For `base`, `plus` and `apex`: USD for one million tokens of the model of the tier. Guard Usage and Guard Health use them to estimate the cost of each review by its tier. The input price is for prompt tokens that the cache did not cover. A tier without prices uses the prices of the next lower tier, as it does for its model. 0 leaves that part out. |
@@ -27,6 +27,20 @@ All DocTypes are in the module "Guard". Field lists show the main fields only. S
 | `learn_from_activity` | Check | Default on. |
 | `default_coding_agents` | Small Text | |
 | `sandbox_enabled`, `sandbox_when`, `sandbox_runtime`, `sandbox_image`, `sandbox_setup_command`, `sandbox_timeout`, `sandbox_network` | mixed | Runtime validation. |
+
+### AI Provider
+
+An LLM API that Guard calls ([02-architecture.md](02-architecture.md#ai-providers)). Named by `provider_name`. Guard Admin and System Manager only.
+
+| Field | Type | Notes |
+| - | - | - |
+| `provider_name` | Data | For example `Grove`, `OpenRouter`, `Anthropic`. |
+| `enabled` | Check | A disabled AI provider serves no model: its models are offline. |
+| `dialect` | Select | `openai`, `anthropic` |
+| `url` | Data | Base URL without `/v1`. Guard removes a trailing `/v1`. |
+| `api_key` | Password | |
+
+The patch `move_gateway_to_ai_provider` makes the gateway of a site from before (`gateway_url`, `gateway_api_key`, `gateway_dialect`) the AI provider `Gateway`, and the default.
 
 ### Review Settings
 

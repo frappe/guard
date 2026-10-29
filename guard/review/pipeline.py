@@ -141,7 +141,7 @@ class ReviewPipeline:
 		try:
 			# Before a park: else a cancelled review stays Queued while it waits for the gateway or a slot.
 			self.check_cancel()
-			if wait := breaker.wait_seconds():
+			if wait := breaker.wait_seconds(self.ai_providers()):
 				self.park(attempt, wait, GATEWAY_DOWN)
 				return
 			if self.slots_full():
@@ -163,11 +163,12 @@ class ReviewPipeline:
 			if db.value("Code Review", name, "status") == "Cancelled":
 				state.show_cancelled(name)
 		except GatewayDown as down:
-			breaker.record_failure(str(down))
-			if wait := breaker.wait_seconds():
+			breaker.record_failure(str(down), down.ai_provider)
+			if wait := breaker.wait_seconds([down.ai_provider]):
 				self.park(attempt, wait, GATEWAY_DOWN)
 				return
-			self.retry(attempt, down.retry_after, "the AI gateway", f"{breaker.FAILED_PREFIX}: {down}")
+			where = f" ({down.ai_provider})" if down.ai_provider else ""
+			self.retry(attempt, down.retry_after, "the AI gateway", f"{breaker.FAILED_PREFIX}{where}: {down}")
 		except GatewayBusy as busy:
 			self.busy = busy
 			self.retry(attempt, busy.retry_after, "the AI gateway", f"AI gateway busy: {busy}", BUSY_DELAYS)
@@ -190,6 +191,17 @@ class ReviewPipeline:
 					self.save_usage()
 			except Exception as error:
 				frappe.log_error(redact(str(error)), "Guard review usage")
+
+	def ai_providers(self) -> set[str]:
+		"""The AI providers that this review calls: those of its tier, of the check of its tier, of the
+		fast model, and of the embedding model when it has one. Before the gate picks the tier, the tier
+		it asked for, else base."""
+		tier = self.review.tier or self.review.requested_tier or self.queued_tier or "base"
+		config = guard_settings.gateway()
+		slots = [tier, verify.check_tier(tier), "fast"]
+		if config.route("embedding").online:
+			slots.append("embedding")
+		return {config.route(slot).ai_provider_name for slot in slots}
 
 	def slots_full(self) -> bool:
 		"""As many reviews run as `max_concurrent_reviews` allows.

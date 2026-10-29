@@ -51,22 +51,22 @@ Guard needs MariaDB 11.7 or later for native vector search. Older databases work
 
 For a production site with a GitHub App, follow [Deploy Guard](docs/deployment.md). The short version:
 
-1. Open **Guard Settings**.
-2. Set the AI gateway URL and key. Guard uses [Grove](https://github.com/frappe/grove) or any OpenAI-compatible or Anthropic-compatible endpoint.
+1. Add one or more **AI Provider** records, with their URL and key. Guard uses [Grove](https://github.com/frappe/grove), OpenRouter, Anthropic, OpenAI, or any other OpenAI-compatible or Anthropic-compatible endpoint. It can use several at the same time.
+2. Open **Guard Settings** and set the **Default AI Provider**. A model can name another AI provider in the field next to it.
 3. Click **Fetch models**, then set the model for each tier, the fast model and the embedding model.
 4. Create a **Code Provider** of type GitHub. For a GitHub App, set the app id, the private key and the webhook secret. For a token, set the token and the webhook secret.
 5. Copy the webhook URL from the Code Provider form into the GitHub App or the repository webhook. Select these events: pull requests, pull request reviews, review comments, issue comments, pushes, check runs and installations.
 6. If GitHub cannot reach the site, turn on **Poll Providers** in Guard Settings instead.
 7. Click **Sync repositories**, then enable reviews on each **Code Repository**. Guard indexes a repository when reviews are enabled.
 
-Without a gateway, Guard still indexes code, runs the graph checks, the secret scan and the Frappe checks, and posts a graph-only summary.
+Without an AI provider, Guard still indexes code, runs the graph checks, the secret scan and the Frappe checks, and posts a graph-only summary.
 
 ## Use
 
 | Where | What |
 | - | - |
 | GitHub | `@guard`, `@guard review this at apex`, `@guard is this thread-safe?`, replies in Guard threads, 👍 and 👎 |
-| Desk | The **Guard** workspace, **Pull Request Review** (`/desk/guard-pr`), **Codebase Chat**, **Guard Health** (queues, failures, the AI gateway and the indexes), and the Guard Analytics, Bugs Caught and My Guard reports |
+| Desk | The **Guard** workspace, **Pull Request Review** (`/desk/guard-pr`), **Codebase Chat**, **Guard Health** (queues, failures, the AI providers and the indexes), and the Guard Analytics, Bugs Caught and My Guard reports |
 | Terminal | `curl -fsSL "<site>/api/method/guard.api.cli.download" -o ~/.local/bin/guard && chmod +x ~/.local/bin/guard`, then `guard login` and `guard review` |
 | Coding agents | MCP at `<site>/api/method/guard.mcp.server.handle` with `Authorization: token <key>:<secret>` |
 

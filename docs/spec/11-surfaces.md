@@ -23,7 +23,8 @@ Guard has no separate front end. One site serves one company, and every employee
 | Knowledge Base Document | Markdown editor. Rendered Mermaid. |
 | Repository Cluster | Buttons: Use this, Discard (for suggestions). |
 | Code Provider | Buttons: Test connection, Sync repositories, Show webhook URL. |
-| Guard Settings | Button: Fetch models from the gateway. |
+| Guard Settings | Button: Fetch models, from the AI provider of each model field. The AI provider fields list only enabled AI providers. |
+| AI Provider | Button: Fetch models. |
 
 ### Actions show at once
 
@@ -75,7 +76,7 @@ The page shows the reviews that ended in the last hour, 6 hours, 24 hours, 7 day
 - Cards: throughput (completed reviews per hour), reviews in flight, review slots (running reviews against `max_concurrent_reviews`, the reviews that wait for a slot or for more pushes, and `reviews_per_worker`), review time and wait to start (median and 90th percentile), turns and rounds per review, turns per minute, the failed and retried share, tokens and the cached share, estimated cost, and findings per review.
 - Charts, with a bar for each 5 minutes of an hour, 15 minutes of 6 hours, hour of 24 hours, or day of a longer period: reviews that ended (completed, failed, cancelled), review time, wait to start, turns and rounds, turns per minute, tokens, and the mean seconds in each stage.
 - A banner when reviews wait for a free review slot.
-- A table for each tier, then the queues (the dedicated review queues too, when the bench has them), the reviews created and why reviews failed in the period, the AI gateway and the indexes that need attention.
+- A table for each tier, then the queues (the dedicated review queues too, when the bench has them), the reviews created and why reviews failed in the period, the breaker of each AI provider, and the indexes that need attention. A banner names each AI provider that is down.
 
 Time, turns and findings count the completed reviews. Tokens and cost count every review that ended, because failed and cancelled reviews spend them too. Turns per minute divides the turns by the time of the `review` stage. Reviews from before `stage_seconds` use their whole duration. Wait to start runs from the request to the start of the last attempt. Cost uses the prices of the tier of each review in Guard Settings.
 

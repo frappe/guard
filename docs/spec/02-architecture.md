@@ -13,7 +13,7 @@ flowchart LR
     IDX --> GIT[(Git mirrors)]
     IDX --> DB[(MariaDB: graph, chunks, vectors)]
     REV --> DB
-    REV --> GW[AI gateway: Grove]
+    REV --> GW[AI providers: Grove, OpenRouter, Anthropic, ...]
     CONV --> GW
     LRN --> GW
     IDX --> GW
@@ -44,22 +44,30 @@ flowchart LR
 | CLI | `guard/cli/` | Standalone CLI. Python standard library only. |
 | Desk UI | `guard/guard/` | Workspace, form scripts, desk pages, reports, number cards, charts. |
 
-## AI gateway
+## AI providers
 
-Guard sends every LLM and embedding call through one gateway. The default gateway is [Grove](https://github.com/frappe/grove). Grove serves an OpenAI-compatible front (`/v1/chat/completions`, `/v1/embeddings`, `/v1/models`) and an Anthropic-compatible front (`/v1/messages`). It holds the vendor keys, routes models, meters usage and enforces caps for each key.
+Guard sends every LLM and embedding call to an **AI provider**. An admin connects one or more AI providers in the **AI Provider** DocType, and Guard uses all of them at the same time. Examples:
 
-Guard settings hold:
+- A [Grove](https://github.com/frappe/grove) gateway, the default. Grove serves an OpenAI-compatible front (`/v1/chat/completions`, `/v1/embeddings`, `/v1/models`) and an Anthropic-compatible front (`/v1/messages`). It holds the vendor keys, routes models, meters usage and enforces caps for each key.
+- OpenRouter (`https://openrouter.ai/api`, `openai` dialect).
+- Anthropic (`https://api.anthropic.com`, `anthropic` dialect).
+- OpenAI (`https://api.openai.com`, `openai` dialect), or any other OpenAI-compatible or Anthropic-compatible endpoint.
 
-- The gateway base URL and one Grove API key.
+Each AI provider holds:
+
+- The base URL, without `/v1`. Guard adds it, and removes a `/v1` that an admin types.
+- One API key.
 - The dialect: `openai` (default) or `anthropic`.
-- Model ids in Grove form, `<provider>/<name>`. Example: `anthropic/claude-sonnet-5-5`.
-- One model for each tier, a fast model, and an embedding model.
 
-Any other OpenAI-compatible or Anthropic-compatible endpoint also works with the same settings. Guard reads `/v1/models` to fill the model pickers. It sends the auth headers of the selected dialect. The `anthropic` dialect sends no `temperature` and forces no tool, and it sends the thinking blocks of each answer back unchanged. Claude 5 models refuse the first two, and need the third in a tool turn. The `openai` dialect sends no `reasoning_effort`, so the gateway uses `none`. GPT-6 models refuse function tools on `/v1/chat/completions` at any other effort. A gateway answer of 402 (cap reached) or 429 (rate limit) puts the job back in the queue with a delay. It does not fail the review at once.
+Guard Settings holds the models: one for each tier, a fast model, and an embedding model. Each model has an AI provider field. A blank one uses the **default AI provider**. So, for example, base and plus can run on a Grove gateway, apex on Anthropic, and the fast model on OpenRouter. A model id is the id that its AI provider knows, for example `anthropic/claude-sonnet-5-5` on Grove or OpenRouter, and `claude-sonnet-5-5` on Anthropic. A tier without a model uses the model of the next lower tier, with the AI provider of that tier. Without a fast model, the fast model is the base tier. `settings.GatewayConfig.route(slot)` resolves a slot to its model and AI provider, and `LLMClient(tier)` and `Embedder` use it.
+
+Guard reads `/v1/models` of each AI provider to fill the model pickers. It sends the auth headers of the dialect. The `anthropic` dialect sends no `temperature` and forces no tool, and it sends the thinking blocks of each answer back unchanged. Claude 5 models refuse the first two, and need the third in a tool turn. The `openai` dialect sends no `reasoning_effort`, so the gateway uses `none`. GPT-6 models refuse function tools on `/v1/chat/completions` at any other effort. Embeddings always use the OpenAI front (`/v1/embeddings`) of the embedding AI provider. A 402 (cap reached) or 429 (rate limit) answer puts the job back in the queue with a delay. It does not fail the review at once.
+
+Each AI provider has its own circuit breaker (`llm/breaker.py`). The client tags each error with the name of its AI provider. Three outages in a row open the breaker of that AI provider for 10 minutes, and admins get one notification. A review waits only when an AI provider that it calls is down: the one of its tier, of the check of its tier, or of the fast model. Work on other AI providers goes on. When the AI provider answers again, the reviews that failed in its outage run again. Guard Health shows the breaker of each AI provider.
 
 Some models write tool calls in their own markup, and the server can fail to parse it. DeepSeek, for example, sometimes writes a DSML tag the server does not know. Then the calls come back as text. `llm/markup.py` reads such calls when the request offered those tools, and it always removes the markup from the text, so Guard never posts it.
 
-With no gateway set, Guard uses the offline fallback. The fallback returns empty findings and hash-based embeddings. Tests use it.
+A model without an enabled AI provider uses the offline fallback. So does every model when no AI provider is set. The fallback returns empty findings and hash-based embeddings. Tests use it.
 
 ## Processes and queues
 

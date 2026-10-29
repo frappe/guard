@@ -7,17 +7,22 @@
  "engine": "InnoDB",
  "field_order": [
   "gateway_tab",
-  "gateway_url",
-  "gateway_api_key",
-  "gateway_dialect",
-  "request_timeout",
+  "default_ai_provider",
   "gateway_col",
+  "request_timeout",
+  "models_section",
   "base_model",
   "plus_model",
   "apex_model",
   "fast_model",
+  "models_col",
+  "base_ai_provider",
+  "plus_ai_provider",
+  "apex_ai_provider",
+  "fast_ai_provider",
   "embedding_section",
   "embedding_model",
+  "embedding_ai_provider",
   "embedding_col",
   "embedding_dimensions",
   "turns_section",
@@ -74,26 +79,18 @@
   {
    "fieldname": "gateway_tab",
    "fieldtype": "Tab Break",
-   "label": "AI Gateway"
+   "label": "AI Models"
   },
   {
-   "description": "Base URL of the AI gateway, for example a Grove gateway. Leave blank for offline mode.",
-   "fieldname": "gateway_url",
-   "fieldtype": "Data",
-   "label": "Gateway URL"
+   "description": "Serves every model that has no AI provider of its own. Leave blank for offline mode.",
+   "fieldname": "default_ai_provider",
+   "fieldtype": "Link",
+   "label": "Default AI Provider",
+   "options": "AI Provider"
   },
   {
-   "fieldname": "gateway_api_key",
-   "fieldtype": "Password",
-   "label": "Gateway API Key",
-   "length": 512
-  },
-  {
-   "default": "openai",
-   "fieldname": "gateway_dialect",
-   "fieldtype": "Select",
-   "label": "Dialect",
-   "options": "openai\nanthropic"
+   "fieldname": "gateway_col",
+   "fieldtype": "Column Break"
   },
   {
    "default": "300",
@@ -103,8 +100,9 @@
    "label": "Request Timeout"
   },
   {
-   "fieldname": "gateway_col",
-   "fieldtype": "Column Break"
+   "fieldname": "models_section",
+   "fieldtype": "Section Break",
+   "label": "Models"
   },
   {
    "description": "Model id, for example anthropic/claude-sonnet-5-5",
@@ -129,6 +127,38 @@
    "label": "Fast Model"
   },
   {
+   "fieldname": "models_col",
+   "fieldtype": "Column Break"
+  },
+  {
+   "description": "Blank uses the default AI provider",
+   "fieldname": "base_ai_provider",
+   "fieldtype": "Link",
+   "label": "Base AI Provider",
+   "options": "AI Provider"
+  },
+  {
+   "description": "Blank uses the default AI provider",
+   "fieldname": "plus_ai_provider",
+   "fieldtype": "Link",
+   "label": "Plus AI Provider",
+   "options": "AI Provider"
+  },
+  {
+   "description": "Blank uses the default AI provider",
+   "fieldname": "apex_ai_provider",
+   "fieldtype": "Link",
+   "label": "Apex AI Provider",
+   "options": "AI Provider"
+  },
+  {
+   "description": "Blank uses the default AI provider",
+   "fieldname": "fast_ai_provider",
+   "fieldtype": "Link",
+   "label": "Fast AI Provider",
+   "options": "AI Provider"
+  },
+  {
    "fieldname": "embedding_section",
    "fieldtype": "Section Break",
    "label": "Embeddings"
@@ -138,6 +168,13 @@
    "fieldname": "embedding_model",
    "fieldtype": "Data",
    "label": "Embedding Model"
+  },
+  {
+   "description": "Blank uses the default AI provider",
+   "fieldname": "embedding_ai_provider",
+   "fieldtype": "Link",
+   "label": "Embedding AI Provider",
+   "options": "AI Provider"
   },
   {
    "fieldname": "embedding_col",
@@ -450,7 +487,7 @@
  "index_web_pages_for_search": 0,
  "issingle": 1,
  "links": [],
- "modified": "2026-10-27 20:00:00.000000",
+ "modified": "2026-10-29 10:00:00.000000",
  "modified_by": "Administrator",
  "module": "Guard",
  "name": "Guard Settings",

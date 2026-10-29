@@ -21,7 +21,7 @@ from guard.review.pipeline import ReviewPipeline
 from guard.review.prompt import ContextFile, ContextPack
 from guard.review.prompts import data
 from guard.review.run import Delta, ReviewRun, Verdict
-from guard.settings import GatewayConfig
+from guard.settings import AIProviderConfig, GatewayConfig
 from guard.tests.cases import AUTO_APPROVE, MODELS, PullRequestCase
 from guard.tests.fakes import dsml, scripted
 from guard.utils import cache, db
@@ -524,6 +524,17 @@ class TestPipeline(PullRequestCase):
 		):
 			run.run()
 		review_case.assert_called_once()
+
+	def test_an_outage_of_another_ai_provider_does_not_pause_the_review(self):
+		from guard.llm import breaker
+
+		self.addCleanup(breaker.record_success, "elsewhere")
+		with patch("guard.llm.breaker._notify_admins"):
+			for _ in range(breaker.THRESHOLD):
+				breaker.record_failure("Gateway answered 502", "elsewhere")
+		self.assertGreater(breaker.wait_seconds(["elsewhere"]), 0)
+		name = self.review([])
+		self.assertEqual(db.value("Code Review", str(name), "status"), "Completed")
 
 	def test_breaker_pauses_reviews_and_reruns_them(self):
 		from frappe.utils import now_datetime
@@ -1841,7 +1852,7 @@ class TestApexAreas(IntegrationTestCase):
 		run.findings = [Finding("app/a.py", 1, 1, "P1", "logic", "Wrong value", "x")]
 		run.verdict = Verdict(summary="s", confidence_score=3, submitted=True)
 		models = {"base": "base-model", "plus": "plus-model", "apex": "apex-model"}
-		gateway = GatewayConfig("https://gw", "k", "anthropic", 30, models)
+		gateway = GatewayConfig(models, {"gw": AIProviderConfig("gw", "https://gw", "k", "anthropic")}, "gw")
 		answers = {"verify": '[{"index": 0, "valid": false, "reason": "no"}]', "verdict": '{"score": 5}'}
 		respond = scripted([], answers)
 		requests: list[ChatRequest] = []

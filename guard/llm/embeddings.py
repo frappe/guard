@@ -1,4 +1,4 @@
-"""Text embeddings: the gateway model, or a hash embedding when there is none."""
+"""Text embeddings: the embedding model of its AI provider, or a hash embedding when there is none."""
 
 import hashlib
 import math
@@ -7,6 +7,7 @@ from itertools import pairwise
 
 from guard import settings as guard_settings
 from guard.llm.openai_dialect import OpenAIDialect
+from guard.llm.types import LLMError
 
 BATCH = 64
 TOKEN = re.compile(r"[A-Za-z][A-Za-z0-9]*|\d+")
@@ -15,24 +16,34 @@ CAMEL = re.compile(r"[A-Z]+(?=[A-Z][a-z])|[A-Z]?[a-z]+|[A-Z]+|\d+")
 
 class Embedder:
 	def __init__(self):
-		self.config = guard_settings.gateway()
-		self.dimensions = self.config.embedding_dimensions
+		config = guard_settings.gateway()
+		self.route = config.route("embedding")
+		self.dimensions = config.embedding_dimensions
 
 	@property
 	def uses_model(self) -> bool:
-		return bool(self.config.url and self.config.embedding_model)
+		return self.route.online
 
 	def embed(self, texts: list[str]) -> list[list[float]]:
 		if not texts:
 			return []
-		if not self.uses_model:
+		provider = self.route.ai_provider
+		if not (provider and self.uses_model):
 			return [hash_embedding(text, self.dimensions) for text in texts]
 		# Grove serves embeddings on the OpenAI front for every dialect.
-		dialect = OpenAIDialect(self.config.url, self.config.api_key, self.config.timeout)
+		dialect = OpenAIDialect(provider.url, provider.api_key, provider.timeout)
 		vectors: list[list[float]] = []
-		for start in range(0, len(texts), BATCH):
-			batch = [text[:24000] or " " for text in texts[start : start + BATCH]]
-			vectors.extend(dialect.embed(self.config.embedding_model, batch))
+		try:
+			for start in range(0, len(texts), BATCH):
+				batch = [text[:24000] or " " for text in texts[start : start + BATCH]]
+				vectors.extend(dialect.embed(self.route.model, batch))
+		except LLMError as error:
+			# So that an outage opens the breaker of this AI provider, as for chat calls.
+			error.ai_provider = error.ai_provider or provider.name
+			raise
+		from guard.llm import breaker
+
+		breaker.record_success(provider.name)
 		return vectors
 
 	def embed_one(self, text: str) -> list[float]:
