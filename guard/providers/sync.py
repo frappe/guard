@@ -88,13 +88,50 @@ def discover_installations(provider: str) -> None:
 			ensure_team(provider, account, str(item["id"]))
 
 
+def disable_repositories(provider: str, namespace: str, keep: list[str] | None = None) -> None:
+	"""Turn reviews off for the repositories of a namespace that Guard can no longer reach,
+	except `keep`. Match by name, not by team: rows made before their team have no team."""
+	# GitHub names ignore case, like the database. `_` is a LIKE wildcard, so check the prefix again.
+	prefix = f"{namespace}/".casefold()
+	kept = {name.casefold() for name in keep or ()}
+	filters = {"code_provider": provider, "full_name": ["like", f"{namespace}/%"], "reviews_enabled": 1}
+	rows = frappe.get_all("Code Repository", filters=filters, fields=["name", "full_name"])
+	_disable(
+		[
+			row.name
+			for row in rows
+			if row.full_name.casefold().startswith(prefix) and row.full_name.casefold() not in kept
+		]
+	)
+
+
+def disable_removed(provider: str, full_names: list[str]) -> None:
+	"""Turn reviews off for repositories removed from an installation."""
+	if not full_names:
+		return
+	filters = {"code_provider": provider, "full_name": ["in", full_names], "reviews_enabled": 1}
+	_disable(frappe.get_all("Code Repository", filters=filters, pluck="name"))
+
+
+def _disable(repositories: list[str]) -> None:
+	# Keep the rows, so that their reviews, findings and indexes stay. An admin turns reviews on
+	# again when the repository comes back.
+	for name in repositories:
+		db.set_values("Code Repository", name, {"reviews_enabled": 0})
+
+
 def sync_team(team: str) -> int:
 	"""Read every repository of a team from GitHub."""
 	row = db.values("Guard Team", team, ("code_provider", "namespace")) or {}
-	adapter = adapter_for_provider(row["code_provider"], team)
+	provider = row["code_provider"]
+	adapter = adapter_for_provider(provider, team)
 	repositories = adapter.list_repositories(row["namespace"])
 	for info in repositories:
-		ensure_repository(row["code_provider"], info, team)
+		ensure_repository(provider, info, team)
+	# Only an App installation lists every repository Guard can reach. A token lists the
+	# public repositories of a user, so a private repository would look removed.
+	if db.value("Code Provider", provider, "auth_mode") == "App":
+		disable_repositories(provider, row["namespace"], keep=[info.full_name for info in repositories])
 	return len(repositories)
 
 
@@ -104,9 +141,15 @@ def on_installation(
 	namespace: str,
 	installation_id: str | None,
 	repositories: list[RepositoryInfo],
+	removed: list[str] | None = None,
 ) -> None:
-	if action in ("deleted", "suspend"):
+	if action == "deleted":
+		disable_repositories(provider, namespace)
 		return
+	if action == "suspend":
+		# A suspension is temporary. Keep `reviews_enabled`, so that unsuspend needs no repair.
+		return
+	disable_removed(provider, removed or [])
 	team = ensure_team(provider, namespace, installation_id)
 	adapter = adapter_for_provider(provider, team)
 	for info in repositories:

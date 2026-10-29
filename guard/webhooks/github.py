@@ -181,6 +181,7 @@ def _installation(payload: dict[str, Any]) -> list[WebhookEvent]:
 		)
 		for r in added
 	]
+	event.removed = [r["full_name"] for r in payload.get("repositories_removed") or []]
 	return [event]
 
 

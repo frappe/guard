@@ -31,6 +31,7 @@ class WebhookEvent:
 	ref: str | None = None
 	installation_id: str | None = None
 	repositories: list[RepositoryInfo] = field(default_factory=list)
+	removed: list[str] = field(default_factory=list)  # full names removed from an installation
 
 
 IGNORED = WebhookEvent(kind="ignored")
