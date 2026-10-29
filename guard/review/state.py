@@ -235,9 +235,9 @@ def recount_check(adapter: ProviderAdapter, full_name: str, pull_request: str) -
 		)
 
 
-def keep_thread_open(pull_request: str, thread_id: str, login: str, allowed: str) -> None:
-	"""A person who cannot close findings resolved the thread of one. Reopen the thread and tell them
-	why, so the provider does not show it closed while the finding still fails the check."""
+def keep_thread_open(pull_request: str, thread_id: str, body: str) -> None:
+	"""A person resolved the thread of a finding that stays open. Reopen the thread and reply `body`,
+	so the provider does not show it closed while the finding still fails the check."""
 	from guard.providers.base import ProviderComment
 
 	try:
@@ -250,9 +250,7 @@ def keep_thread_open(pull_request: str, thread_id: str, login: str, allowed: str
 			full_name,
 			number,
 			ProviderComment(id=thread_id, kind="inline", author="", body="", thread_id=thread_id),
-			f"@{login}, only {allowed} can close a Guard finding by resolving its thread. I opened this "
-			"thread again, and the finding still fails the check. Push a fix, or ask one of them to "
-			"resolve the thread.",
+			body,
 		)
 	except Exception as error:
 		# The finding stays open either way. Polling and the next commit must go on.

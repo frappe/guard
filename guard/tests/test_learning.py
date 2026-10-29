@@ -542,13 +542,17 @@ class TestResolvedThreads(LearningCase):
 		[reply] = self.adapter.named("reply")
 		self.assertIn("only members of the acme organization and people with write access to acme/", reply)
 
-	def test_a_resolve_stays_unanswered_when_the_provider_cannot_tell_membership(self):
+	def test_a_resolve_that_the_provider_cannot_check_reopens_the_thread_without_a_no(self):
 		finding, thread_id = self.posted_finding()
 		frappe.db.set_single_value("Guard Settings", "teach_permission", "Organization members")
 		with patch.object(self.adapter, "is_member", side_effect=ProviderError("rate limited", 403)):
-			self.assertFalse(self.resolve(thread_id, "maybe-member"))
+			self.assertTrue(self.resolve(thread_id, "maybe-member"))
 		self.assertEqual(self.status(finding)[0], "Open")
-		self.assertFalse(self.adapter.named("unresolve"))
+		# A webhook comes once: a thread left resolved would stay closed on an open finding.
+		self.assertEqual(self.adapter.named("unresolve"), [thread_id])
+		[reply] = self.adapter.named("reply")
+		self.assertIn("@maybe-member, I could not check", reply)
+		self.assertNotIn("only members", reply)
 		self.assertIsNone(cache.get("guard:member:acme:maybe-member"))
 
 	def test_reopening_a_thread_does_not_reopen_a_finding_closed_another_way(self):
