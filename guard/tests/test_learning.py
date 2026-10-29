@@ -574,3 +574,12 @@ class TestResolvedThreads(LearningCase):
 		self.adapter.threads = [ReviewThread(thread_id, resolved=False)]
 		polling._poll_threads(self.repository, "acme/app", 7, self.adapter)
 		self.assertEqual(self.status(finding), ("Open", "thread reopened"))
+
+	def test_polling_reopens_a_thread_that_nobody_known_resolved(self):
+		finding, thread_id = self.posted_finding()
+		self.adapter.threads = [ReviewThread(thread_id, resolved=True, resolved_by="")]
+		polling._poll_threads(self.repository, "acme/app", 7, self.adapter)
+		self.assertEqual(self.status(finding)[0], "Open")
+		self.assertEqual(self.adapter.named("unresolve"), [thread_id])
+		[reply] = self.adapter.named("reply")
+		self.assertTrue(reply.startswith("I could not tell who resolved this thread"))

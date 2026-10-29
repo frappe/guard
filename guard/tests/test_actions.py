@@ -179,6 +179,15 @@ class TestFindingStatus(PullRequestCase):
 		ui.set_finding_status(finding, "Open")
 		self.assertEqual(len(self.adapter.checks), count)
 
+	def test_dismiss_leaves_a_check_that_the_review_ended_because_the_check_is_off(self):
+		review, finding = self.reviewed_finding()
+		# The review was queued with the check on, then read a config that turns it off. It ended the
+		# check as skipped and kept its id.
+		db.set_values("Code Review", review, {"config_snapshot": frappe.as_json({"status_check": False})})
+		count = len(self.adapter.checks)
+		ui.set_finding_status(finding, "Dismissed")
+		self.assertEqual(len(self.adapter.checks), count)
+
 	def test_dismiss_after_a_skipped_review_of_the_head_counts_on_the_completed_check(self):
 		review, finding = self.reviewed_finding()
 		check = db.value("Code Review", review, "check_run_id")

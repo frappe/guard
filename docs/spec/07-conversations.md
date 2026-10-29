@@ -69,6 +69,7 @@ A person who resolves the thread of an open finding on the provider closes it. T
 - Guard sets the finding to Dismissed with reason "thread resolved by `<login>`", and counts the open findings on the check again.
 - The person must pass `teach_permission`. When they do not, Guard opens the thread again and replies that only the people who pass it (for example "members of the `<org>` organization and people with write access to `<repo>`") can close a finding this way. The finding stays open. The provider then does not show a closed thread for a finding that still fails the check.
 - When the provider cannot tell if the person passes (an API error), Guard also opens the thread again. Its reply does not say that the person fails: it says that Guard could not check, and asks them to resolve the thread again later. A webhook comes only once, so Guard cannot wait for a later answer.
+- When the provider does not say who resolved the thread (polling, for a deleted account for example), Guard also opens it again, and says that it could not tell who resolved it.
 - Guard skips threads that its bot logins resolve: Guard resolves a thread after it closes the finding.
 - Reopening the thread sets the finding to Open again, but only when a resolved thread dismissed it.
 - Webhooks send `pull_request_review_thread` resolved and unresolved. In polling mode, Guard reads the review threads of a pull request that has such findings.

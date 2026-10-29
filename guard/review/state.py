@@ -235,10 +235,11 @@ def recount_check(adapter: ProviderAdapter, full_name: str, pull_request: str) -
 	if not completed:
 		return
 	review = completed[0]
-	# A commit status has no id: a token install keeps none. Without an id, only the setting tells if
-	# the review showed a check.
+	# The setting, not the id, tells if the review shows a check. A token install keeps no id, because a
+	# commit status has none. A review that found the check turned off keeps the id of the check that
+	# it ended as skipped.
 	snapshot = frappe.parse_json(review["config_snapshot"] or "{}") or {}
-	if not review["check_run_id"] and not snapshot.get("status_check", True):
+	if not snapshot.get("status_check", True):
 		return
 	severities = [
 		str(row[0])
