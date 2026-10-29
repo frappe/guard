@@ -4,8 +4,13 @@ import frappe
 
 from guard import settings as guard_settings
 from guard.providers import adapter_for_provider
-from guard.providers.base import RepositoryInfo
+from guard.providers.base import ProviderAdapter, ProviderError, RepositoryInfo
 from guard.utils import db
+from guard.utils.redact import redact
+
+# The listing returns the whole installation, 100 repositories per call. Above this batch size it
+# costs fewer calls than one call for each repository, except on very large installations.
+BULK_LOOKUP = 50
 
 
 def find_repository(provider: str, full_name: str) -> str | None:
@@ -152,6 +157,36 @@ def on_installation(
 	disable_removed(provider, removed or [])
 	team = ensure_team(provider, namespace, installation_id)
 	adapter = adapter_for_provider(provider, team)
+	for info in _with_details(adapter, namespace, repositories):
+		ensure_repository(provider, info, team)
+
+
+def _with_details(
+	adapter: ProviderAdapter, namespace: str, repositories: list[RepositoryInfo]
+) -> list[RepositoryInfo]:
+	"""Fill in the clone URLs that installation events leave out. Skip a repository that GitHub
+	does not show (404), for example a security advisory fork, so that the others still sync."""
+	listed: dict[str, RepositoryInfo] = {}
+	if sum(1 for info in repositories if not info.clone_url) > BULK_LOOKUP:
+		try:
+			listed = {info.full_name.casefold(): info for info in adapter.list_repositories(namespace)}
+		except ProviderError as error:
+			# The listing only saves calls. Read each repository instead.
+			frappe.log_error(title="Guard sync", message=redact(str(error)))
+	result = []
 	for info in repositories:
-		full = adapter.get_repository(info.full_name) if not info.clone_url else info
-		ensure_repository(provider, full, team)
+		if info.clone_url:
+			result.append(info)
+			continue
+		full = listed.get(info.full_name.casefold())
+		if not full:
+			try:
+				full = adapter.get_repository(info.full_name)
+			except ProviderError as error:
+				# Other errors, such as a rate limit or an outage, fail the delivery, so they stay visible.
+				if error.status != 404:
+					raise
+				frappe.log_error(title="Guard sync", message=redact(str(error)))
+				continue
+		result.append(full)
+	return result
