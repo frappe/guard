@@ -122,7 +122,7 @@ A weekly job reads commit authors of the last 90 days from each mirror. For each
 
 ## Project rule files
 
-When `include_rule_files` is on, Guard reads these files from the head commit and adds them as context:
+When `include_rule_files` is on, Guard reads these files from the head of the base branch and adds them as context. A pull request cannot change the rules that it is checked against:
 
 - `CLAUDE.md` and `AGENTS.md` in the root and in each directory on the path of a changed file.
 - `.cursorrules` and `.cursor/rules/*.md` / `*.mdc`.

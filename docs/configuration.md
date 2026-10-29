@@ -30,7 +30,7 @@ rule = "Do not put user input into SQL strings. Use query parameters or frappe.q
 severity = "high"
 ```
 
-Commit it on the branch of the pull request. Guard reads the settings from the head commit of each pull request, so you can try a change in the same pull request.
+Commit it on the base branch. Guard reads all config from the head of the base branch, not from the pull request, so a pull request cannot change how Guard reviews it. A change to the config in a pull request applies after you merge it.
 
 ## Files in the repository
 
@@ -43,7 +43,7 @@ Commit it on the branch of the pull request. Guard reads the settings from the h
 
 All files are optional. If a directory has both `.guard/` and `guard.toml`, Guard reads `.guard/` and ignores `guard.toml`.
 
-Guard also reads `CLAUDE.md` and `AGENTS.md` in any directory, and `.cursorrules` and `.github/copilot-instructions.md` at the root. To stop this, set `include_rule_files = false`. Each list item, and each line that says always, must or never, is a rule. Guard checks the change against them and reports each break as a P2 that links to the rule: fix it before merging. It measures complexity, file-length and boolean-naming rules in code, and a rule that asks for tests flags code changes that touch no test file.
+Guard also reads `CLAUDE.md` and `AGENTS.md` in any directory of the base branch, and `.cursorrules` and `.github/copilot-instructions.md` at the root. To stop this, set `include_rule_files = false`. Each list item, and each line that says always, must or never, is a rule. Guard checks the change against them and reports each break as a P2 that links to the rule: fix it before merging. It measures complexity, file-length and boolean-naming rules in code, and a rule that asks for tests flags code changes that touch no test file.
 
 ### Monorepos
 
@@ -164,7 +164,7 @@ exclude_authors = ["dependabot[bot]"]
 | `risk_ceiling` | `critical` | The highest risk level that Guard approves: `low`, `medium`, `high` or `critical`. |
 | `filters.*` | | `include_paths`, `exclude_paths`, `include_authors`, `exclude_authors`, `include_branches`, `exclude_branches`, `labels`, `disabled_labels`, `include_keywords`, `ignore_keywords`. |
 
-Guard reads `[auto_approve]` from the base branch, not from the pull request. A pull request cannot make the policy weaker for itself. When there are many configs, the strictest one wins.
+Like all config, Guard reads `[auto_approve]` from the base branch, so a pull request cannot make the policy weaker for itself. When there are many configs, the strictest one wins.
 
 Labels `do-not-merge` and `manual-review` always stop approval.
 

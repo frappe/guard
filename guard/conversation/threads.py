@@ -33,7 +33,8 @@ def run_for(pull_request: str) -> ReviewRun:
 	if not head or not store.has_commit(head):
 		store.fetch_branches(pr.base_branch or "")
 		head = store.fetch_pull(adapter.pull_ref(number), number) if adapter else head
-	merge_base = store.merge_base(store.rev_parse(f"refs/heads/{pr.base_branch}"), head)
+	base = store.rev_parse(f"refs/heads/{pr.base_branch}")
+	merge_base = store.merge_base(base, head)
 	files = parse_diff(store.diff(merge_base, head))
 	index = db.value("Code Repository", repository, "default_index")
 	return ReviewRun(
@@ -55,7 +56,8 @@ def run_for(pull_request: str) -> ReviewRun:
 		adapter=adapter,
 		all_files=files,
 		files=files,
-		config=ConfigResolver.from_store(repository, store, head).resolve_pr([f.path for f in files]),
+		config=ConfigResolver.from_store(repository, store, base).resolve_pr([f.path for f in files]),
+		config_sha=base,
 		graph=CodeGraph(str(index)) if index else None,
 	)
 

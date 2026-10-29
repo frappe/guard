@@ -19,8 +19,10 @@ If `.guard/` and `guard.toml` are in the same directory, Guard reads `.guard/` a
 
 ## Which branch Guard reads
 
-- All settings come from the head commit of the pull request.
-- `auto_approve` comes from the base branch, so a pull request cannot loosen its own policy.
+- All config comes from the head of the base branch: settings, rules, files, notes, instructions, ignore patterns and `auto_approve`. A pull request cannot turn on reviews, lift a skip, add instructions or loosen approval for itself.
+- A branch made before a config change gets the current config.
+- A config change in a pull request applies after it is merged.
+- A CLI review has no base branch to trust. It reads the config that the CLI sends from its head commit.
 
 ## `.guard/` folder
 

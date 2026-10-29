@@ -102,7 +102,7 @@ A job that writes a Pull Request and its Code Review in one transaction writes t
 
 1. The provider sends a `pull_request` event. The webhook endpoint checks the signature and writes a Webhook Delivery.
 2. The endpoint maps the event to a Pull Request record and an event kind (`open`, `push`, `rebase`).
-3. The config resolver reads the base branch policy and the source branch config, and evaluates filters and permissions.
+3. The config resolver reads the config at the head of the base branch, and evaluates filters and permissions.
 4. If the event passes, Guard creates a Code Review in status Queued and queues `guard.review.pipeline.run`.
 5. The job fetches the head into the mirror and computes the diff from the merge base.
 6. The job makes sure the base index is fresh. If not, it runs an incremental index first.

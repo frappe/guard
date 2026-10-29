@@ -112,13 +112,13 @@ class Publisher:
 		self.run.pr.db_set("summary_comment_id", comment.id)
 
 	def _rule_link(self, rule_id: str) -> str:
-		"""`[CLAUDE.md line 50](url)` for `project:CLAUDE.md:50`, at the reviewed commit."""
+		"""`[CLAUDE.md line 50](url)` for `project:CLAUDE.md:50`, at the commit the rule file came from."""
 		path, _, line = rule_id.removeprefix(RULE_PREFIX).rpartition(":")
 		label = f"{path} line {line}"
 		if not line.isdigit():
 			return f"`{rule_id.removeprefix(RULE_PREFIX)}`"
 		try:
-			url = self.gh.file_url(self.repo, self.run.head_sha, path, int(line))
+			url = self.gh.file_url(self.repo, self.run.config_sha or self.run.head_sha, path, int(line))
 		except NotImplementedError:
 			return f"`{label}`"
 		return f"[{label}]({url})"
