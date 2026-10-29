@@ -265,14 +265,21 @@ frappe.pages["guard-health"].on_page_load = function (wrapper) {
 
 	const render = (data, label) => {
 		const rate = data.failure_rate;
-		const gateway = data.gateway;
+		const providers = data.ai_providers.map((p) => ({
+			...p,
+			ai_provider: p.ai_provider || __("AI gateway"),
+		}));
 		const alerts = [];
-		if (gateway.paused_for)
-			alerts.push(
-				__("Reviews are paused: the AI gateway is down since {0}. Last error: {1}", [
-					esc(gateway.outage_since),
-					esc(gateway.last_error),
-				])
+		providers
+			.filter((p) => p.paused_for)
+			.forEach((p) =>
+				alerts.push(
+					__("Reviews that need {0} are paused: it is down since {1}. Last error: {2}", [
+						esc(p.ai_provider),
+						esc(p.outage_since),
+						esc(p.last_error),
+					])
+				)
 			);
 		if (rate.ended && rate.rate > 0.2)
 			alerts.push(
@@ -322,13 +329,14 @@ frappe.pages["guard-health"].on_page_load = function (wrapper) {
 					data.failures
 				) +
 				table(
-					__("AI gateway"),
+					__("AI providers"),
 					[
+						["ai_provider", __("AI provider")],
 						["failures_in_a_row", __("Failures in a row")],
 						["paused_for", __("Paused for (seconds)")],
 						["outage_since", __("Outage since")],
 					],
-					[gateway]
+					providers
 				) +
 				table(
 					__("Indexes that need attention"),

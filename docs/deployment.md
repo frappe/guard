@@ -7,7 +7,7 @@ This guide puts Guard on a production site and connects it to GitHub with a GitH
 You need:
 
 - A Frappe v16 site that GitHub can reach on a public HTTPS URL. In this guide, the URL is `https://guard.example.com`.
-- An AI gateway URL and key. Guard uses [Grove](https://github.com/frappe/grove) or any OpenAI-compatible or Anthropic-compatible endpoint.
+- The URL and key of at least one AI provider. Guard uses [Grove](https://github.com/frappe/grove), OpenRouter, Anthropic, OpenAI, or any other OpenAI-compatible or Anthropic-compatible endpoint. It can use several at the same time.
 - Owner access to the GitHub organization or account that will own the App.
 
 The server must have:
@@ -31,14 +31,17 @@ bench --site guard.example.com install-app guard
 
 On a hosted platform, add the app to the bench and install it on the site from the dashboard.
 
-## 2. Connect the AI gateway
+## 2. Connect the AI providers
 
-1. In Desk, open **Guard Settings**.
-2. Set **Gateway URL**. Do not add `/v1`. Guard adds it.
-3. Set **Gateway API Key** and **Dialect**.
+1. In Desk, open **AI Provider** and add one record for each AI provider. Set **Name**, **Base URL** and **API Key**, and set **Dialect** to `anthropic` for an Anthropic-compatible API. Do not add `/v1` to the URL. Guard adds it. Examples:
+   - Grove: the URL of your gateway, dialect `openai`.
+   - OpenRouter: `https://openrouter.ai/api`, dialect `openai`.
+   - Anthropic: `https://api.anthropic.com`, dialect `anthropic`.
+2. Click **Fetch models** on each AI provider to test it.
+3. Open **Guard Settings**. Set **Default AI Provider**.
 4. Click **Fetch models**.
-5. Set **Base Model**, **Plus Model**, **Apex Model** and **Fast Model**.
-6. Set **Embedding Model** if the gateway has one. If it does not, leave it empty. Guard then uses a simpler local fallback for search.
+5. Set **Base Model**, **Plus Model**, **Apex Model** and **Fast Model**. To run a model on an AI provider other than the default, set the AI provider field next to it, for example **Apex AI Provider**.
+6. Set **Embedding Model** if an AI provider has one, and **Embedding AI Provider** if that is not the default. If none has one, leave it empty. Guard then uses a simpler local fallback for search.
 7. Set **Public URL** to `https://guard.example.com`. Links in review comments use this URL.
 8. Save.
 
@@ -169,4 +172,4 @@ To stop Guard from approving pull requests, clear **Auto Approve** in **Review S
 
 - **Webhook secret**: make a new value. Set it on the GitHub App and in the Code Provider at the same time.
 - **Private key**: generate a new key on the GitHub App. Paste it into the Code Provider. Then delete the old key on GitHub.
-- **Gateway key**: set the new key in Guard Settings. Then revoke the old key in the gateway.
+- **AI provider key**: set the new key in the AI Provider. Then revoke the old key at the provider.

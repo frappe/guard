@@ -68,7 +68,8 @@ class ChatResult:
 
 
 class LLMError(Exception):
-	pass
+	# The AI provider that failed. The client sets it, so the breaker pauses only that provider.
+	ai_provider: str = ""
 
 
 class GatewayBusy(LLMError):

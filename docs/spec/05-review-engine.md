@@ -43,6 +43,7 @@ Every 5 minutes, and once after each migrate, `fail_dead_reviews` looks for the 
 ### Failure
 
 - A gateway 402 or 429 puts the job back in the queue with a delay: 2, 10, 20, then 40 minutes. Rate limits can last an hour. Before that, the HTTP client waits for a short time, and calls that ran side by side go again one at a time, so the turns already done are kept.
+- An AI provider that keeps failing (5xx answers or no connection, after the retries) is an outage. The review goes back to the queue. Three outages in a row open the breaker of that AI provider, and the reviews that call it wait without using up their retries ([02-architecture.md](02-architecture.md#ai-providers)).
 - One gateway call, with its retries, gets two request timeouts (`request_timeout` in Guard Settings) in all. Each retry gets only the time that is left. A call that hangs then ends as a gateway outage after about 10 minutes, not after seven full timeouts.
 - A busy code graph index puts the job back with a delay of 1, 5, then 15 minutes.
 - Any other error ends the review as Failed. Guard adds 😕, sets the status to `error`, and stores the error on the Code Review.
@@ -180,6 +181,8 @@ These requests send all the tools, and the agent refuses the tools that read: "Y
 Each turn sends the whole conversation again. When the gateway reads no part of a prompt from its cache, Guard cuts the tool output of the turns before the last 4 to its first 600 characters. When the gateway reports cached tokens, a cut changes the prefix and the cache misses from there on, so Guard keeps the output. It cuts all the old output at once only when the conversation passes 240,000 characters. On the Anthropic front, the system prompt, the task and the newest tool output carry a cache breakpoint. Code Review stores `cached_tokens` to show how much of the input the cache served.
 
 ### Tier strategies
+
+Each model runs on its own AI provider (`<tier>_ai_provider`, else the default AI provider).
 
 | Tier | Model | Turns | Strategy |
 | - | - | - | - |

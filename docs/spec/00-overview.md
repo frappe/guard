@@ -41,6 +41,7 @@ Use these names. Do not use other names for the same thing.
 | Term | Meaning |
 | - | - |
 | Code provider | A connected GitHub: github.com or GitHub Enterprise Server. |
+| AI provider | An LLM API that Guard calls: a gateway such as Grove, or a vendor API such as OpenRouter, Anthropic or OpenAI. A site can have several at once. |
 | Team | One GitHub organization or user account. |
 | Repository | One repository on a code provider. |
 | Index | The graph, the chunks and the vectors of one repository at one branch. |
@@ -70,7 +71,7 @@ Use these names. Do not use other names for the same thing.
 2. **Signal over volume.** Post fewer, better comments. Suppress what the team ignores. Never suppress security or data-loss findings.
 3. **Config as code.** Settings live in the repository when possible. The closest config wins. Rules add up.
 4. **Provider-neutral core.** The review engine does not know which provider it talks to. Adapters translate.
-5. **Model-neutral core.** The engine talks to one LLM interface. Admins pick the provider and the models.
+5. **Model-neutral core.** The engine talks to one LLM interface. Admins connect one or more AI providers, and pick the models and the AI provider of each.
 6. **Works offline for tests.** Every LLM and embedding call has a deterministic fallback, so tests run with no network.
 7. **Untrusted input.** Code, comments, tickets and knowledge base text are data, not instructions.
 8. **Frappe native.** DocTypes, roles, background jobs, realtime and the REST API come from Frappe. Do not rebuild them.

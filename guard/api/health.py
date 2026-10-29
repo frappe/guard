@@ -1,4 +1,4 @@
-"""The state of Guard in one view: queues, workers, reviews, the AI gateway and the indexes, and
+"""The state of Guard in one view: queues, workers, reviews, the AI providers and the indexes, and
 how reviews ran over a period (`guard.review.metrics`).
 
 The `guard-health` page shows `status()`. `check_failure_rate()` runs every 15 minutes and
@@ -13,7 +13,7 @@ from frappe.utils import add_to_date, cint, now_datetime
 from guard.indexing.indexer import RUNNING
 from guard.llm import breaker
 from guard.review import metrics
-from guard.utils import cache, db, notify
+from guard.utils import db, notify
 
 QUEUES = ("short", "default", "long")
 STUCK_AFTER = 2  # hours an index may run before it counts as stuck
@@ -30,7 +30,7 @@ def status(hours: int = 24) -> dict[str, Any]:
 		"queues": _queues(),
 		"reviews": _reviews(hours=hours),
 		"failures": _failures(hours=hours),
-		"gateway": _gateway(),
+		"ai_providers": _ai_providers(),
 		"indexes": _indexes(),
 		"failure_rate": failure_rate(),
 		"metrics": metrics.metrics(hours),
@@ -125,14 +125,11 @@ def _failures(hours: int = 24) -> list[dict[str, Any]]:
 	return [{"cause": str(cause) or "(no error)", "count": int(n)} for cause, n in rows]
 
 
-def _gateway() -> dict[str, Any]:
-	outage = cache.get(breaker.OUTAGE)
-	return {
-		"paused_for": breaker.wait_seconds(),
-		"failures_in_a_row": int(cache.get(breaker.FAILURES) or 0),
-		"outage_since": outage.get("since") if isinstance(outage, dict) else None,
-		"last_error": outage.get("reason") if isinstance(outage, dict) else None,
-	}
+def _ai_providers() -> list[dict[str, Any]]:
+	"""The breaker of each AI provider. The blank one only when it has failed: it serves no site
+	that has AI providers."""
+	states = [breaker.status(name) for name in breaker.known()]
+	return [s for s in states if s["ai_provider"] or s["failures_in_a_row"] or s["outage_since"]]
 
 
 def _indexes() -> list[dict[str, Any]]:

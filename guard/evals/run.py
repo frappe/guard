@@ -6,6 +6,7 @@ from typing import Any
 
 import frappe
 
+from guard import settings as guard_settings
 from guard.llm.types import GatewayBilling
 from guard.review.findings import SEVERITIES
 from guard.review.pipeline import ReviewPipeline
@@ -17,6 +18,7 @@ SUMMARY_START = "<!-- guard-evals -->"
 SUMMARY_END = "<!-- /guard-evals -->"
 MAX_PARKS = 8  # a review that parks more often than this does not count
 PARK_WAIT = 90  # seconds: a rate limit on the eval key passes in a minute or two
+EVAL_AI_PROVIDER = "Eval"  # the AI provider that `ci` makes from the GUARD_EVAL_* variables
 
 
 def run(case: str = "", tier: str = "") -> list[dict[str, Any]]:
@@ -57,13 +59,28 @@ def ci() -> None:
 	if not env.get("GUARD_EVAL_GATEWAY_URL") or not env.get("GUARD_EVAL_MODEL"):
 		print("Evals skipped: set GUARD_EVAL_GATEWAY_URL and GUARD_EVAL_MODEL.")
 		return
+	provider = (
+		frappe.get_doc("AI Provider", EVAL_AI_PROVIDER)
+		if frappe.db.exists("AI Provider", EVAL_AI_PROVIDER)
+		else frappe.new_doc("AI Provider")
+	)
+	provider.update(
+		{
+			"provider_name": EVAL_AI_PROVIDER,
+			"enabled": 1,
+			"url": env["GUARD_EVAL_GATEWAY_URL"],
+			"api_key": env.get("GUARD_EVAL_GATEWAY_KEY", ""),
+			"dialect": env.get("GUARD_EVAL_DIALECT") or "openai",
+		}
+	)
+	provider.save(ignore_permissions=True)
 	settings = frappe.get_single("Guard Settings")
 	model = env["GUARD_EVAL_MODEL"]
 	settings.update(
 		{
-			"gateway_url": env["GUARD_EVAL_GATEWAY_URL"],
-			"gateway_api_key": env.get("GUARD_EVAL_GATEWAY_KEY", ""),
-			"gateway_dialect": env.get("GUARD_EVAL_DIALECT") or "openai",
+			"default_ai_provider": EVAL_AI_PROVIDER,
+			# Every model of the eval comes from the eval AI provider.
+			**{f"{slot}_ai_provider": None for slot in guard_settings.SLOTS},
 			"base_model": model,
 			"plus_model": model,
 			"apex_model": model,

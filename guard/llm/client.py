@@ -14,7 +14,16 @@ from guard.llm import markup
 from guard.llm.anthropic_dialect import AnthropicDialect
 from guard.llm.offline import OfflineDialect
 from guard.llm.openai_dialect import OpenAIDialect
-from guard.llm.types import ChatResult, GatewayBilling, GatewayBusy, GatewayDown, Message, ToolSpec, Usage
+from guard.llm.types import (
+	ChatResult,
+	GatewayBilling,
+	GatewayBusy,
+	GatewayDown,
+	LLMError,
+	Message,
+	ToolSpec,
+	Usage,
+)
 
 
 @dataclass
@@ -57,13 +66,15 @@ def use_responder(responder: Responder) -> Iterator[None]:
 
 
 class LLMClient:
-	"""Chat with one model through the gateway. Adds token use to `usage`."""
+	"""Chat with one model through its AI provider. Adds token use to `usage`.
 
-	def __init__(
-		self, tier: str = "base", model: str | None = None, purpose: str = "", usage: Usage | None = None
-	):
-		self.config = guard_settings.gateway()
-		self.model = model or self.config.model_for(tier)
+	`tier` is a tier, or `fast`. Guard Settings names the model of each, and its AI provider.
+	"""
+
+	def __init__(self, tier: str = "base", purpose: str = "", usage: Usage | None = None):
+		self.route = guard_settings.gateway().route(tier)
+		self.model = self.route.model
+		self.ai_provider = self.route.ai_provider_name
 		self.purpose = purpose
 		self.usage = usage if usage is not None else Usage()
 		self.dialect = self._dialect()
@@ -71,8 +82,7 @@ class LLMClient:
 
 	@classmethod
 	def fast(cls, purpose: str = "", usage: Usage | None = None) -> "LLMClient":
-		config = guard_settings.gateway()
-		return cls(model=config.fast_model or config.model_for("base"), purpose=purpose, usage=usage)
+		return cls("fast", purpose=purpose, usage=usage)
 
 	@property
 	def online(self) -> bool:
@@ -138,17 +148,21 @@ class LLMClient:
 		max_tokens: int,
 		temperature: float,
 	) -> ChatResult:
-		if _responder:
-			result = _responder(ChatRequest(self.model, messages, tools, tool_choice, self.purpose))
-		else:
-			result = self.dialect.chat(self.model, messages, tools, tool_choice, max_tokens, temperature)
+		try:
+			if _responder:
+				result = _responder(ChatRequest(self.model, messages, tools, tool_choice, self.purpose))
+			else:
+				result = self.dialect.chat(self.model, messages, tools, tool_choice, max_tokens, temperature)
+		except LLMError as error:
+			error.ai_provider = error.ai_provider or self.ai_provider
+			raise
 		return markup.recover(result, tools)
 
 	def _record(self, results: list[ChatResult]) -> list[ChatResult]:
 		if results and self.online:
 			from guard.llm import breaker
 
-			breaker.record_success()
+			breaker.record_success(self.ai_provider)
 		for result in results:
 			self.usage.add(result.usage)
 		return results
@@ -176,12 +190,12 @@ class LLMClient:
 		return [default if value is None else value for value in values]
 
 	def _dialect(self) -> Dialect:
-		config = self.config
-		if not (config.url and self.model):
+		provider = self.route.ai_provider
+		if not (provider and self.route.online):
 			return OfflineDialect()
-		if config.dialect == "anthropic":
-			return AnthropicDialect(config.url, config.api_key, config.timeout)
-		return OpenAIDialect(config.url, config.api_key, config.timeout)
+		if provider.dialect == "anthropic":
+			return AnthropicDialect(provider.url, provider.api_key, provider.timeout)
+		return OpenAIDialect(provider.url, provider.api_key, provider.timeout)
 
 
 def _position(text: str, char: str) -> int:

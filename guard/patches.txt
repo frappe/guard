@@ -10,6 +10,7 @@ guard.patches.mark_guard_comments
 guard.patches.prices_per_tier
 guard.patches.merge_duplicate_pull_requests
 guard.patches.set_push_review_delay
+guard.patches.move_gateway_to_ai_provider
 
 [post_fixture_sync]
 # Patches added in this section will be executed after fixtures and customizations

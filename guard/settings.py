@@ -1,5 +1,6 @@
 """Typed access to Guard Settings."""
 
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, cast
 
@@ -10,6 +11,10 @@ if TYPE_CHECKING:
 	from guard.guard.doctype.guard_settings.guard_settings import GuardSettings
 
 TIERS = ("base", "plus", "apex")
+# Each model field of Guard Settings: one for each tier, then the fast and the embedding model.
+# Each can name its own AI provider, in `<slot>_ai_provider`.
+SLOTS = (*TIERS, "fast", "embedding")
+DEFAULT_TIMEOUT = 300  # seconds for one request to an AI provider
 CREDITS = {"base": 1, "plus": 3, "apex": 10}
 # Every turn sends the whole conversation again, so the cost of a review grows with the
 # square of its turns. The model can ask for several tools in one turn.
@@ -22,27 +27,75 @@ MAX_REVIEWS_PER_WORKER = 16
 
 
 @dataclass
-class GatewayConfig:
+class AIProviderConfig:
+	"""One AI provider: a gateway such as Grove, or a vendor API such as OpenRouter or Anthropic."""
+
+	name: str
 	url: str
-	api_key: str
-	dialect: str
-	timeout: int
+	api_key: str = ""
+	dialect: str = "openai"
+	timeout: int = DEFAULT_TIMEOUT
+
+
+@dataclass
+class Route:
+	"""A model and the AI provider that serves it. Without both, Guard works offline."""
+
+	model: str
+	ai_provider: AIProviderConfig | None
+
+	@property
+	def online(self) -> bool:
+		return bool(self.model and self.ai_provider and self.ai_provider.url)
+
+	@property
+	def ai_provider_name(self) -> str:
+		"""The breaker and the errors use it. Blank when there is no AI provider."""
+		return self.ai_provider.name if self.ai_provider else ""
+
+
+@dataclass
+class GatewayConfig:
+	"""The models of Guard Settings, and the enabled AI providers that serve them."""
+
 	models: dict[str, str] = field(default_factory=dict)
+	ai_providers: dict[str, AIProviderConfig] = field(default_factory=dict)
+	default_ai_provider: str = ""
+	# The AI provider of each slot of SLOTS. Blank means the default AI provider.
+	slot_ai_providers: dict[str, str] = field(default_factory=dict)
 	fast_model: str = ""
 	embedding_model: str = ""
 	embedding_dimensions: int = 1024
 
 	@property
 	def enabled(self) -> bool:
-		return bool(self.url and self.models.get("base"))
+		return self.route("base").online
 
 	def model_for(self, tier: str) -> str:
 		"""Model for a tier. Falls back to the next lower tier that has a model."""
-		order = TIERS[: TIERS.index(tier) + 1] if tier in TIERS else ("base",)
+		return self.route(tier).model
+
+	def route(self, slot: str) -> Route:
+		"""The model of a slot and its AI provider.
+
+		A tier without a model uses the model of the next lower tier that has one, with the AI
+		provider of that tier. Without a fast model, the fast slot uses the base tier.
+		"""
+		if slot == "fast":
+			return (
+				Route(self.fast_model, self.ai_provider_for(slot)) if self.fast_model else self.route("base")
+			)
+		if slot == "embedding":
+			return Route(self.embedding_model, self.ai_provider_for(slot))
+		order = TIERS[: TIERS.index(slot) + 1] if slot in TIERS else ("base",)
 		for name in reversed(order):
 			if self.models.get(name):
-				return self.models[name]
-		return self.models.get("base", "")
+				return Route(self.models[name], self.ai_provider_for(name))
+		return Route("", self.ai_provider_for("base"))
+
+	def ai_provider_for(self, slot: str) -> AIProviderConfig | None:
+		"""The AI provider of a slot. None when it is not set or is disabled."""
+		return self.ai_providers.get(self.slot_ai_providers.get(slot) or self.default_ai_provider)
 
 
 def settings() -> "GuardSettings":
@@ -51,17 +104,46 @@ def settings() -> "GuardSettings":
 
 def gateway() -> GatewayConfig:
 	doc = settings()
-	api_key = doc.get_password("gateway_api_key", raise_exception=False)
+	slot_ai_providers = {slot: str(doc.get(f"{slot}_ai_provider") or "") for slot in SLOTS}
+	default_ai_provider = doc.default_ai_provider or ""
 	return GatewayConfig(
-		url=(doc.gateway_url or "").rstrip("/"),
-		api_key=str(api_key or ""),
-		dialect=doc.gateway_dialect or "openai",
-		timeout=cint(doc.request_timeout) or 300,
 		models={"base": doc.base_model or "", "plus": doc.plus_model or "", "apex": doc.apex_model or ""},
-		fast_model=doc.fast_model or doc.base_model or "",
+		# Only those that a model can use: each has a key to decrypt.
+		ai_providers=ai_providers([default_ai_provider, *slot_ai_providers.values()]),
+		default_ai_provider=default_ai_provider,
+		slot_ai_providers=slot_ai_providers,
+		fast_model=doc.fast_model or "",
 		embedding_model=doc.embedding_model or "",
 		embedding_dimensions=cint(doc.embedding_dimensions) or 1024,
 	)
+
+
+def ai_providers(names: Iterable[str]) -> dict[str, AIProviderConfig]:
+	"""The enabled AI providers of `names`, by name. Not cached: an admin can change a key at any time."""
+	from frappe.utils.password import get_decrypted_password
+
+	names = [name for name in set(names) if name]
+	if not names:
+		return {}
+	timeout = request_timeout()
+	rows = frappe.get_all(
+		"AI Provider", filters={"enabled": 1, "name": ["in", names]}, fields=["name", "url", "dialect"]
+	)
+	return {
+		row.name: AIProviderConfig(
+			name=row.name,
+			url=(row.url or "").rstrip("/"),
+			api_key=str(get_decrypted_password("AI Provider", row.name, "api_key", False) or ""),
+			dialect=row.dialect or "openai",
+			timeout=timeout,
+		)
+		for row in rows
+	}
+
+
+def request_timeout() -> int:
+	"""Seconds for one request to an AI provider."""
+	return cint(_value("request_timeout")) or DEFAULT_TIMEOUT
 
 
 @dataclass

@@ -82,7 +82,7 @@ def _retry(pull_request: str, attempt: int, busy: GatewayBusy, since: str = "") 
 	"""Mark the check to run again later. False after the last attempt."""
 	if attempt >= len(RETRY_DELAYS):
 		return False
-	delay = max(busy.retry_after, RETRY_DELAYS[attempt], breaker.wait_seconds())
+	delay = max(busy.retry_after, RETRY_DELAYS[attempt], breaker.wait_seconds([busy.ai_provider]))
 	values: dict[str, Any] = {
 		"addressed_attempt": attempt + 1,
 		"addressed_retry_at": add_to_date(now_datetime(), seconds=delay),
