@@ -157,7 +157,8 @@ class TestFindingStatus(PullRequestCase):
 		check = db.value("Code Review", name, "check_run_id")
 		ui.set_finding_status(finding.name, "Dismissed")
 		self.assertEqual(self.adapter.named("resolve"), [finding.provider_thread_id])
-		self.assertEqual(self.adapter.checks[-1][1:], ("failure", "3/5 · 0 open finding(s)", check))
+		# The score is the cap of the open findings now: none is open, so the check passes.
+		self.assertEqual(self.adapter.checks[-1][1:], ("success", "5/5 · 0 open finding(s)", check))
 		ui.set_finding_status(finding.name, "Open")
 		self.assertEqual(self.adapter.named("unresolve"), [finding.provider_thread_id])
 		self.assertEqual(self.adapter.checks[-1][1:], ("failure", "3/5 · 1 open finding(s)", check))

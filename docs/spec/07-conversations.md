@@ -67,7 +67,8 @@ A finding can carry a question. When the author answers, Guard checks the answer
 A person who resolves the thread of an open finding on the provider closes it. This is the explicit way to close a finding that the team accepts without a fix, for example a risk that a deploy step handles.
 
 - Guard sets the finding to Dismissed with reason "thread resolved by `<login>`", and counts the open findings on the check again.
-- The person must pass `teach_permission`. Guard skips threads that its bot logins resolve: Guard resolves a thread after it closes the finding.
+- The person must pass `teach_permission`. When they do not, Guard opens the thread again and replies that only the people who pass it (for example "members of the `<org>` organization") can close a finding this way. The finding stays open. The provider then does not show a closed thread for a finding that still fails the check.
+- Guard skips threads that its bot logins resolve: Guard resolves a thread after it closes the finding.
 - Reopening the thread sets the finding to Open again, but only when a resolved thread dismissed it.
 - Webhooks send `pull_request_review_thread` resolved and unresolved. In polling mode, Guard reads the review threads of a pull request that has such findings.
 

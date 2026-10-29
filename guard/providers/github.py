@@ -210,8 +210,11 @@ class GitHubAdapter(ProviderAdapter):
 	def is_member(self, namespace: str, login: str) -> bool:
 		try:
 			self.request("GET", f"/orgs/{namespace}/members/{login}")
-		except ProviderError:
-			return False
+		except ProviderError as error:
+			# 404 is GitHub's answer for a non-member. Other errors do not tell.
+			if error.status == 404:
+				return False
+			raise
 		return True
 
 	def pull_ref(self, number: int) -> str:

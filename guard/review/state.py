@@ -223,7 +223,40 @@ def recount_check(adapter: ProviderAdapter, full_name: str, pull_request: str) -
 	head = str(db.value("Pull Request", pull_request, "head_sha") or "")
 	latest = _reviews_of(pull_request, head, "")
 	if latest and latest[0]["status"] == "Completed" and latest[0]["check_run_id"]:
-		_show_result(adapter, full_name, pull_request, head, latest[0], str(latest[0]["check_run_id"]))
+		severities = [
+			str(row[0])
+			for row in db.rows(
+				"SELECT severity FROM `tabReview Finding` WHERE pull_request = %s AND status = 'Open'",
+				(pull_request,),
+			)
+		]
+		_show_result(
+			adapter, full_name, pull_request, head, latest[0], str(latest[0]["check_run_id"]), severities
+		)
+
+
+def keep_thread_open(pull_request: str, thread_id: str, login: str, allowed: str) -> None:
+	"""A person who cannot close findings resolved the thread of one. Reopen the thread and tell them
+	why, so the provider does not show it closed while the finding still fails the check."""
+	from guard.providers.base import ProviderComment
+
+	try:
+		provider = _provider(pull_request)
+		if not provider:
+			return
+		adapter, full_name, number = provider
+		adapter.unresolve_thread(full_name, number, thread_id)
+		adapter.reply_to_comment(
+			full_name,
+			number,
+			ProviderComment(id=thread_id, kind="inline", author="", body="", thread_id=thread_id),
+			f"@{login}, only {allowed} can close a Guard finding by resolving its thread. I opened this "
+			"thread again, and the finding still fails the check. Push a fix, or ask one of them to "
+			"resolve the thread.",
+		)
+	except Exception as error:
+		# The finding stays open either way. Polling and the next commit must go on.
+		frappe.log_error(redact(str(error)), "Guard finding")
 
 
 def end_check(
@@ -257,11 +290,19 @@ def _show_result(
 	sha: str,
 	review: dict[str, Any],
 	check_id: str,
+	open_severities: list[str] | None = None,
 ) -> None:
+	"""The result of a completed review on its check. With `open_severities`, the findings that are open
+	now set the score: a person closed or reopened one, and the score of the review counts the old ones.
+	Else closing every finding could never pass the check."""
+	from guard.review.findings import score_cap
 	from guard.review.publish import open_finding_count, set_status
 
-	score = int(review["confidence_score"] or 0)
-	open_count = open_finding_count(pull_request)
+	if open_severities is None:
+		score = int(review["confidence_score"] or 0)
+		open_count = open_finding_count(pull_request)
+	else:
+		score, open_count = score_cap([], open_severities), len(open_severities)
 	set_status(
 		adapter,
 		full_name,

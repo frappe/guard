@@ -184,6 +184,7 @@ class ProviderAdapter:
 		return []
 
 	def is_member(self, namespace: str, login: str) -> bool:
+		"""Raise ProviderError when the provider cannot tell."""
 		raise NotImplementedError
 
 	def pull_ref(self, number: int) -> str:

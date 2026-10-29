@@ -7,7 +7,7 @@ import frappe
 from guard import settings as guard_settings
 from guard.learning import memory_writer
 from guard.llm.client import LLMClient
-from guard.providers.base import ProviderComment
+from guard.providers.base import ProviderComment, ProviderError
 from guard.review import permissions
 from guard.review.prompts import data
 from guard.utils import db
@@ -170,7 +170,8 @@ def thread_changed(pull_request: str, thread_id: str, login: str, resolved: bool
 
 	A rejecting reply cannot close a finding (see record_reply). Resolving the thread is the explicit way, for
 	example when the team accepts the risk. Guard's own changes are skipped: Guard resolves a thread
-	after it closes the finding. `login` is empty when the provider does not say who did it.
+	after it closes the finding. `login` is empty when the provider does not say who did it. A person
+	who fails `teach_permission` gets the thread opened again, with a reply that tells why.
 	"""
 	if login.lower() in guard_settings.bot_logins():
 		return False
@@ -183,8 +184,19 @@ def thread_changed(pull_request: str, thread_id: str, login: str, resolved: bool
 		return False
 	if resolved:
 		repository = str(db.value("Pull Request", pull_request, "repository"))
-		if not login or row["status"] != "Open" or not permissions.allowed("teach", login, repository):
+		if not login or row["status"] != "Open":
 			return False
+		try:
+			passes = permissions.passes("teach", login, repository)
+		except ProviderError:
+			# Do not undo the resolve of a person who may be a member. The finding stays open.
+			return False
+		if not passes:
+			from guard.review import state
+
+			allowed = permissions.who("teach", repository)
+			db.after_commit(lambda: state.keep_thread_open(pull_request, thread_id, login, allowed))
+			return True
 		change = {"status": "Dismissed", "status_reason": f"{RESOLVED_BY}{login}"}
 	else:
 		# Reopening cannot close a finding, so it needs no permission.
