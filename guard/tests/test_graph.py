@@ -372,6 +372,23 @@ class TestSameNameInTwoFiles(IntegrationTestCase):
 		paths = {e.path for e in CodeGraph(index).definitions("app/x.foo", "function")}
 		self.assertEqual(paths, {"app/x.js", "app/x.ts"})
 
+	def test_one_fieldname_twice_in_a_doctype(self):
+		# press lists `frappe_school_authentication_section` twice in Press Settings.
+		field = {"fieldname": "section", "fieldtype": "Section Break"}
+		doctype = json.dumps({"doctype": "DocType", "name": "Settings", "fields": [field, field]})
+		repo = TempRepo(
+			{
+				"app/hooks.py": 'app_name = "app"\n',
+				"app/modules.txt": "One\n",
+				"app/one/doctype/settings/settings.json": doctype,
+			}
+		)
+		self.addCleanup(repo.cleanup)
+		index = index_for(make_repository(repo, full_name=f"acme/{frappe.generate_hash(length=6)}"))
+		Indexer(index).run()
+		self.assertEqual(db.value("Repository Index", index, "status"), "completed")
+		self.assertEqual(len(CodeGraph(index).definitions("doctype:Settings.section", "field")), 2)
+
 	def test_one_name_twice_on_one_line(self):
 		# Short one-line code is indexed and keeps both functions. A minified bundle is skipped.
 		line = "(function(){function n(){return 1}})();(function(){function n(){return 2}})();\n"
