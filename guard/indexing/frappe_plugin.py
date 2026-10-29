@@ -96,7 +96,8 @@ def _doctype(parsed: ParsedFile, source: str) -> None:
 		line = _line_of(lines, f'"fieldname": "{fieldname}"')
 		options = field.get("options") or ""
 		entity = ParsedEntity(
-			key=f"doctype:{name}.{fieldname}",
+			# A DocType JSON can list one fieldname twice. The indexer names each entity by its key.
+			key=parsed.unique_key(f"doctype:{name}.{fieldname}"),
 			kind="field",
 			name=fieldname,
 			qualified_name=f"doctype:{name}.{fieldname}",
