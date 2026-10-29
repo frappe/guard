@@ -52,7 +52,12 @@ class Verdict:
 
 @dataclass
 class Delta:
-	"""The changes of a push since the last completed review, which reviewed the commit `since`."""
+	"""The changes of a push since the last completed review, which reviewed the commit `since`.
+
+	On a backport, `originals` holds the numbers of the pull requests that it backports and that Guard
+	reviewed, and `since` is blank. `files` are then the files whose changes differ from those
+	reviews, and `rest` the files with the same changes. See `guard/review/backport.py`.
+	"""
 
 	since: str
 	files: list[FileDiff]  # the diff since `since`, of the reviewed files
@@ -62,6 +67,13 @@ class Delta:
 	important_files: list[dict[str, str]] = field(default_factory=list)
 	diagram_type: str = ""
 	diagram: str = ""
+	originals: list[int] = field(default_factory=list)
+	original_scores: list[tuple[int, str]] = field(default_factory=list)  # (score, risk) of each
+
+	@property
+	def covers_all(self) -> bool:
+		"""A backport whose files all make the changes of the originals: no agent runs."""
+		return bool(self.originals) and not self.files
 
 	def carry_over(self, verdict: Verdict) -> None:
 		"""Keep what the last review showed of the files that the agent did not see: their important

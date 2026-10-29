@@ -22,6 +22,8 @@ All DocTypes are in the module "Guard". Field lists show the main fields only. S
 | `public_url` | Data | Base URL for links in comments. Default: the site URL. |
 | `trigger_by_authoring`, `trigger_by_tagging`, `chat_permission`, `teach_permission` | Select | `Everyone`, `Organization members`, `Guard users` |
 | `monthly_credit_cap` | Int | 0 means no cap. |
+| `push_review_delay` | Int | Seconds that an automatic review of a push waits. Default 120. 0 turns the wait off. |
+| `pull_request_daily_tokens` | Int | Input tokens that the reviews of one pull request can use in 24 hours before a push gets no automatic review. Default 10,000,000. 0 means no limit. |
 | `auto_enable_new_repositories` | Check | |
 | `feature_tips` | Check | |
 | `learn_from_activity` | Check | Default on. |
@@ -149,7 +151,7 @@ The indexer writes these with bulk inserts. Names are content hashes, so a re-in
 
 ### Pull Request
 
-`repository`, `number`, `title`, `description`, `author`, `state` (open, closed, merged), `is_draft`, `base_branch`, `head_branch`, `base_sha`, `head_sha`, `first_commit_sha`, `head_clone_url`, `web_url`, `labels` (JSON), `opened_at`, `merged_at`, `closed_at`, `additions`, `deletions`, `changed_files`, `review_count`, `last_reviewed_sha`, `summary_comment_id`, `latest_review`, `confidence_score`, `risk_level`, `guard_approved`, `approval_id`, `tour` (JSON), `tour_sha`, `provider_node_id`, `addressed_attempt`, `addressed_retry_at`, `addressed_since`, `retriggered_at`.
+`repository`, `number`, `title`, `description`, `author`, `state` (open, closed, merged), `is_draft`, `base_branch`, `head_branch`, `base_sha`, `head_sha`, `first_commit_sha`, `head_clone_url`, `web_url`, `labels` (JSON), `opened_at`, `merged_at`, `closed_at`, `additions`, `deletions`, `changed_files`, `review_count`, `last_reviewed_sha`, `summary_comment_id`, `latest_review`, `backport_of` (the numbers of the pull requests that it backports, for example `#7, #9`), `confidence_score`, `risk_level`, `guard_approved`, `approval_id`, `tour` (JSON), `tour_sha`, `provider_node_id`, `addressed_attempt`, `addressed_retry_at`, `addressed_since`, `retriggered_at`.
 
 `retriggered_at` is when a signed re-trigger link last started a review ([12-security.md](12-security.md)).
 
@@ -179,6 +181,8 @@ A repository has one row for each pull request number: a unique index on `reposi
 | `credits`, `input_tokens`, `output_tokens` | Int | `input_tokens` is the whole prompt of every call. Token and turn counts add up over all attempts, also the ones that failed, were cancelled or were killed. Guard writes them before each agent turn. |
 | `cached_tokens` | Int | The part of `input_tokens` that the gateway read from its prompt cache |
 | `agent_turns` | Int | Model turns of the review agents |
+| `agent_round_limit` | Int | Rounds that the agents of the review can take: the turn limit, lower on a re-review of a push or a backport, or both passes of an apex review in parts. A push lets a review finish after half of them. |
+| `usage_detail` | JSON | `reasoning_tokens`; `purposes`: for each purpose of a call (`review`, `verify`, `verdict`, `stale`, ...), its `calls`, `input`, `cached`, `output` and `reasoning` tokens; `tools`: for each agent tool, its `calls` and the `chars` of output. Adds up over all attempts, as the token counts do. |
 | `agent_rounds` | Int | Rounds of the review agents. In a round, each busy agent takes one turn, so an apex review has fewer rounds than turns. |
 | `review_number` | Int | 1 for the first review of a pull request. |
 | `started_at`, `completed_at`, `error`, `body` | mixed | `body` is the rendered summary comment. |

@@ -24,6 +24,7 @@ from guard.llm import breaker
 from guard.llm.types import GatewayBusy, GatewayDown, Usage
 from guard.providers import adapter_for_repository
 from guard.review import (
+	backport,
 	checkpoint,
 	checks,
 	context,
@@ -39,7 +40,7 @@ from guard.review import (
 )
 from guard.review.agent import Agent, run_together, tools
 from guard.review.findings import FindingFilter, score_cap
-from guard.review.jobs import WAITING_FOR_SLOT
+from guard.review.jobs import WAITING_FOR_LAST, WAITING_FOR_SLOT
 from guard.review.publish import Publisher, remove_eyes, set_status
 from guard.review.run import Delta, ReviewRun, Verdict
 from guard.review.task import BUDGET_TOKENS, compose
@@ -65,6 +66,11 @@ RETRY_DELAYS = (60, 300, 900)
 # Rate limits on the gateway last up to an hour. These waits add up to 72 minutes.
 BUSY_DELAYS = (120, 600, 1200, 2400)
 SLOT_WAIT = 60  # seconds a review waits for a free slot before it looks again
+# A re-review of a small delta needs few turns: this many, and one more for each DELTA_LINES
+# changed lines, up to the limit of the tier. Each turn sends the whole conversation again.
+DELTA_TURNS = 5
+DELTA_LINES = 40
+AUTOMATIC = ("open", "push", "rebase")  # the triggers of the reviews that no person asked for
 GATEWAY_DOWN = "paused: the AI gateway is down"
 
 
@@ -147,6 +153,9 @@ class ReviewPipeline:
 			if self.slots_full():
 				self.park(attempt, SLOT_WAIT, WAITING_FOR_SLOT)
 				return
+			if self.last_review_runs():
+				self.park(attempt, SLOT_WAIT, WAITING_FOR_LAST)
+				return
 			self.execute()
 		except JobReplaced:
 			db.rollback()
@@ -218,6 +227,20 @@ class ReviewPipeline:
 		)
 		return int(running or 0) >= limit
 
+	def last_review_runs(self) -> bool:
+		"""A push review waits while an older review of the pull request is active: the push let it
+		finish (`jobs.finishes_first`), or it posts its result. A retry puts that review back in the
+		queue, and this one waits still. After it, this review reads only the changes since."""
+		if self.review.trigger != "push" or not self.review.pull_request:
+			return False
+		return bool(
+			db.scalar(
+				"""SELECT COUNT(*) FROM `tabCode Review` WHERE pull_request = %s AND name != %s
+				AND status IN ('Queued', 'Running') AND creation < %s""",
+				(str(self.review.pull_request), str(self.review.name), self.review.creation),
+			)
+		)
+
 	def park(self, attempt: int, wait: int, stage: str) -> None:
 		"""Wait without using up a retry: the gateway is down, or every review slot is taken."""
 		if not state.move(str(self.review.name), {"status": "Queued", "stage": stage}):
@@ -257,13 +280,11 @@ class ReviewPipeline:
 		if run is None:
 			return
 		# Earlier attempts of this review count too: their tokens were spent.
-		run.usage.add(
-			Usage(
-				int(self.review.input_tokens or 0),
-				int(self.review.output_tokens or 0),
-				int(self.review.cached_tokens or 0),
-			)
-		)
+		earlier = Usage.from_detail(frappe.parse_json(self.review.usage_detail or "{}"))
+		earlier.input_tokens = int(self.review.input_tokens or 0)
+		earlier.output_tokens = int(self.review.output_tokens or 0)
+		earlier.cached_tokens = int(self.review.cached_tokens or 0)
+		run.usage.add(earlier)
 		run.turns = int(self.review.agent_turns or 0)
 		run.rounds = int(self.review.agent_rounds or 0)
 		self.current = run
@@ -338,8 +359,10 @@ class ReviewPipeline:
 		suppression.suppress(run.findings, run.repository)
 		# Before the score: the earlier findings that still apply count, as on the status check.
 		stale.close_stale(run, finding_filter.reraised)
-		# Only the model's verdict: the graph verdict below does not rest on findings.
-		verify.check_verdict(run)
+		# Only the model's verdict: the graph verdict below does not rest on findings. The verdict of
+		# a covered backport comes from the reviews of its originals.
+		if not (run.delta and run.delta.covers_all):
+			verify.check_verdict(run)
 		if not run.verdict.submitted:
 			run.verdict = graph_verdict(run)
 		elif run.delta:
@@ -450,6 +473,8 @@ class ReviewPipeline:
 		run.notes = list(config.errors)
 		run.fresh_lines = self.get_fresh_lines(store, pr.last_reviewed_sha or "", head)
 		run.delta = self.get_delta(store, pr, head, merge_base, run.files)
+		if run.delta is None:
+			run.delta = self.backport_delta(run, store, number)
 		if adapter and self.review.head_sha and self.review.head_sha != head:
 			self.leave_old_check(adapter, full_name, str(self.review.head_sha), head)
 		self.review.db_set(
@@ -471,8 +496,35 @@ class ReviewPipeline:
 			return None
 		return run
 
+	def backport_delta(self, run: ReviewRun, store: GitStore, number: int) -> Delta | None:
+		"""On a backport: link its originals, and skip the files whose changes Guard reviewed there."""
+		if run.pr is None or not backport.is_backport(run):
+			return None
+		found = backport.numbers(run, number)
+		backport.link(str(run.pr.name), found)
+		# A person who asks for a review gets a full pass, as on a push re-review.
+		if (
+			not found
+			or self.review.trigger not in AUTOMATIC
+			or not run.settings.get("reuse_backport_reviews", True)
+		):
+			return None
+		try:
+			reviewed = backport.originals(str(run.repository), found, store, run.adapter)
+		except Exception as error:
+			# The originals only save tokens. Without them, the agents read the whole diff.
+			frappe.logger("guard").warning(
+				f"review {self.review.name}: no backport originals: {redact(str(error))}"
+			)
+			return None
+		return backport.delta(run, reviewed)
+
 	def pick_tier(self, run: ReviewRun, changed: list[ChangedEntity]) -> None:
 		"""A push re-review gets the tier of its delta: a small fix after a large change is small."""
+		if run.delta and run.delta.covers_all:
+			run.tier = "base"  # no agent runs
+			self.review.db_set("tier", run.tier)
+			return
 		files = run.delta.files if run.delta else run.files
 		facts = gate.PullRequestFacts(
 			repository=run.full_name,
@@ -555,8 +607,13 @@ class ReviewPipeline:
 		return False
 
 	def agent(self, run: ReviewRun, built: context.BuiltContext) -> None:
-		"""Run the agents. On a push re-review, they read the diff since the last review."""
+		"""Run the agents. On a push re-review, they read the diff since the last review. On a
+		backport, they read the files that differ from the reviewed originals, and none run when no
+		file differs."""
 		whole = run.files
+		if run.delta is not None and run.delta.covers_all:
+			run.verdict = backport.verdict(run)
+			return
 		if run.delta is not None:
 			run.files = run.delta.files
 		try:
@@ -571,6 +628,8 @@ class ReviewPipeline:
 		risk = str(get_effective(team).get("risk_definitions") or "")
 		system = prompts.system_prompt(int(run.settings.get("strictness") or 2), "", risk)
 		turns = guard_settings.max_turns(run.tier)
+		cap = delta_turns(run.files) if run.delta else turns
+		turns = min(turns, cap)
 		deadline = self.deadline(run.tier)
 		single = run.tier != "apex" or len(run.files) <= AREA_FILES
 		ranked = [] if single else by_risk(run)
@@ -581,20 +640,22 @@ class ReviewPipeline:
 			run.verdict = Verdict(**saved["verdict"])
 			return
 		if single:
+			self.set_round_limit(run, turns)
 			final = Agent(run, system, turns)
 			task = None if self.restore(final, saved, "final") else compose(run, built)
 			self.watched = ("final", [final])
 			final.run_loop(task, deadline, self.between_turns)
 			return
 		# Each part, and the pass across the parts, reviews less than the whole: half the turns.
-		turns = max(turns // 2, guard_settings.max_turns("base"))
+		turns = min(max(turns // 2, guard_settings.max_turns("base")), cap)
+		self.set_round_limit(run, 2 * turns)  # the parts take their rounds together, then the pass across
 		all_files = run.files
 		in_areas = {f.path for files in areas for f in files}
 		rest = [f for f in ranked if f.path not in in_areas]
 		extra = ""
 		if phase != "final":
 			tasks: list[str | None] = []
-			parts = [Agent(run, system, turns, final=False) for _ in areas]
+			parts = [Agent(run, system, turns, False, f"part-{n}") for n in range(1, len(areas) + 1)]
 			for number, (part, files) in enumerate(zip(parts, areas, strict=True), 1):
 				run.files = files
 				what = f"Review only the files in this diff part ({number}). Submit a verdict for this part."
@@ -624,6 +685,12 @@ class ReviewPipeline:
 		self.check_cancel()
 		final.run_loop(task, deadline, self.between_turns)
 		run.files = all_files
+
+	@staticmethod
+	def set_round_limit(run: ReviewRun, rounds: int) -> None:
+		"""Save the rounds that the agents can take. A push lets the review finish after half of them."""
+		if run.review is not None:
+			db.set_values("Code Review", str(run.review.name), {"agent_round_limit": rounds})
 
 	def open_checkpoint(self, run: ReviewRun, system: str, areas: list[list[str]]) -> dict[str, Any] | None:
 		"""Start the checkpoints of this run. Return the saved one when it matches, with its findings in the run."""
@@ -715,6 +782,7 @@ class ReviewPipeline:
 				"input_tokens": run.usage.input_tokens,
 				"output_tokens": run.usage.output_tokens,
 				"cached_tokens": run.usage.cached_tokens,
+				"usage_detail": frappe.as_json(run.usage.detail()),
 				"agent_turns": run.turns,
 				"agent_rounds": run.rounds,
 				"stage_seconds": frappe.as_json(self.stage_times()),
@@ -783,6 +851,7 @@ class ReviewPipeline:
 				"input_tokens": usage.input_tokens,
 				"output_tokens": usage.output_tokens,
 				"cached_tokens": usage.cached_tokens,
+				"usage_detail": frappe.as_json(usage.detail()),
 				"agent_turns": self.current.turns,
 				"agent_rounds": self.current.rounds,
 				"stage_seconds": frappe.as_json(self.stage_times()),
@@ -945,6 +1014,12 @@ class ReviewPipeline:
 			)
 		remove_eyes(adapter, full_name, int(pr.number), name)
 		adapter.add_reaction(full_name, int(pr.number), "pr", "", "confused")
+
+
+def delta_turns(files: list[FileDiff]) -> int:
+	"""The turns of the agents of a re-review or a backport, from the size of the files they read."""
+	lines = sum(f.additions + f.deletions for f in files)
+	return DELTA_TURNS + lines // DELTA_LINES
 
 
 def by_risk(run: ReviewRun) -> list[FileDiff]:

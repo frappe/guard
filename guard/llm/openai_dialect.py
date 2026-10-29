@@ -6,6 +6,10 @@ from typing import Any
 from guard.llm.http import get_json, post_json
 from guard.llm.types import ChatResult, Message, ToolCall, ToolSpec, Usage
 
+# Models that take `prompt_cache_key`. Some other models behind an OpenAI front refuse a field they
+# do not know.
+CACHE_KEY_MODELS = ("openai/", "gpt-")
+
 
 class OpenAIDialect:
 	def __init__(self, url: str, api_key: str, timeout: int):
@@ -21,6 +25,7 @@ class OpenAIDialect:
 		tool_choice: str | None,
 		max_tokens: int,
 		temperature: float,
+		cache_key: str = "",
 	) -> ChatResult:
 		# No `reasoning_effort`: GPT-6 models refuse function tools on /v1/chat/completions at any
 		# effort other than `none`, the default of the gateway.
@@ -30,6 +35,9 @@ class OpenAIDialect:
 			"max_tokens": max_tokens,
 			"temperature": temperature,
 		}
+		if cache_key and model.startswith(CACHE_KEY_MODELS):
+			# The calls of one conversation then go to the same cache, also when many run at once.
+			body["prompt_cache_key"] = cache_key
 		if tools:
 			body["tools"] = [_tool(t) for t in tools]
 			if tool_choice:
@@ -88,10 +96,11 @@ def _result(data: dict[str, Any], model: str) -> ChatResult:
 		calls.append(ToolCall(raw.get("id") or "", function.get("name") or "", _arguments(function)))
 	usage = data.get("usage") or {}
 	cached = (usage.get("prompt_tokens_details") or {}).get("cached_tokens") or 0
+	reasoning = (usage.get("completion_tokens_details") or {}).get("reasoning_tokens") or 0
 	return ChatResult(
 		content=message.get("content") or "",
 		tool_calls=calls,
-		usage=Usage(usage.get("prompt_tokens") or 0, usage.get("completion_tokens") or 0, cached),
+		usage=Usage(usage.get("prompt_tokens") or 0, usage.get("completion_tokens") or 0, cached, reasoning),
 		stop_reason=choice.get("finish_reason") or "",
 		model=data.get("model") or model,
 	)

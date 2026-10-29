@@ -116,6 +116,7 @@ exclude_authors = ["dependabot[bot]"]
 | `hide_footer` | boolean | false | No footer |
 | `comments_outside_diff` | boolean | true | List findings outside the diff in the summary |
 | `include_rule_files` | boolean | true | Read `CLAUDE.md`, `AGENTS.md` and similar files |
+| `reuse_backport_reviews` | boolean | true | On a backport, do not review again the files whose changes Guard reviewed in the original pull request ([05-review-engine.md](05-review-engine.md#backports)) |
 | `sections.<name>` | table | Collapsed | `included`, `collapsible`, `default_open`. Names: `summary`, `issues_table`, `confidence`, `impact`, `diagram` |
 
 ### Context

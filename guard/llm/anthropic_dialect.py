@@ -33,7 +33,9 @@ class AnthropicDialect:
 		tool_choice: str | None,
 		max_tokens: int,
 		temperature: float,
+		cache_key: str = "",
 	) -> ChatResult:
+		# No `cache_key`: the cache marks of the messages do that here.
 		# No `temperature`: Claude 5 models answer 400 to any value other than the default.
 		system = [m for m in messages if m.role == "system"]
 		body: dict[str, Any] = {

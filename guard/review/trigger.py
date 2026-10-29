@@ -3,6 +3,7 @@
 from typing import TYPE_CHECKING, cast
 
 import frappe
+from frappe.utils import add_to_date, now_datetime
 
 from guard import settings as guard_settings
 from guard.config import gate
@@ -20,6 +21,11 @@ from guard.review.state import check_of
 from guard.utils import db
 
 PUSH_EVENTS = ("push", "rebase")
+# The wait of a push review doubles for each automatic review of a push that started in the last hour,
+# up to this many seconds: a pull request that gets push after push is reviewed less often.
+MAX_PUSH_DELAY = 900
+MAX_DOUBLINGS = 10
+OVER_BUDGET = "the pull request used its review tokens for today. Mention Guard to review it now"
 
 if TYPE_CHECKING:
 	from guard.guard.doctype.pull_request.pull_request import PullRequest
@@ -70,6 +76,8 @@ def consider(
 	)
 	rules = gate.dashboard_rules(get_effective(repo.get("team")))
 	result = gate.check(facts, config, event, manual, rules)
+	if result.allowed and not manual and event in PUSH_EVENTS and over_budget(pull_request):
+		result = gate.GateResult(False, OVER_BUDGET)
 	if not result.allowed:
 		frappe.logger("guard").info(f"review skipped for {pull_request}: {result.reason}")
 		if adapter and config.settings.get("status_check", True) and not owns_check(pull_request, head):
@@ -91,17 +99,41 @@ def consider(
 		instructions,
 		user,
 		bool(config.settings.get("status_check", True)),
-		delay=push_delay(event, manual),
+		delay=push_delay(event, manual, pull_request),
 	)
 
 
-def push_delay(event: str, manual: bool) -> int:
+def push_delay(event: str, manual: bool, pull_request: str = "") -> int:
 	"""Seconds that a review waits before it starts. Pushes often come in a row: the review of each one
 	but the last would be cancelled after it spent tokens. An opened pull request and a request do not wait.
+
+	The wait doubles for each review of a push of the pull request that started in the last hour, up
+	to `MAX_PUSH_DELAY`. A review that a newer push replaced while it waited does not count.
 	"""
 	if manual or event not in PUSH_EVENTS:
 		return 0
-	return guard_settings.push_review_delay()
+	delay = guard_settings.push_review_delay()
+	if not delay or not pull_request:
+		return delay
+	recent = db.scalar(
+		"""SELECT COUNT(*) FROM `tabCode Review` WHERE pull_request = %s
+		AND `trigger` IN ('push', 'rebase') AND started_at > %s""",
+		(pull_request, add_to_date(now_datetime(), hours=-1)),
+	)
+	return min(delay * 2 ** min(int(recent or 0), MAX_DOUBLINGS), max(MAX_PUSH_DELAY, delay))
+
+
+def over_budget(pull_request: str) -> bool:
+	"""The reviews of the pull request used `pull_request_daily_tokens` input tokens in the last 24 hours.
+	The reviews that a person asked for count too: they spent the tokens as well."""
+	limit = guard_settings.pull_request_daily_tokens()
+	if not limit:
+		return False
+	used = db.scalar(
+		"SELECT IFNULL(SUM(input_tokens), 0) FROM `tabCode Review` WHERE pull_request = %s AND creation > %s",
+		(pull_request, add_to_date(now_datetime(), hours=-24)),
+	)
+	return int(used or 0) >= limit
 
 
 def owns_check(pull_request: str, head: str) -> bool:

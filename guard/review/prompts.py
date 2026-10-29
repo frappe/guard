@@ -95,6 +95,13 @@ before. Read it with the tools when a change depends on it. In `submit_review`, 
 the verdict for the whole pull request as it is now. Start from the summary of the last review.
 In `important_files`, list only files of this diff: Guard adds the earlier ones after them."""
 
+BACKPORT = """This pull request backports {originals}, which Guard reviewed. The diff below shows only
+the files whose changes are not the same as there: review these. The other files make the same
+changes, so do not review them again. Check that the code fits the target branch: the functions,
+fields and APIs that the change uses must exist on it too. Read them with the tools. In
+`submit_review`, write the summary and the verdict for the whole pull request. In `important_files`,
+list only files of this diff: Guard adds the earlier ones after them."""
+
 DELTA_DIAGRAM = """The last review drew this {kind} diagram. Send `diagram_type` `none` when the
 changes since do not change what it shows: Guard keeps it. Else send a new diagram of the whole
 pull request."""

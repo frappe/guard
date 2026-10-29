@@ -57,6 +57,7 @@ class GuardSettings(Document):
 		plus_output_price: DF.Float
 		polling_enabled: DF.Check
 		public_url: DF.Data | None
+		pull_request_daily_tokens: DF.Int
 		push_review_delay: DF.Int
 		request_timeout: DF.Int
 		reviews_per_worker: DF.Int

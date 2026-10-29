@@ -1,5 +1,6 @@
 """The review agent: a tool loop over the LLM client."""
 
+import json
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -53,6 +54,25 @@ TRIM_AT = 600
 # prefix, so the cache misses from there on. Cut only past this size (about 60k tokens).
 CACHED_HISTORY_CHARS = 240_000
 TRIMMED = "\n[Older tool output cut short. Call the tool again if you need it.]"
+TOOL_CHARS = 8000  # characters that one tool result keeps
+# The tools of `read_specs`. Their answer for the same arguments does not change in a review.
+READ_TOOLS = (
+	"read_file",
+	"list_directory",
+	"grep",
+	"search_code",
+	"find_definition",
+	"get_callers",
+	"get_callees",
+	"get_outline",
+)
+# A read that the agent asked for before gets a pointer to the earlier output, when that output is
+# whole and longer than this: else the same text goes into the conversation twice, and every later
+# turn sends it again.
+SAME_MIN = 200
+SAME = (
+	"Same output as your {name} call in turn {turn}: it is above. Ask for other lines or names to read more."
+)
 
 
 @dataclass
@@ -224,11 +244,15 @@ class Agent:
 	of an apex review is not the verdict of the pull request.
 	"""
 
-	def __init__(self, run: ReviewRun, system: str, max_turns: int = 8, final: bool = True):
+	def __init__(
+		self, run: ReviewRun, system: str, max_turns: int = 8, final: bool = True, label: str = "final"
+	):
 		self.run = run
 		self.system = system
 		self.max_turns = max_turns
 		self.final = final
+		# Names the conversation in the cache key, as each agent of a review has its own prompt.
+		self.label = label
 		self.verdict = Verdict()
 		self.turns = 0
 		self.done = False  # the model answered without a tool call
@@ -300,12 +324,49 @@ class Agent:
 		self.breakpoint = self.messages[-1]
 		self.breakpoint.cache = True
 
+	def cache_key(self) -> str:
+		"""The key of this conversation for the prompt cache of the AI provider."""
+		name = getattr(self.run.review, "name", None)
+		return f"guard-review-{name}-{self.label}" if name else ""
+
 	def _dispatch(self, name: str, args: dict[str, Any], call_id: str) -> Message:
 		try:
-			content = self._handle(name, args)
+			turn = self._earlier(name, args) if name in READ_TOOLS else None
+			content = SAME.format(name=name, turn=turn) if turn else self._handle(name, args)
 		except Exception as error:  # tool errors go back to the model
 			content = f"error: {error}"
-		return Message("tool", content[:8000], tool_call_id=call_id)
+		content = content[:TOOL_CHARS]
+		self.run.usage.tool(name, len(content))
+		return Message("tool", content, tool_call_id=call_id)
+
+	def _earlier(self, name: str, args: dict[str, Any]) -> int | None:
+		"""The turn of an earlier call with the same arguments, when its output is still whole above.
+
+		The outputs follow the calls of their turn in order, so an output pairs with the first open call
+		of its id: test responders use the same ids in every turn.
+		"""
+		wanted = _call_key(name, args)
+		turn, open_calls = 0, []
+		for message in self.messages:
+			if message.role == "assistant":
+				turn += 1
+				open_calls = [(call, turn) for call in message.tool_calls]
+				continue
+			if message.role != "tool":
+				continue
+			match = next((pair for pair in open_calls if pair[0].id == message.tool_call_id), None)
+			if match is None:
+				continue
+			open_calls.remove(match)
+			call, at = match
+			content = message.content
+			if (
+				_call_key(call.name, call.arguments) == wanted
+				and len(content) > SAME_MIN
+				and not content.endswith(TRIMMED)
+			):
+				return at
+		return None
 
 	def _handle(self, name: str, args: dict[str, Any]) -> str:
 		run = self.run
@@ -364,6 +425,7 @@ def run_together(
 		return []
 	run = agents[0].run
 	client = LLMClient(tier=run.tier, purpose="review", usage=run.usage)
+	keys = {id(agent): agent.cache_key() for agent in agents}
 	specs = tools(run)
 	for agent, task in zip(agents, tasks, strict=True):
 		if task is not None:
@@ -374,12 +436,18 @@ def run_together(
 		if deadline and time.time() > deadline:
 			break
 		run.rounds += 1
-		results = client.chat_many([a.request() for a in busy], tools=specs)
+		results = client.chat_many(
+			[a.request() for a in busy], tools=specs, cache_keys=[keys[id(a)] for a in busy]
+		)
 		for agent, result in zip(busy, results, strict=True):
 			agent.receive(result)
 	if client.online:
 		_close([a for a in agents if not a.verdict.submitted], client, specs)
 	return [agent.result() for agent in agents]
+
+
+def _call_key(name: str, args: dict[str, Any]) -> str:
+	return name + json.dumps(args, sort_keys=True, default=str)
 
 
 def _close(agents: list[Agent], client: Any, specs: list[ToolSpec]) -> None:
@@ -396,7 +464,12 @@ def _close(agents: list[Agent], client: Any, specs: list[ToolSpec]) -> None:
 		left = [a for a in agents if not a.verdict.submitted]
 		if not left:
 			return
-		results = client.chat_many([a.messages for a in left], tools=specs, tool_choice=choice)
+		results = client.chat_many(
+			[a.messages for a in left],
+			tools=specs,
+			tool_choice=choice,
+			cache_keys=[a.cache_key() for a in left],
+		)
 		for agent, result in zip(left, results, strict=True):
 			agent.messages.append(result.as_message())
 			for call in result.tool_calls:

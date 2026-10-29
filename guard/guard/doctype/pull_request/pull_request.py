@@ -19,6 +19,7 @@ class PullRequest(Document):
 		addressed_since: DF.Data | None
 		approval_id: DF.Data | None
 		author: DF.Data | None
+		backport_of: DF.SmallText | None
 		base_branch: DF.Data | None
 		base_sha: DF.Data | None
 		changed_files: DF.Int

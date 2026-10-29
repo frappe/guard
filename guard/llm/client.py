@@ -33,6 +33,7 @@ class ChatRequest:
 	tools: list[ToolSpec] | None
 	tool_choice: str | None
 	purpose: str
+	cache_key: str = ""
 
 
 Responder = Callable[[ChatRequest], ChatResult]
@@ -51,6 +52,7 @@ class Dialect(Protocol):
 		tool_choice: str | None,
 		max_tokens: int,
 		temperature: float,
+		cache_key: str = "",
 	) -> ChatResult: ...
 
 
@@ -95,8 +97,11 @@ class LLMClient:
 		tool_choice: str | None = None,
 		max_tokens: int = 4096,
 		temperature: float = 0.1,
+		cache_key: str = "",
 	) -> ChatResult:
-		return self._record([self._call(messages, tools, tool_choice, max_tokens, temperature)])[0]
+		"""`cache_key` names the conversation, so that the provider keeps its prompt in one cache."""
+		result = self._call(messages, tools, tool_choice, max_tokens, temperature, cache_key)
+		return self._record([result])[0]
 
 	def chat_many(
 		self,
@@ -105,8 +110,10 @@ class LLMClient:
 		tool_choice: str | None = None,
 		max_tokens: int = 4096,
 		temperature: float = 0.1,
+		cache_keys: list[str] | None = None,
 	) -> list[ChatResult]:
-		"""Send several conversations at once, and answer in the same order.
+		"""Send several conversations at once, and answer in the same order. `cache_keys` has the
+		key of each conversation, as in `chat`.
 
 		Only the gateway calls run on threads. The breaker and the token count stay on this thread,
 		because they can reach `frappe.db`, which is not thread-safe. When a call fails, the others
@@ -116,24 +123,32 @@ class LLMClient:
 		calls of this client: the answers already in are kept, and the load on the gateway drops.
 		"""
 
-		def call(messages: list[Message]) -> ChatResult | Exception:
+		keys = cache_keys or [""] * len(conversations)
+
+		def call(messages: list[Message], key: str) -> ChatResult | Exception:
 			try:
-				return self._call(messages, tools, tool_choice, max_tokens, temperature)
+				return self._call(messages, tools, tool_choice, max_tokens, temperature, key)
 			except Exception as error:
 				return error
 
 		if len(conversations) <= 1 or self.parallel <= 1:
-			return [self.chat(m, tools, tool_choice, max_tokens, temperature) for m in conversations]
+			return [
+				self.chat(m, tools, tool_choice, max_tokens, temperature, key)
+				for m, key in zip(conversations, keys, strict=True)
+			]
 		with ThreadPoolExecutor(min(self.parallel, len(conversations))) as pool:
 			# A copy of the context gives each thread `frappe.local`: the site config, flags and cache.
-			futures = [pool.submit(contextvars.copy_context().run, call, m) for m in conversations]
+			futures = [
+				pool.submit(contextvars.copy_context().run, call, m, key)
+				for m, key in zip(conversations, keys, strict=True)
+			]
 			outcomes = [future.result() for future in futures]
 		for index, outcome in enumerate(outcomes):
 			# Not GatewayDown: the calls already outlasted their retries, and the breaker handles it.
 			# Not GatewayBilling: a refused key stays refused, one call at a time or not.
 			if isinstance(outcome, GatewayBusy) and not isinstance(outcome, GatewayDown | GatewayBilling):
 				self.parallel = 1
-				outcomes[index] = call(conversations[index])
+				outcomes[index] = call(conversations[index], keys[index])
 		results = self._record([o for o in outcomes if isinstance(o, ChatResult)])
 		error = next((o for o in outcomes if isinstance(o, Exception)), None)
 		if error:
@@ -147,12 +162,16 @@ class LLMClient:
 		tool_choice: str | None,
 		max_tokens: int,
 		temperature: float,
+		cache_key: str = "",
 	) -> ChatResult:
 		try:
 			if _responder:
-				result = _responder(ChatRequest(self.model, messages, tools, tool_choice, self.purpose))
+				request = ChatRequest(self.model, messages, tools, tool_choice, self.purpose, cache_key)
+				result = _responder(request)
 			else:
-				result = self.dialect.chat(self.model, messages, tools, tool_choice, max_tokens, temperature)
+				result = self.dialect.chat(
+					self.model, messages, tools, tool_choice, max_tokens, temperature, cache_key
+				)
 		except LLMError as error:
 			error.ai_provider = error.ai_provider or self.ai_provider
 			raise
@@ -164,7 +183,7 @@ class LLMClient:
 
 			breaker.record_success(self.ai_provider)
 		for result in results:
-			self.usage.add(result.usage)
+			self.usage.add(result.usage, self.purpose or "other")
 		return results
 
 	def complete(self, system: str, prompt: str, max_tokens: int = 2048) -> str:

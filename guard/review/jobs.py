@@ -31,6 +31,11 @@ RESTARTED = "restarting: the worker stopped during the review"
 LOST_AFTER = 300
 WAITING_FOR_PUSHES = "waiting for more pushes"
 WAITING_FOR_SLOT = "waiting for a free review slot"
+WAITING_FOR_LAST = "waiting for the last review to finish"
+# A push does not replace a running review in these stages, or in the review stage after half of its
+# agent rounds (`agent_round_limit`): most of its tokens are spent. It posts on its commit, and the review of the push waits for
+# it and then reads only the changes since.
+FINISHING_STAGES = ("verify", "filter")
 
 
 def create_review(
@@ -57,7 +62,7 @@ def create_review(
 	older = frappe.get_all(
 		"Code Review",
 		filters={"pull_request": pull_request, "status": ["in", ["Queued", "Running"]]},
-		pluck="name",
+		fields=["name", "status", "stage", "tier", "agent_rounds", "agent_round_limit"],
 	)
 	doc = frappe.get_doc(
 		{
@@ -78,9 +83,11 @@ def create_review(
 		}
 	).insert(ignore_permissions=True)
 	# After the insert: an older review of the same commit then leaves the check to this one.
-	for name in older:
+	for row in older:
+		if trigger == "push" and finishes_first(row):
+			continue
 		try:
-			state.cancel(name, state.REPLACED)
+			state.cancel(row.name, state.REPLACED)
 		except state.NotActive:
 			pass  # It posts its result now. This review comes after it.
 	if status_check is None:
@@ -88,6 +95,17 @@ def create_review(
 	state.queued(str(doc.name), status_check)
 	enqueue_review(str(doc.name), delay=delay, tier=requested_tier)
 	return str(doc.name)
+
+
+def finishes_first(row: Any) -> bool:
+	"""A push lets this running review finish: it spent most of its tokens. See `FINISHING_STAGES`."""
+	if row.status != "Running":
+		return False
+	if row.stage in FINISHING_STAGES:
+		return True
+	# The limit of the review itself: a re-review of a push gets fewer turns than its tier.
+	limit = row.agent_round_limit or guard_settings.max_turns(row.tier or "base")
+	return row.stage == "review" and 2 * (row.agent_rounds or 0) >= limit
 
 
 def _dashboard_status_check(repository: str) -> bool:

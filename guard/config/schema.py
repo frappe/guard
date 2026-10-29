@@ -23,6 +23,7 @@ BOOLEANS = (
 	"hide_footer",
 	"comments_outside_diff",
 	"include_rule_files",
+	"reuse_backport_reviews",
 )
 LISTS = (
 	"labels",
@@ -82,6 +83,7 @@ DEFAULTS: dict[str, Any] = {
 	"hide_footer": False,
 	"comments_outside_diff": True,
 	"include_rule_files": True,
+	"reuse_backport_reviews": True,
 	**{name: [] for name in LISTS},
 	"sections": {name: {"included": True, "collapsible": True, "default_open": False} for name in SECTIONS},
 }
