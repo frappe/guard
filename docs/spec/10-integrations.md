@@ -31,6 +31,7 @@ An adapter raises `UnsupportedAction` for an action that the provider does not h
 4. The admin stores the app id, the slug, the private key and the webhook secret on the Code Provider.
 5. Guard signs a JWT with the private key and gets one installation token for each team. It caches each token for 50 minutes. When GitHub answers 401 to a request with a cached token, Guard drops the token, gets a new one and sends the request once more.
 6. An installation event creates the Guard Team and its repositories. New repositories get `reviews_enabled` from `auto_enable_new_repositories`.
+7. When the App loses a repository, Guard turns `reviews_enabled` off and keeps the Code Repository with its reviews, findings and indexes. This happens when a repository is removed from the installation (`installation_repositories` removed), when the installation is deleted (all repositories of the account), and when Sync repositories in App mode does not find a repository that Guard has. A suspended installation keeps `reviews_enabled`, because a suspension is temporary. Guard does not turn reviews on again by itself: an admin does that when the repository comes back.
 
 ### Webhook endpoints
 

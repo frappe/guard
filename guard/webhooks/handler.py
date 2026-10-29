@@ -108,7 +108,7 @@ def process(delivery: str) -> None:
 def dispatch(provider: str, event: WebhookEvent) -> bool:
 	if event.kind == "installation":
 		sync.on_installation(
-			provider, event.action, event.namespace, event.installation_id, event.repositories
+			provider, event.action, event.namespace, event.installation_id, event.repositories, event.removed
 		)
 		return True
 	repository = sync.resolve_repository(provider, event.repository, event.namespace, event.installation_id)
