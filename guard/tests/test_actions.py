@@ -163,6 +163,36 @@ class TestFindingStatus(PullRequestCase):
 		self.assertEqual(self.adapter.named("unresolve"), [finding.provider_thread_id])
 		self.assertEqual(self.adapter.checks[-1][1:], ("failure", "3/5 · 1 open finding(s)", check))
 
+	def reviewed_finding(self) -> tuple[str, str]:
+		name = str(self.review([[("report_finding", FINDING), ("submit_review", {"summary": "s"})]]))
+		return name, str(frappe.get_all("Review Finding", filters={"code_review": name}, pluck="name")[0])
+
+	def test_dismiss_on_a_token_install_sets_a_new_commit_status(self):
+		review, finding = self.reviewed_finding()
+		# A commit status has no id, so the review of a token install keeps none.
+		db.set_values("Code Review", review, {"check_run_id": ""})
+		ui.set_finding_status(finding, "Dismissed")
+		self.assertEqual(self.adapter.checks[-1][1:], ("success", "5/5 · 0 open finding(s)", ""))
+		# With the check off, the review had no status to set again.
+		db.set_values("Code Review", review, {"config_snapshot": frappe.as_json({"status_check": False})})
+		count = len(self.adapter.checks)
+		ui.set_finding_status(finding, "Open")
+		self.assertEqual(len(self.adapter.checks), count)
+
+	def test_dismiss_after_a_skipped_review_of_the_head_counts_on_the_completed_check(self):
+		review, finding = self.reviewed_finding()
+		check = db.value("Code Review", review, "check_run_id")
+		head = db.value("Code Review", review, "head_sha")
+		later = {"doctype": "Code Review", "pull_request": self.pr, "repository": self.repository}
+		frappe.get_doc({**later, "status": "Skipped", "head_sha": head}).insert(ignore_permissions=True)
+		ui.set_finding_status(finding, "Dismissed")
+		self.assertEqual(self.adapter.checks[-1][1:], ("success", "5/5 · 0 open finding(s)", check))
+		# A review that runs owns the check, and sets it when it ends.
+		frappe.get_doc({**later, "status": "Running", "head_sha": head}).insert(ignore_permissions=True)
+		count = len(self.adapter.checks)
+		ui.set_finding_status(finding, "Open")
+		self.assertEqual(len(self.adapter.checks), count)
+
 
 class TestRepositoryStatus(PullRequestCase):
 	def test_a_failed_index_is_skipped_for_an_hour_from_the_database(self):

@@ -90,8 +90,10 @@ def _cached(key: str, repository: str, ask: Callable[[ProviderAdapter], bool]) -
 	if cached is not None:
 		return bool(int(cached))
 	adapter = adapter_for_repository(repository)
-	# Not cached when the provider cannot tell: an error is not an answer.
-	answer = bool(adapter and ask(adapter))
+	# Not cached when no provider answers: no adapter, or an error, is not an answer.
+	if not adapter:
+		return False
+	answer = bool(ask(adapter))
 	cache.set(key, int(answer), 3600)
 	return answer
 

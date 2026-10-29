@@ -11,7 +11,7 @@ from guard.llm.client import ChatRequest, use_responder
 from guard.llm.embeddings import Embedder
 from guard.llm.types import GatewayBusy
 from guard.providers.base import ProviderComment, ProviderError, Reaction, ReviewThread
-from guard.review import jobs, trigger
+from guard.review import jobs, permissions, trigger
 from guard.tests.cases import PullRequestCase
 from guard.tests.fakes import scripted
 from guard.tests.utils import TempRepo, make_repository
@@ -554,6 +554,11 @@ class TestResolvedThreads(LearningCase):
 		self.assertIn("@maybe-member, I could not check", reply)
 		self.assertNotIn("only members", reply)
 		self.assertIsNone(cache.get("guard:member:acme:maybe-member"))
+
+	def test_a_repository_without_a_provider_caches_no_permission_answer(self):
+		with patch("guard.review.permissions.adapter_for_repository", return_value=None):
+			self.assertFalse(permissions.is_member(self.repository, "no-provider"))
+		self.assertIsNone(cache.get("guard:member:acme:no-provider"))
 
 	def test_reopening_a_thread_does_not_reopen_a_finding_closed_another_way(self):
 		finding, thread_id = self.posted_finding()

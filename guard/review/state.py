@@ -218,21 +218,38 @@ def _show_finding(finding: str, pull_request: str, sync_thread: bool = True) -> 
 
 
 def recount_check(adapter: ProviderAdapter, full_name: str, pull_request: str) -> None:
-	"""Set the check of the head again, with the open findings now. Only when the last review of the
-	head completed: else a review runs and sets the check when it ends, or the check shows a failure."""
+	"""Set the check of the head again, with the open findings now, from the last completed review of the
+	head. Not when the last review of the head is queued or runs, because it sets the check when it
+	ends, or failed, because the check shows the failure. A newer skipped or cancelled review leaves the
+	result of the completed one on the check."""
 	head = str(db.value("Pull Request", pull_request, "head_sha") or "")
 	latest = _reviews_of(pull_request, head, "")
-	if latest and latest[0]["status"] == "Completed" and latest[0]["check_run_id"]:
-		severities = [
-			str(row[0])
-			for row in db.rows(
-				"SELECT severity FROM `tabReview Finding` WHERE pull_request = %s AND status = 'Open'",
-				(pull_request,),
-			)
-		]
-		_show_result(
-			adapter, full_name, pull_request, head, latest[0], str(latest[0]["check_run_id"]), severities
+	if not latest or latest[0]["status"] in ("Queued", "Running", "Failed"):
+		return
+	completed = db.dict_rows(
+		"""SELECT name, confidence_score, check_run_id, config_snapshot FROM `tabCode Review`
+		WHERE pull_request = %s AND head_sha = %s AND status = 'Completed'
+		ORDER BY creation DESC LIMIT 1""",
+		(pull_request, head),
+	)
+	if not completed:
+		return
+	review = completed[0]
+	# A commit status has no id: a token install keeps none. Without an id, only the setting tells if
+	# the review showed a check.
+	snapshot = frappe.parse_json(review["config_snapshot"] or "{}") or {}
+	if not review["check_run_id"] and not snapshot.get("status_check", True):
+		return
+	severities = [
+		str(row[0])
+		for row in db.rows(
+			"SELECT severity FROM `tabReview Finding` WHERE pull_request = %s AND status = 'Open'",
+			(pull_request,),
 		)
+	]
+	_show_result(
+		adapter, full_name, pull_request, head, review, str(review["check_run_id"] or ""), severities
+	)
 
 
 def keep_thread_open(pull_request: str, thread_id: str, body: str) -> None:
