@@ -60,6 +60,7 @@
   "max_concurrent_reviews",
   "reviews_per_worker",
   "push_review_delay",
+  "pull_request_daily_tokens",
   "auto_enable_new_repositories",
   "org_col",
   "feature_tips",
@@ -403,6 +404,14 @@
    "non_negative": 1
   },
   {
+   "default": "10000000",
+   "description": "Input tokens that the reviews of one pull request can use in 24 hours. After that, a push gets no automatic review, and a person can still ask for one. 0 means no limit.",
+   "fieldname": "pull_request_daily_tokens",
+   "fieldtype": "Int",
+   "label": "Daily Tokens per Pull Request",
+   "non_negative": 1
+  },
+  {
    "default": "1",
    "fieldname": "auto_enable_new_repositories",
    "fieldtype": "Check",
@@ -487,7 +496,7 @@
  "index_web_pages_for_search": 0,
  "issingle": 1,
  "links": [],
- "modified": "2026-10-29 10:00:00.000000",
+ "modified": "2026-10-29 16:00:00.000000",
  "modified_by": "Administrator",
  "module": "Guard",
  "name": "Guard Settings",

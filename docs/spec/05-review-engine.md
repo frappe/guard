@@ -32,7 +32,13 @@ A new review shows at once. `create_review` posts a `queued` check on the head (
 
 A user cancels from the Code Review form or the API. `state.cancel` sets Cancelled, `cancelled_by` and `completed_at` at once. When the request commits, Guard ends the check as neutral ("Guard stopped this review: ..."), removes the 👀 of the review, and gives 😕 to the mentions that asked for it. A review that posts its result (the publish and after stages) cannot be cancelled. The job writes each stage under the row lock, and the cancel reads the stage under the same lock, so a cancel either stops the job before it posts or sees that it is too late.
 
-A new push or a manual re-review cancels the queued and running reviews of the pull request the same way, and the new review takes over the check. An automatic review of a push (`push` or `rebase`) waits at least `push_review_delay` seconds (Guard Settings, 120 by default) before it starts, with the stage `waiting for more pushes`. The every-minute `resume_waiting` queues it, so it can wait up to a minute more, and it clears the stage then. It changes the row under its lock, and only while the review is Queued, so a review cancelled since the cron read it stays cancelled. Pushes often come in a row, so the next push replaces the waiting review before it uses tokens. A review of an opened pull request and a review that a person asks for start at once. 0 turns the wait off. Closing the pull request cancels its reviews too. The running job checks the status between stages and before each agent turn, and stops. It does not set a check, a reaction or a status after the cancel. If it set the check between two steps, it ends the check again.
+A new push or a manual re-review cancels the queued and running reviews of the pull request the same way, and the new review takes over the check. An automatic review of a push (`push` or `rebase`) waits at least `push_review_delay` seconds (Guard Settings, 120 by default) before it starts, with the stage `waiting for more pushes`. The every-minute `resume_waiting` queues it, so it can wait up to a minute more, and it clears the stage then. It changes the row under its lock, and only while the review is Queued, so a review cancelled since the cron read it stays cancelled. Pushes often come in a row, so the next push replaces the waiting review before it uses tokens. The wait doubles for each review of a push of the pull request that started in the last hour, up to 15 minutes, so a pull request that gets push after push is reviewed less often. A review of an opened pull request and a review that a person asks for start at once. 0 turns the wait off.
+
+A push does not cancel a running review that has spent most of its tokens: one in the verify or filter stage, or in the review stage after half of the turn limit of its tier. That review posts on its commit. The review of the push waits with the stage `waiting for the last review to finish` while an older review of the pull request is queued or running (a retry puts that review back in the queue), and looks again every minute. Then it reads only the changes since (below). A manual re-review still cancels it.
+
+The reviews of one pull request can use `pull_request_daily_tokens` input tokens (Guard Settings, 10 million by default) in 24 hours. The reviews that a person asked for count too. After that, a push gets no automatic review: the check shows that the pull request used its review tokens for today. A mention or a manual review still runs. 0 turns the limit off.
+
+Closing the pull request cancels its reviews too. The running job checks the status between stages and before each agent turn, and stops. It does not set a check, a reaction or a status after the cancel. If it set the check between two steps, it ends the check again.
 
 A stopped review ends its check only when no newer review of the commit exists and no other review of it runs: else the check belongs to that review. When an earlier review of the commit completed, the check gets that result back, not "stopped". The 👀 on the pull request is one reaction that the reviews share, so a stopped review removes it only when no other review of the pull request runs.
 
@@ -60,7 +66,7 @@ The next job runs the stages before the agents as usual. Then it reads the check
 2. Run `git diff --find-renames <merge base> <head>`. Parse it into files, hunks and lines with head and base line numbers.
 3. Resolve the config for each changed file ([06-configuration.md](06-configuration.md)). Drop files that match `ignore_patterns`.
 4. Merge the config at the pull request level: maximum strictness, highest tier, union of comment types.
-5. On a push re-review, find the delta (below).
+5. On a push re-review, find the delta (below). On a backport, find the originals (below).
 6. Pick the tier (below).
 
 ### Push re-review
@@ -78,6 +84,22 @@ The delta changes only what the agents read. The task shows the annotated diff s
 - Important files: the files of the new verdict come first, then the earlier ones that it does not list, up to 15.
 - Diagram: when the agent sends `diagram_type` `none`, Guard keeps the last diagram. A new diagram replaces it. A last diagram longer than 3,000 characters is not in the task, as it costs tokens on each turn. The graph, the blast radius, the deterministic checks, the anchors and the filters still use the whole diff. Context files come from the entities of the delta files. Apex areas split the delta files.
 
+The agents of a re-review get fewer turns: 5, and one more for each 40 changed lines of the files they read, up to the limit of the tier. Each turn sends the whole conversation again, and a small push needs little reading.
+
+### Backports
+
+A pull request to a branch other than the default branch can carry changes that Guard reviewed on the default branch. Guard finds the numbers of these originals in:
+
+- the title, the description and the commit messages: `backport #N`, `backport of #N`, `backported from #N`;
+- the commit subjects that end with `(#N)` (a squash merge, or a cherry-pick of one) or start with `Merge pull request #N`;
+- a head branch of a backport bot, such as `mergify/bp/<branch>/pr-N`.
+
+It writes them to `backport_of` on the Pull Request. Guard uses the originals only in a review that no person asked for (`open`, `push`, `rebase`): a mention or a manual review reads the whole diff. When the review of a push uses a delta, the originals are not used.
+
+For each merged original of the same repository, Guard takes its last completed review in which the agents took turns, and the diff of that review (from its merge base to its head, fetched again when the mirror lost it). A file of the backport is covered when it makes only changes that the originals make to the same file: each hunk makes its added and removed lines in the order of one original, with the same indent, and no line changes more often than in the originals. Blank lines do not count. A backport can leave out part of an original. It cannot add, move, repeat or indent again a line. A failure to read the originals gives a full review.
+
+The agents read only the files that are not covered, as with a push delta: the task names the originals, shows the summaries of their reviews and the names of the covered files, and asks the agent to check that the code fits the target branch. The turn limit is the one of a re-review. When every file is covered, no agent runs, the tier is base, and the verdict is not checked by a model. The verdict says which pull requests the backport carries, with the lowest score and the highest risk of their reviews. The deterministic checks, the graph, the stale and repeat checks, and the publishing still run on the whole diff. `reuse_backport_reviews = false` ([06-configuration.md](06-configuration.md)) turns this off. Manual backports that rewrite the change, and backports whose original Guard did not review, get a full review. A backport that no agent read is not an original in its turn, so a backport of a backport gets a full review.
+
 ### Tier selection
 
 The tier is the highest of: the dashboard tier, the repository override, every directory config that the pull request touches, a matching tier rule, and the tier in the trigger comment. `auto` counts as no tier, except a matching tier rule set to `auto`.
@@ -94,7 +116,7 @@ When the result is `auto`, Guard computes a score:
 
 Less than 2 points gives base, or plus on the first review of a pull request: a small diff can still hide a cross-file bug. Less than 5 gives plus. Otherwise apex.
 
-On a push re-review, the lines, files, paths and contract changes of the score and the tier rules come from the delta: a small fix after a large change is small. So a risky path or a path tier rule counts only when the push changes that path.
+On a push re-review or a backport, the lines, files, paths and contract changes of the score and the tier rules come from the delta (on a backport, the files that are not covered): a small fix after a large change is small. So a risky path or a path tier rule counts only when the push changes that path.
 
 ## Stage 3: Fresh index
 
@@ -178,7 +200,11 @@ These requests send all the tools, and the agent refuses the tools that read: "Y
 
 ### Old tool output and the prompt cache
 
-Each turn sends the whole conversation again. When the gateway reads no part of a prompt from its cache, Guard cuts the tool output of the turns before the last 4 to its first 600 characters. When the gateway reports cached tokens, a cut changes the prefix and the cache misses from there on, so Guard keeps the output. It cuts all the old output at once only when the conversation passes 240,000 characters. On the Anthropic front, the system prompt, the task and the newest tool output carry a cache breakpoint. Code Review stores `cached_tokens` to show how much of the input the cache served.
+Each turn sends the whole conversation again. When the gateway reads no part of a prompt from its cache, Guard cuts the tool output of the turns before the last 4 to its first 600 characters. When the gateway reports cached tokens, a cut changes the prefix and the cache misses from there on, so Guard keeps the output. It cuts all the old output at once only when the conversation passes 240,000 characters. On the Anthropic front, the system prompt, the task and the newest tool output carry a cache breakpoint. On the OpenAI front, each agent sends `prompt_cache_key` (`guard-review-<review>-<agent>`, for OpenAI models only), so that its turns reach the same cache also when many reviews run at once. Code Review stores `cached_tokens` to show how much of the input the cache served.
+
+A read tool (`read_file`, `grep`, `get_callers`, ...) that the agent calls again with the same arguments does not return the same output again while the earlier output is whole in the conversation. It returns a line that points to the turn of the earlier call. Each tool result keeps at most 8,000 characters.
+
+Code Review stores `usage_detail`: the tokens of each purpose of a call (`review`, `verify`, `verdict`, `stale`, `repeats`, ...), the reasoning tokens, and the calls and characters of output of each agent tool. It shows where the tokens of a review go.
 
 ### Tier strategies
 

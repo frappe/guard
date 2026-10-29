@@ -22,6 +22,9 @@ DEFAULT_TURNS = {"base": 10, "plus": 16, "apex": 24}
 DEFAULT_CONCURRENT_REVIEWS = 4
 # Seconds, long enough for the fix-up pushes that often come right after a push.
 DEFAULT_PUSH_REVIEW_DELAY = 120
+# Input tokens of the automatic reviews of one pull request in 24 hours. Only a few pull requests pass
+# it: they had 10 to 50 million in a day, mostly in re-reviews that posted little.
+DEFAULT_PULL_REQUEST_TOKENS = 10_000_000
 # Threads of one worker. Each holds a database connection, and a hung one keeps its slot.
 MAX_REVIEWS_PER_WORKER = 16
 
@@ -223,6 +226,13 @@ def push_review_delay() -> int:
 	"""Seconds that an automatic review of a push waits, so that a newer push can replace it first."""
 	value = _value("push_review_delay")
 	return DEFAULT_PUSH_REVIEW_DELAY if value in (None, "") else max(cint(value), 0)
+
+
+def pull_request_daily_tokens() -> int:
+	"""Input tokens that the reviews of one pull request can use in 24 hours, before a push gets no
+	automatic review. 0 is no limit."""
+	value = _value("pull_request_daily_tokens")
+	return DEFAULT_PULL_REQUEST_TOKENS if value in (None, "") else max(cint(value), 0)
 
 
 def trigger_handles() -> list[str]:

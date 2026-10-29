@@ -48,6 +48,7 @@
   "cached_tokens",
   "agent_turns",
   "agent_rounds",
+  "usage_detail",
   "timing_section",
   "started_at",
   "completed_at",
@@ -307,6 +308,13 @@
    "label": "Agent Rounds"
   },
   {
+   "description": "Tokens of each purpose (review, verify, stale, ...), reasoning tokens, and the calls and characters of output of each agent tool",
+   "fieldname": "usage_detail",
+   "fieldtype": "JSON",
+   "label": "Usage Detail",
+   "read_only": 1
+  },
+  {
    "fieldname": "timing_section",
    "fieldtype": "Section Break",
    "label": "Timing"
@@ -437,7 +445,7 @@
    "link_fieldname": "code_review"
   }
  ],
- "modified": "2026-10-27 12:00:00.000000",
+ "modified": "2026-10-29 16:00:00.000000",
  "modified_by": "Administrator",
  "module": "Guard",
  "name": "Code Review",

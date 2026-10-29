@@ -37,6 +37,7 @@
   "review_count",
   "last_reviewed_sha",
   "latest_review",
+  "backport_of",
   "confidence_score",
   "risk_level",
   "review_col",
@@ -225,6 +226,13 @@
    "read_only": 1
   },
   {
+   "description": "The pull requests that this one backports, from its title, description, branch and commits",
+   "fieldname": "backport_of",
+   "fieldtype": "Small Text",
+   "label": "Backport Of",
+   "read_only": 1
+  },
+  {
    "fieldname": "confidence_score",
    "fieldtype": "Int",
    "in_list_view": 1,
@@ -333,7 +341,7 @@
    "link_fieldname": "pull_request"
   }
  ],
- "modified": "2026-10-26 23:45:00.000000",
+ "modified": "2026-10-29 16:00:00.000000",
  "modified_by": "Administrator",
  "module": "Guard",
  "name": "Pull Request",

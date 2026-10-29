@@ -29,7 +29,7 @@ MAX_AGE_SECONDS = 2 * 24 * 3600
 
 def key(run: ReviewRun, system: str, specs: list[ToolSpec], areas: list[list[str]]) -> str:
 	"""What a checkpoint must match. Another head or prompt is another review."""
-	since = run.delta.since if run.delta else ""
+	since = (run.delta.since or ",".join(str(n) for n in run.delta.originals)) if run.delta else ""
 	parts = [FORMAT, run.head_sha, since, run.tier, system, [dataclasses.asdict(s) for s in specs], areas]
 	text = json.dumps(parts, sort_keys=True, default=str)
 	return hashlib.blake2b(text.encode(), digest_size=16).hexdigest()

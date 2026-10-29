@@ -45,6 +45,8 @@ All files are optional. If a directory has both `.guard/` and `guard.toml`, Guar
 
 Guard also reads `CLAUDE.md` and `AGENTS.md` in any directory of the base branch, and `.cursorrules` and `.github/copilot-instructions.md` at the root. To stop this, set `include_rule_files = false`. Each list item, and each line that says always, must or never, is a rule. Guard checks the change against them and reports each break as a P2 that links to the rule: fix it before merging. It measures complexity, file-length and boolean-naming rules in code, and a rule that asks for tests flags code changes that touch no test file.
 
+A pull request to another branch than the default branch can be a backport: its title, description, commits or branch name the pull requests that it carries (`backport #12`, a commit subject that ends with `(#12)`, `mergify/bp/<branch>/pr-12`). When Guard reviewed a merged original, and a file makes only the changes of the original, the automatic review does not read that file again. When every file does, no AI agent runs. Mention Guard to get a full review. To stop this, set `reuse_backport_reviews = false`.
+
 ### Monorepos
 
 You can put a `.guard/` folder or a `guard.toml` file in any directory. Guard walks from the root to the directory of each changed file:

@@ -2,7 +2,7 @@
 
 from guard.review import checks, rule_files
 from guard.review.context import BuiltContext, excerpt
-from guard.review.prompts import DELTA, DELTA_DIAGRAM, TASK, data
+from guard.review.prompts import BACKPORT, DELTA, DELTA_DIAGRAM, TASK, data
 from guard.review.run import ReviewRun
 
 DIFF_LIMIT = 120_000
@@ -70,8 +70,7 @@ def compose(run: ReviewRun, built: BuiltContext, extra: str = "", tokens: int = 
 	used = sum(len(p) for p in parts) + len(diff) + len(extra)
 	budget = total - used
 	parts += context_files(built, budget)
-	since = f" (changes since {run.delta.since[:7]})" if run.delta else ""
-	parts.append(f"Annotated diff{since}:\n" + data("diff", diff))
+	parts.append(f"Annotated diff{_scope(run)}:\n" + data("diff", diff))
 	if extra:
 		parts.append(extra)
 	return "\n\n".join(p for p in parts if p)
@@ -155,22 +154,40 @@ def _project_rules(run: ReviewRun) -> str:
 	)
 
 
-def _delta(run: ReviewRun) -> str:
-	"""On a push re-review: what was reviewed before, and the files that did not change since."""
+def _scope(run: ReviewRun) -> str:
+	"""What the diff of a re-review or a backport holds."""
 	if not run.delta:
 		return ""
-	parts = [DELTA.format(since=run.delta.since[:7])]
+	if run.delta.originals:
+		return " (files that differ from " + _numbers(run.delta.originals) + ")"
+	return f" (changes since {run.delta.since[:7]})"
+
+
+def _numbers(numbers: list[int]) -> str:
+	return ", ".join(f"#{n}" for n in numbers)
+
+
+def _delta(run: ReviewRun) -> str:
+	"""On a push re-review: what was reviewed before, and the files that did not change since. On a
+	backport: the reviews of the originals, and the files with the same changes."""
+	if not run.delta:
+		return ""
+	backport = bool(run.delta.originals)
+	if backport:
+		parts = [BACKPORT.format(originals=_numbers(run.delta.originals))]
+	else:
+		parts = [DELTA.format(since=run.delta.since[:7])]
 	if run.delta.summary:
-		parts.append(
-			"Summary of the last review:\n" + data("last summary", run.delta.summary[:SUMMARY_LIMIT])
-		)
+		title = "Summaries of the reviews of the originals" if backport else "Summary of the last review"
+		parts.append(f"{title}:\n" + data("last summary", run.delta.summary[:SUMMARY_LIMIT]))
 	if run.delta.diagram_type and run.delta.diagram and len(run.delta.diagram) <= DIAGRAM_LIMIT:
 		parts.append(
 			DELTA_DIAGRAM.format(kind=run.delta.diagram_type) + "\n" + data("last diagram", run.delta.diagram)
 		)
 	if run.delta.rest:
 		names = "\n".join(f"- {name}" for name in run.delta.rest[:MAX_REST])
-		parts.append("Other changed files of the pull request, not changed since:\n" + names)
+		what = "with the same changes as the originals" if backport else "not changed since"
+		parts.append(f"Other changed files of the pull request, {what}:\n" + names)
 	return "\n\n".join(parts)
 
 
