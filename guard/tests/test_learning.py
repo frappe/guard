@@ -556,8 +556,12 @@ class TestResolvedThreads(LearningCase):
 		self.assertIsNone(cache.get("guard:member:acme:maybe-member"))
 
 	def test_a_repository_without_a_provider_caches_no_permission_answer(self):
+		frappe.db.set_single_value("Guard Settings", "teach_permission", "Organization members")
 		with patch("guard.review.permissions.adapter_for_repository", return_value=None):
-			self.assertFalse(permissions.is_member(self.repository, "no-provider"))
+			# No answer, not a no: a resolve gets the reply for an unchecked permission.
+			with self.assertRaises(ProviderError):
+				permissions.passes("teach", "no-provider", self.repository)
+			self.assertFalse(permissions.allowed("teach", "no-provider", self.repository))
 		self.assertIsNone(cache.get("guard:member:acme:no-provider"))
 
 	def test_reopening_a_thread_does_not_reopen_a_finding_closed_another_way(self):

@@ -248,9 +248,9 @@ def recount_check(adapter: ProviderAdapter, full_name: str, pull_request: str) -
 			(pull_request,),
 		)
 	]
-	_show_result(
-		adapter, full_name, pull_request, head, review, str(review["check_run_id"] or ""), severities
-	)
+	# The reviews of a commit share its check. The newest id is the one the commit shows.
+	check_id = check_of(pull_request, head) or str(review["check_run_id"] or "")
+	_show_result(adapter, full_name, pull_request, head, review, check_id, severities)
 
 
 def keep_thread_open(pull_request: str, thread_id: str, body: str) -> None:

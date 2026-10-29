@@ -85,14 +85,14 @@ def can_write(repository: str, login: str) -> bool:
 
 
 def _cached(key: str, repository: str, ask: Callable[[ProviderAdapter], bool]) -> bool:
-	"""The answer of the provider, kept for one hour."""
+	"""The answer of the provider, kept for one hour. Raise ProviderError when no provider answers:
+	no adapter, or an error, is not an answer, so it is not cached."""
 	cached = cache.get(key)
 	if cached is not None:
 		return bool(int(cached))
 	adapter = adapter_for_repository(repository)
-	# Not cached when no provider answers: no adapter, or an error, is not an answer.
 	if not adapter:
-		return False
+		raise ProviderError("The repository has no code provider")
 	answer = bool(ask(adapter))
 	cache.set(key, int(answer), 3600)
 	return answer

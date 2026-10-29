@@ -188,14 +188,19 @@ class TestFindingStatus(PullRequestCase):
 		ui.set_finding_status(finding, "Dismissed")
 		self.assertEqual(len(self.adapter.checks), count)
 
-	def test_dismiss_after_a_skipped_review_of_the_head_counts_on_the_completed_check(self):
+	def test_dismiss_after_a_skipped_review_of_the_head_counts_on_the_check_of_the_commit(self):
 		review, finding = self.reviewed_finding()
-		check = db.value("Code Review", review, "check_run_id")
 		head = db.value("Code Review", review, "head_sha")
 		later = {"doctype": "Code Review", "pull_request": self.pr, "repository": self.repository}
 		frappe.get_doc({**later, "status": "Skipped", "head_sha": head}).insert(ignore_permissions=True)
 		ui.set_finding_status(finding, "Dismissed")
+		check = db.value("Code Review", review, "check_run_id")
 		self.assertEqual(self.adapter.checks[-1][1:], ("success", "5/5 · 0 open finding(s)", check))
+		# A newer review with its own check: the commit shows that one.
+		skipped = {**later, "status": "Skipped", "head_sha": head, "check_run_id": "check-newer"}
+		frappe.get_doc(skipped).insert(ignore_permissions=True)
+		ui.set_finding_status(finding, "Open")
+		self.assertEqual(self.adapter.checks[-1][1:], ("failure", "3/5 · 1 open finding(s)", "check-newer"))
 		# A review that runs owns the check, and sets it when it ends.
 		frappe.get_doc({**later, "status": "Running", "head_sha": head}).insert(ignore_permissions=True)
 		count = len(self.adapter.checks)
