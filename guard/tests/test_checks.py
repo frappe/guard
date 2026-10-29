@@ -21,6 +21,12 @@ class FakeGitHub(GitHubAdapter):
 
 	def request(self, method: str, path: str, auth: bool = True, **kwargs: Any) -> Any:
 		self.sent.append((method, path, kwargs.get("json")))
+		if method == "GET" and "/check-runs/" in path:
+			run_id = path.rsplit("/", 1)[-1]
+			found = [run for run in self.runs if str(run["id"]) == run_id]
+			if not found:
+				raise ProviderError("GET: 404 Not Found", 404)
+			return found[0]
 		if method == "GET":
 			return {"check_runs": self.runs}
 		if method == "POST":
@@ -76,10 +82,31 @@ class TestCheckRuns(UnitTestCase):
 			return original(method, path, auth, **kwargs)
 
 		with patch.object(github, "request", side_effect=request):
-			self.assertEqual(
-				github.set_status("acme/app", "abc", "pending", "Guard is reviewing", check_id="9"), "500"
-			)
+			self.assertEqual(github.set_status("acme/app", "abc", "success", "5/5", check_id="9"), "500")
 		self.assertEqual([method for method, _, _ in github.sent], ["PATCH", "GET", "POST"])
+
+	def test_a_new_review_does_not_open_a_completed_run_again(self):
+		# Before, the check showed "Failing after 51s — Guard is reviewing", and the result of the new
+		# review never showed.
+		github = FakeGitHub([run(9, status="completed")])
+		check = github.set_status(
+			"acme/app", "abc", "queued", "Guard will review this commit soon", check_id="9"
+		)
+		self.assertEqual(check, "500")
+		self.assertEqual(github.patched(), [])
+		self.assertEqual([method for method, _, _ in github.sent], ["GET", "GET", "POST"])
+
+	def test_a_run_in_progress_is_updated_after_a_lookup(self):
+		github = FakeGitHub([run(9)])
+		check = github.set_status("acme/app", "abc", "pending", "Guard is reviewing", check_id="9")
+		self.assertEqual(check, "9")
+		self.assertEqual([method for method, _, _ in github.sent], ["GET", "PATCH"])
+
+	def test_a_lost_run_id_gets_a_new_run_for_a_new_review(self):
+		github = FakeGitHub([])
+		check = github.set_status("acme/app", "abc", "pending", "Guard is reviewing", check_id="9")
+		self.assertEqual(check, "500")
+		self.assertEqual([method for method, _, _ in github.sent], ["GET", "GET", "POST"])
 
 	def test_a_new_commit_gets_a_new_run(self):
 		github = FakeGitHub([])

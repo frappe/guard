@@ -26,7 +26,7 @@ The Code Review row is the one source of truth for the status of a review. Guard
 - A job sets a status only through `state.move`. It reads the status under a row lock and writes only when the review is still in a status that allows the change, for example Queued or Running for Completed. A job that comes late, after a user cancelled or a newer review replaced the review, writes nothing.
 - A user action changes the row in the request. The provider and Desk show the change when the request commits, not when a worker is free. The background job catches up later.
 
-A new review shows at once. `create_review` posts a `queued` check on the head (Check run status `queued`, or a `pending` commit status) and sends the realtime event `guard_review_updated`. The id of the check is in `check_run_id` on the Code Review. A newer review of the same commit takes that id, so the commit keeps one check. When a queued review starts on a newer head, it ends its queued check on the old commit. When the config of the repository turns the check off, the review marks its queued check skipped.
+A new review shows at once. `create_review` posts a `queued` check on the head (Check run status `queued`, or a `pending` commit status) and sends the realtime event `guard_review_updated`. The id of the check is in `check_run_id` on the Code Review. A newer review of the same commit takes that id while the check runs, so the commit keeps one check. GitHub does not open a completed check run again: it keeps the old conclusion next to the new title and ignores later updates. So a newer review of a commit with a result makes a new check run with the same name, and GitHub shows it in place of the old one. When a queued review starts on a newer head, it ends its queued check on the old commit. When the config of the repository turns the check off, the review marks its queued check skipped.
 
 ### Cancellation
 
@@ -369,7 +369,7 @@ Severity marks: 🔴 P0, 🟠 P1, 🟡 P2.
 | - | - |
 | Summary | Issue comment, edited on later reviews |
 | Inline comments | One review with all comments. If GitHub rejects a line, Guard posts the rest one by one and lists the rejected ones in the summary. |
-| Status | Check run (App) or commit status (token). The id of the check run is in `check_run_id` on the Code Review, so a cancel or a dismissed finding updates it without a lookup. Without an id, Guard updates the run in progress on the commit, if there is one. |
+| Status | Check run (App) or commit status (token). The id of the check run is in `check_run_id` on the Code Review, so a cancel or a dismissed finding updates it without a lookup. Without an id, Guard updates the run in progress on the commit, if there is one. A queued or running review never updates a completed run: it makes a new one. |
 | Reactions | Issue reaction on the pull request. The id of the 👀 is in `eyes_reaction` on the Code Review, so a cancel or a failure can remove it. |
 | Approve | Review with event `APPROVE` |
 

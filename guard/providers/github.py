@@ -347,6 +347,11 @@ class GitHubAdapter(ProviderAdapter):
 				# Not GitHub's "cancelled": a required check fails on it, and a cancel must not block.
 				"cancelled": "neutral",
 			}.get(state, "neutral")
+		if check_id and state in ("pending", "queued") and self._run_completed(repo, check_id):
+			# A new review of a commit that has a result. GitHub does not open a completed run again: it
+			# shows the old conclusion next to the new title and ignores later updates. A new run with the
+			# same name replaces the old one.
+			check_id = ""
 		if check_id:
 			try:
 				self.request("PATCH", f"/repos/{repo}/check-runs/{check_id}", json=payload)
@@ -364,6 +369,16 @@ class GitHubAdapter(ProviderAdapter):
 			return open_ids[0]
 		data = self.request("POST", f"/repos/{repo}/check-runs", json=payload)
 		return str(data["id"])
+
+	def _run_completed(self, repo: str, check_id: str) -> bool:
+		"""The check run has a conclusion, or it is gone. Either way it cannot show a new review."""
+		try:
+			data = self.request("GET", f"/repos/{repo}/check-runs/{check_id}") or {}
+		except ProviderError as error:
+			if error.status != 404:
+				raise
+			return True
+		return data.get("status") == "completed"
 
 	def add_reaction(self, repo: str, number: int, target: str, target_id: str, content: str) -> str | None:
 		path = REACTION_PATHS[target].format(id=target_id, number=number)
