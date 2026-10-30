@@ -9,6 +9,7 @@ Learning makes reviews fit the team. It has six parts: feedback, addressed detec
 | 👍, ❤️, 🎉 or 🚀 on a Guard comment | GitHub sends no reaction webhook. A job every 15 minutes reads reactions on findings of pull requests that changed in the last 14 days. | Upvote |
 | 👎 or 😕 on a Guard comment | Same | Downvote |
 | A reply in a Guard thread | Webhook | Reply, with a sentiment |
+| A verdict that a coding agent sends for a Desk user: wrong or intended, with the reason | `finding_feedback` of the MCP server ([11-surfaces.md](11-surfaces.md#mcp-server)). It also dismisses the finding. It needs write permission on the finding, and the GitHub login of the user must pass `teach_permission`. | Reply, with sentiment Disagree or Context |
 | A push that fixes the finding | Addressed detection | Addressed |
 | A merged or closed pull request with the finding still open | Close job | Ignored |
 | A human comment on a problem that Guard missed | Webhook, see [Missed issues](#missed-issues) | Missed |

@@ -103,6 +103,36 @@ def record_reply(finding: str, pull_request: str, comment: ProviderComment, sent
 	return doc
 
 
+def record_verdict(finding: str, user: str, sentiment: str, reason: str) -> str:
+	"""A verdict that the coding agent of `user` sends for them, with the reason. Guard learns from it as
+	from a reply in the thread: it counts as a downvote, and the memory writer reads the reason.
+
+	Return what Guard did: learned, updated (a new reason for the same finding), kept (the same reason),
+	refused (the user fails `teach_permission`) or off (learning is off).
+	"""
+	if sentiment not in REJECTIONS or not learning_on():
+		return "off"
+	row = db.values("Review Finding", finding, ("pull_request", "repository")) or {}
+	login = str(db.value("Guard User", {"user": user}, "github_login") or "")
+	# The same rule as for a reply on GitHub: a learned memory reaches every later review of the team.
+	if not permissions.allowed("teach", login, str(row.get("repository") or "")):
+		return "refused"
+	ref = f"agent:{user}"
+	if earlier := _recorded(finding, "Reply", ref):
+		if db.values("Review Feedback", earlier, ("sentiment", "body")) == {
+			"sentiment": sentiment,
+			"body": reason,
+		}:
+			return "kept"
+		db.set_values("Review Feedback", earlier, {"sentiment": sentiment, "body": reason})
+		memory_writer.enqueue(earlier)
+		return "updated"
+	doc = _feedback(finding, row.get("pull_request"), login or user, "Reply", sentiment, reason, ref)
+	count_votes(finding)
+	memory_writer.enqueue(doc)
+	return "learned"
+
+
 def record_mention(pull_request: str, comment: ProviderComment, text: str) -> str | None:
 	if not learning_on():
 		return None

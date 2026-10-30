@@ -1,0 +1,142 @@
+#!/bin/sh
+# Installed by Guard. Before a push, your coding agent reviews the pushed commits with Guard.
+# A P0 finding stops the push. When the review does not finish, the push goes on.
+#
+# Skip the review once:  GUARD_SKIP=1 git push
+# Choose the agent:      git config guard.agent claude   (or codex, or pi)
+# Remove the hook:       rm "$(git rev-parse --git-path hooks)/pre-push"
+#
+# The agent gets no shell: the hook sends the diff itself. The agent calls the Guard tools and reads
+# files only, because the review shows it text from the repository and from GitHub.
+
+[ "${GUARD_SKIP:-}" = 1 ] && exit 0
+
+SITE="__GUARD_SITE__"
+# Seconds. A hung agent or a sign-in that waits must not hold the push.
+START_TIMEOUT=${GUARD_START_TIMEOUT:-180}
+REVIEW_TIMEOUT=${GUARD_TIMEOUT:-900}
+
+say() { printf 'guard: %s\n' "$*" >&2; }
+# Agent output without control characters, so it cannot move the cursor or change the terminal.
+clean() { LC_ALL=C tr -d '\000-\010\013-\037\177'; }
+
+# Git sends one line for each pushed ref. Review the last branch that is not deleted.
+head="" branch="" skipped=0
+while read -r local_ref local_sha _remote; do
+	case $local_ref in refs/heads/*) ;; *) continue ;; esac
+	# A deleted ref has a sha of zeros.
+	case $local_sha in *[!0]*) ;; *) continue ;; esac
+	[ -n "$head" ] && skipped=$((skipped + 1))
+	head=$local_sha
+	branch=${local_ref#refs/heads/}
+done
+[ -n "$head" ] || exit 0
+[ "$skipped" -gt 0 ] && say "this push has more branches. Guard reviews only $branch."
+
+agent=$(git config guard.agent || :)
+if [ -z "$agent" ]; then
+	for candidate in claude codex pi; do
+		if command -v "$candidate" >/dev/null 2>&1; then
+			agent=$candidate
+			break
+		fi
+	done
+fi
+if [ -z "$agent" ] || ! command -v "$agent" >/dev/null 2>&1; then
+	say "found no coding agent (claude, codex or pi), so the push goes on without a review."
+	exit 0
+fi
+case $agent in claude | codex | pi) ;; *)
+	say "guard.agent is $agent. Use claude, codex or pi."
+	exit 0
+	;;
+esac
+
+limit=$(command -v timeout || command -v gtimeout || :)
+work=$(mktemp -d)
+trap 'rm -rf "$work"' EXIT
+
+# Run the agent with the Guard tools and, for the review, the tools that read files. No shell, no
+# edits and no web.
+ask_agent() { # seconds, read files (yes or no), prompt
+	seconds=$1 reads=$2 prompt=$3
+	set --
+	[ -n "$limit" ] && set -- "$limit" "$seconds"
+	case $agent in
+	claude)
+		allowed=mcp__guard
+		[ "$reads" = yes ] && allowed="mcp__guard,Read,Grep,Glob"
+		"$@" claude -p "$prompt" --permission-mode dontAsk --allowedTools "$allowed" \
+			--disallowedTools "Bash,Edit,Write,NotebookEdit,WebFetch,WebSearch,Task"
+		;;
+	codex)
+		# A read-only sandbox without network: shell commands can read, and change nothing.
+		"$@" codex exec --sandbox read-only "$prompt"
+		;;
+	pi)
+		tools='mcp__guard__*'
+		[ "$reads" = yes ] && tools="read,grep,find,ls,$tools"
+		"$@" pi -p --tools "$tools" "$prompt"
+		;;
+	esac
+}
+
+value() { sed -n "s/.*$1=\([^ \`]*\).*/\1/p" "$2" | tail -n 1; }
+
+say "$agent reviews the push of $branch. It takes some minutes. To skip it: GUARD_SKIP=1 git push"
+# The remote that Guard reviews is origin. Without one, it is the address of this push.
+origin=$(git remote get-url origin 2>/dev/null || printf '%s' "${2:-}")
+ask_agent "$START_TIMEOUT" no "Call the Guard tool start_review with repository $origin. Do not call \
+other tools. Then print these three lines, with the values from its answer, and nothing else:
+GUARD_REVIEW=<review_id>
+GUARD_SECRET=<upload.secret>
+GUARD_BRANCH=<upload.base_branch>" </dev/null >"$work/start" 2>&1
+
+review=$(value GUARD_REVIEW "$work/start")
+secret=$(value GUARD_SECRET "$work/start")
+base_branch=$(value GUARD_BRANCH "$work/start")
+# The values go into a URL and git commands: take only the shapes that Guard sends.
+if ! printf '%s' "$review" | grep -Eqx '[0-9a-f]{16}' ||
+	! printf '%s' "$secret" | grep -Eqx '[0-9a-f]{32}' ||
+	! printf '%s' "$base_branch" | grep -Eqx '[A-Za-z0-9._/-]{1,140}'; then
+	tail -n 20 "$work/start" | clean >&2
+	say "the agent did not start a Guard review, so the push goes on. Is it signed in to Guard?"
+	exit 0
+fi
+
+if ! base=$(git merge-base "$head" "origin/$base_branch" 2>/dev/null) ||
+	! git diff --binary "$base" "$head" >"$work/diff"; then
+	say "found no merge base with origin/$base_branch, so the push goes on. Run: git fetch origin"
+	exit 0
+fi
+if ! curl -sS --fail-with-body -X POST -H 'Content-Type: application/octet-stream' \
+	-H "X-Guard-Upload: $secret" -H "X-Guard-Base: $base" -H "X-Guard-Head: $head" \
+	-H "X-Guard-Branch: $branch" --data-binary @"$work/diff" "$SITE/mcp/upload/$review" \
+	>"$work/upload" 2>&1; then
+	clean <"$work/upload" >&2
+	say "Guard did not take the diff, so the push goes on."
+	exit 0
+fi
+
+ask_agent "$REVIEW_TIMEOUT" yes "Review the commits that I push, with Guard. Follow the guard-review \
+skill when you have it. The diff is sent: call the Guard tool review_context with review_id $review, \
+review the change as its guide says, and call submit_review with review_id $review. Do not change files. \
+End your answer with these two lines, with the values from the answer of submit_review:
+GUARD_P0=<p0>
+GUARD_URL=<url>" </dev/null >"$work/review" 2>&1
+
+p0=$(sed -n 's/.*GUARD_P0=\([0-9][0-9]*\).*/\1/p' "$work/review" | tail -n 1)
+url=$(value GUARD_URL "$work/review" | clean)
+if [ -z "$p0" ]; then
+	tail -n 20 "$work/review" | clean >&2
+	say "the review did not finish, so the push goes on."
+	exit 0
+fi
+if [ "$p0" -gt 0 ]; then
+	sed '/GUARD_P0=/d; /GUARD_URL=/d' "$work/review" | clean >&2
+	say "push stopped: $p0 P0 findings. $url"
+	say "fix them, or push anyway with: GUARD_SKIP=1 git push"
+	exit 1
+fi
+say "no P0 findings. $url"
+exit 0

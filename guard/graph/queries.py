@@ -236,22 +236,24 @@ class CodeGraph:
 
 	# -------------------------------------------------------------- search
 
-	def search(self, query: str, k: int = 10) -> list[ChunkHit]:
-		"""Hybrid search: FULLTEXT rank and vector rank, merged with reciprocal rank fusion."""
+	def search(self, query: str, k: int = 10, vector: list[float] | None = None) -> list[ChunkHit]:
+		"""Hybrid search: FULLTEXT rank and vector rank, merged with reciprocal rank fusion.
+
+		`vector` is the embedding of the query, when the caller searches more indexes with it."""
 		symbols = self._symbol_hits(query, k * 2)
 		lexical = self._lexical(query, k * 3)
-		vector = self.similar(query, k * 3)
+		similar = self.similar(query, k * 3, vector)
 		scores: dict[str, float] = defaultdict(float)
 		hits: dict[str, ChunkHit] = {}
-		for ranked in (symbols, symbols, lexical, vector):
+		for ranked in (symbols, symbols, lexical, similar):
 			for rank, hit in enumerate(ranked):
 				scores[hit.name] += 1 / (RRF_K + rank + 1)
 				hits.setdefault(hit.name, hit)
 		order = sorted(scores, key=lambda name: -scores[name])[:k]
 		return [ChunkHit(**{**hits[name].__dict__, "score": round(scores[name], 5)}) for name in order]
 
-	def similar(self, text: str, k: int = 10) -> list[ChunkHit]:
-		vector = Embedder().embed_one(text)
+	def similar(self, text: str, k: int = 10, vector: list[float] | None = None) -> list[ChunkHit]:
+		vector = vector or Embedder().embed_one(text)
 		pairs = VectorStore().nearest("chunk", vector, k * 2, [self.repository] if self.repository else None)
 		chunks = self._chunks([ref for ref, _ in pairs])
 		distance = dict(pairs)

@@ -1,4 +1,5 @@
-"""HTTP of the MCP server: `POST /mcp` for JSON-RPC, and `POST /mcp/upload/<review id>` for diffs.
+"""HTTP of the MCP server: `POST /mcp` for JSON-RPC, `POST /mcp/upload/<review id>` for diffs, and
+`GET /mcp/install.sh` and `/mcp/kit.tar.gz` for the setup of the agents (`guard.mcp.kit`).
 
 A page renderer serves both, so the address is short enough to type. The server is stateless: each
 POST carries one JSON-RPC message, and the answer is one JSON document. There is no SSE stream, so
@@ -19,12 +20,16 @@ from frappe.utils import now_datetime, strip_html
 from werkzeug.wrappers import Request, Response
 
 import guard
-from guard.mcp import tools
+from guard.mcp import kit, prompts, tools
 from guard.review import local
 from guard.utils import cache, db
 
 MCP_PATH = "mcp"
 UPLOAD_PATH = "mcp/upload/"
+INSTALL_PATH = "mcp/install.sh"
+KIT_PATH = "mcp/kit.tar.gz"
+KIT_PER_MINUTE = 30  # an install takes two requests
+KIT_CACHE_SECONDS = 300
 # Older revisions answer the same as the one Frappe calls legacy. A client gets the revision it asked for.
 OLDER_VERSIONS = ("2025-03-26", "2025-06-18", protocol.LEGACY_VERSION)
 CACHE_MS = 60 * 60 * 1000  # the tools change only with a deploy
@@ -40,11 +45,13 @@ class Renderer:
 		self.path = path
 
 	def can_render(self) -> bool:
-		return self.path == MCP_PATH or self.path.startswith(UPLOAD_PATH)
+		return self.path in (MCP_PATH, INSTALL_PATH, KIT_PATH) or self.path.startswith(UPLOAD_PATH)
 
 	def render(self) -> Response:
 		if self.path == MCP_PATH:
 			return serve(frappe.request)
+		if self.path in (INSTALL_PATH, KIT_PATH):
+			return _kit(self.path)
 		return upload(frappe.request, self.path.removeprefix(UPLOAD_PATH))
 
 
@@ -100,14 +107,14 @@ def dispatch(method: str, params: dict[str, Any], version: str) -> dict[str, Any
 		requested = params.get("protocolVersion")
 		return {
 			"protocolVersion": requested if requested in OLDER_VERSIONS else protocol.LEGACY_VERSION,
-			"capabilities": {"tools": {"listChanged": False}},
+			"capabilities": {"tools": {"listChanged": False}, "prompts": {"listChanged": False}},
 			**_configuration(),
 		}
 	if method == "server/discover" and version == protocol.LATEST_VERSION:
 		_seen((params.get("_meta") or {}).get(protocol.META_CLIENT))
 		return {
 			"supportedVersions": [protocol.LATEST_VERSION, *reversed(OLDER_VERSIONS)],
-			"capabilities": {"tools": {}},
+			"capabilities": {"tools": {}, "prompts": {}},
 			**_configuration(),
 			"ttlMs": CACHE_MS,
 			"cacheScope": "private",
@@ -116,6 +123,10 @@ def dispatch(method: str, params: dict[str, Any], version: str) -> dict[str, Any
 		return {}
 	if method == "tools/list":
 		return {"tools": tools.definitions(), "ttlMs": CACHE_MS, "cacheScope": "private"}
+	if method == "prompts/list":
+		return {"prompts": prompts.definitions(), "ttlMs": CACHE_MS, "cacheScope": "private"}
+	if method == "prompts/get":
+		return prompts.get(params)
 	if method == "tools/call":
 		_seen()
 		return tools.call(params)
@@ -145,6 +156,17 @@ def upload(request: Request, review_id: str) -> Response:
 		f"Guard has the change: {answer['files']} files, {answer['findings']} findings of its checks.\n"
 		f"Next: call the Guard tool review_context with review_id {review_id}.\n",
 	)
+
+
+@rate_limit(limit=KIT_PER_MINUTE, seconds=60, ip_based=True)
+def _kit(path: str) -> Response:
+	if path == INSTALL_PATH:
+		# Plain text, so a browser shows the script to read before it runs.
+		response = _text(200, kit.install_script())
+	else:
+		response = Response(kit.archive(), mimetype="application/gzip")
+	response.headers["Cache-Control"] = f"public, max-age={KIT_CACHE_SECONDS}"
+	return response
 
 
 @rate_limit(limit=UPLOADS_PER_MINUTE, seconds=60, ip_based=True)

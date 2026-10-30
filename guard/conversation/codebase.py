@@ -6,6 +6,7 @@ from typing import Any
 from guard.conversation import answer as answerer
 from guard.git.repository import store_for
 from guard.graph.queries import ChunkHit, CodeGraph
+from guard.llm.embeddings import Embedder
 from guard.review.prompts import data
 from guard.review.run import ReviewRun
 from guard.utils import db
@@ -55,12 +56,17 @@ def run_for_repository(repository: str) -> ReviewRun:
 
 
 def search(repositories: list[str], query: str, k: int = SOURCE_LIMIT) -> list[Source]:
+	rows = [
+		row
+		for repository in repositories
+		if (row := db.values("Code Repository", repository, ("full_name", "default_index", "default_branch")))
+		and row.get("default_index")
+	]
+	# One embedding for all the repositories.
+	vector = Embedder().embed_one(query) if rows else None
 	sources: list[Source] = []
-	for repository in repositories:
-		row = db.values("Code Repository", repository, ("full_name", "default_index", "default_branch")) or {}
-		if not row.get("default_index"):
-			continue
-		for hit in CodeGraph(str(row["default_index"])).search(query, k):
+	for row in rows:
+		for hit in CodeGraph(str(row["default_index"])).search(query, k, vector=vector):
 			sources.append(_source(row, hit))
 	sources.sort(key=lambda s: s.distance)
 	return sources[:k]

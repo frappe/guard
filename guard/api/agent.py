@@ -6,6 +6,7 @@ import frappe
 from frappe import _
 
 from guard.mcp.http import last_seen
+from guard.mcp.kit import install_command
 from guard.settings import public_url
 
 RECENT_REVIEWS = 5
@@ -31,12 +32,17 @@ OAUTH_FIELDS = {
 
 @frappe.whitelist(methods=["GET", "POST"])
 def connect() -> dict[str, Any]:
-	"""The address of the MCP server, the setup prompt, and when the agent of the user last called."""
+	"""The install commands, the address of the MCP server, the setup prompt for other clients, and when
+	the agent of the user last called."""
 	frappe.has_permission("Code Repository", "read", throw=True)
 	endpoint = public_url("/mcp")
 	user = str(frappe.session.user)
 	return {
 		"endpoint": endpoint,
+		# The copy command can select clients with --client; the script uses --all by default.
+		"install": install_command("--all"),
+		"install_all": install_command("--all"),
+		"install_hook": install_command("--all", "--hook", "--no-login"),
 		"prompt": SETUP_PROMPT.format(endpoint=endpoint),
 		"seen": last_seen(user),
 		"oauth_off": [_(label) for field, label in OAUTH_FIELDS.items() if not _oauth(field)],

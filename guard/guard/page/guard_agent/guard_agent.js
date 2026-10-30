@@ -1,5 +1,5 @@
-// Connect Your Agent: one prompt that the coding agent of the developer follows to add the MCP server
-// of Guard, and a status line that turns green when the agent calls Guard for the first time.
+// Connect Your Agent: one command that sets up Claude Code, Codex and pi, a prompt for other agents,
+// and a status line that turns green when the agent calls Guard for the first time.
 
 frappe.pages["guard-agent"].on_page_load = function (wrapper) {
 	const page = frappe.ui.make_app_page({
@@ -72,39 +72,105 @@ frappe.pages["guard-agent"].on_page_load = function (wrapper) {
 			</tr></thead><tbody>${rows}</tbody></table>`;
 	};
 
+	const asks = [
+		[
+			__("Review my change with Guard."),
+			__("before a push, with the team rules and the code graph"),
+		],
+		[
+			__("Fix Guard's findings on my PR."),
+			__("the open findings of the pull request of the branch"),
+		],
+		[
+			__("Guard is wrong about this: …"),
+			__("dismisses the finding, and Guard learns the reason"),
+		],
+		[__("Who calls this in other repositories?"), __("the code graph of every repository")],
+		[
+			__("What are the team rules for this file?"),
+			__("rules, instructions and learned memories"),
+		],
+	];
+
 	const render = () => {
-		const claude = `claude mcp add --transport http --scope user guard ${data.endpoint}`;
-		const codex = `codex mcp add guard --url ${data.endpoint}\ncodex mcp login guard`;
+		const examples = asks
+			.map(
+				([say, what]) =>
+					`<li>“${esc(say)}” <span class="text-muted">— ${esc(what)}</span></li>`
+			)
+			.join("");
 		$body.html(`
 			<div class="mt-2">${status()}</div>
 			${oauth()}
-			${heading(__("1. Give this prompt to your coding agent"))}
+			${heading(__("1. Choose an agent to install"))}
 			<p class="text-muted">${__(
-				"Paste it into Claude Code, Codex, Cursor or another agent. The agent adds Guard and tells you how to sign in. You sign in once, in the browser, with your Guard account."
+				"Choose one or more agents, then copy the command. You can also pass --client NAME to the installer."
+			)}</p>
+			${block("install", data.install_all)}
+			<div class="form-group mb-3">
+				<label class="control-label">${__("Agents")}</label>
+				<div class="guard-agent-choices">
+					${["claude", "codex", "pi"]
+						.map(
+							(client) => `<label class="checkbox-inline mr-3">
+								<input type="checkbox" data-agent="${client}"> ${__(client)}
+							</label>`
+						)
+						.join("")}
+				</div>
+				<button class="btn btn-default btn-xs mt-2" data-select="all">${__("Select all")}</button>
+				<button class="btn btn-default btn-xs mt-2" data-select="none">${__("Clear")}</button>
+			</div>
+			${heading(__("2. Ask your agent"))}
+			<ul class="mb-2">${examples}</ul>
+			<p class="text-muted">${__(
+				"Your agent reviews with its own model. Guard gives it the team rules, the code graph and the findings of its checks, and saves the result here. Nothing is posted to GitHub. In Claude Code, /mcp__guard__review does the same."
+			)}</p>
+			${heading(__("3. Stop pushes with P0 findings (optional)"))}
+			<p class="text-muted">${__(
+				"Run this in a repository. Before each push, your agent reviews the pushed commits with Guard, and a P0 finding stops the push. To skip it once: GUARD_SKIP=1 git push"
+			)}</p>
+			${block("install_hook", data.install_hook)}
+			${heading(__("Other agents"))}
+			<p class="text-muted">${__(
+				"Paste this prompt into Cursor, VS Code or another agent. It adds Guard and tells you how to sign in."
 			)}</p>
 			${block("prompt", data.prompt)}
-			${heading(__("2. Ask for a review before you push"))}
-			<p>${__("Say: “Review my change with Guard.”")}</p>
-			<p class="text-muted">${__(
-				"Your agent sends the diff to Guard, gets the team rules, the code graph and the findings of Guard's checks, and reviews the change with its own model. The findings are saved here. Nothing is posted to GitHub."
-			)}</p>
-			${heading(__("Set up by hand"))}
 			<p class="text-muted mb-1">${__(
-				"Claude Code: run this, then /mcp, select guard and Authenticate."
-			)}</p>
-			${block("claude", claude)}
-			<p class="text-muted mb-1">${__("Codex:")}</p>
-			${block("codex", codex)}
-			<p class="text-muted mb-1">${__(
-				"Other clients: add a streamable HTTP server with this URL and sign in with OAuth."
+				"Or add a streamable HTTP server with this URL and sign in with OAuth:"
 			)}</p>
 			${block("endpoint", data.endpoint)}
 			${heading(__("Your local reviews"))}
 			${reviews()}
 		`);
-		const texts = { prompt: data.prompt, claude, codex, endpoint: data.endpoint };
+		const $choices = $body.find("[data-agent]");
+		$choices.prop("checked", false);
+		const updateInstall = () => {
+			const selected = $choices
+				.filter(":checked")
+				.map((_, el) => $(el).data("agent"))
+				.get();
+			$body
+				.find('[data-copy="install"]')
+				.data(
+					"copy-value",
+					selected.length
+						? `${data.install} --client ${selected.join(" --client ")}`
+						: data.install_all
+				);
+		};
+		$choices.on("change", updateInstall);
+		$body.find("[data-select]").on("click", (e) => {
+			const all = $(e.currentTarget).data("select") === "all";
+			$choices.prop("checked", all);
+			updateInstall();
+		});
+		updateInstall();
 		$body.find("[data-copy]").on("click", (e) => {
-			frappe.utils.copy_to_clipboard(texts[$(e.currentTarget).attr("data-copy")]);
+			const $button = $(e.currentTarget);
+			frappe.utils.copy_to_clipboard(
+				$button.data("copy-value") || data[$button.attr("data-copy")]
+			);
 		});
 	};
 

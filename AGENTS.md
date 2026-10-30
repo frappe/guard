@@ -138,7 +138,8 @@ repo root down to the file. Scalars: the closest value wins. Rules, files, notes
 [frappectl](https://github.com/frappe/frappectl) against the same whitelisted methods and DocTypes.
 `mcp/` is the MCP server at `/mcp` (a page renderer) for local reviews: the agent of the developer
 reviews with its own model, and Guard runs no model for them (`review/local.py`). It reuses the
-protocol checks of `frappe.mcp`. Desk UI lives in `guard/guard/` as plain Frappe JS (pages, form/list scripts, reports,
+protocol checks of `frappe.mcp`. The site also serves `/mcp/install.sh` and the skills and pre-push hook
+in `guard/connect/` (`mcp/kit.py`), which set up Claude Code, Codex and pi. Desk UI lives in `guard/guard/` as plain Frappe JS (pages, form/list scripts, reports,
 workspace). There is no frontend build.
 
 Scheduled jobs and permission hooks are in `guard/hooks.py`. Team-scoped permissions are in
