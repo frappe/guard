@@ -399,24 +399,24 @@ Severity marks: 🔴 P0, 🟠 P1, 🟡 P2.
 
 ## Local reviews
 
-A local review (`source = local`) reviews a change in a working tree before it is pushed. The coding agent of the developer (Claude Code, Codex, ...) is the reviewer and pays for the model. Guard runs no model and no embedding for it, takes no credits and no review slot, and posts nothing to the code provider. The agent calls the methods of `guard/api/local.py` with frappectl or with the MCP server of Frappe ([11-surfaces.md](11-surfaces.md#local-reviews)).
+A local review (`source = local`) reviews a change in a working tree before it is pushed. The coding agent of the developer (Claude Code, Codex, ...) is the reviewer and pays for the model. Guard runs no model and no embedding for it, takes no credits and no review slot, and posts nothing to the code provider. The agent calls the tools of the MCP server of Guard ([11-surfaces.md](11-surfaces.md#mcp-server)), which call `guard/review/local.py`.
 
-1. **Start** (`start`). The agent sends `full_name`, `base` (the merge base with the default branch) and the diff of the working tree against it.
-   - Guard fetches `base` into the mirror when it is not there, and applies the diff to it in a temporary index (`GitStore.apply`). The result is a tree with no ref. A diff that does not apply fails the call.
+1. **Start** (`start_review`, then the upload). `begin` keeps a waiting session in Redis with a one-time secret, and answers with a shell command. The command sends the diff of the working tree against the merge base with the default branch to `/mcp/upload/<review_id>`, with the base, the head commit and the branch in headers. `receive` checks the secret and acts for the user who started the review. A small diff can come in `start_review` itself (`start`).
+   - Guard fetches `base` into the mirror when it is not there, and applies the diff to it in a temporary index (`GitStore.apply`). The result is a tree with no ref. A diff that does not apply fails the upload, and the review keeps waiting, so the agent can send it again.
    - The new objects go to `private/guard/local/<review_id>` (`GitStore.scratch`), with the mirror as an alternate, and not into the mirror: its repack would keep them forever. `submit` deletes the directory. An hourly job deletes those older than 6 hours.
    - The diff of the mirror between `base` and that tree is the diff of the review, so lines and paths are as on a pull request.
    - Config and rule files come from `base`, as on a pull request: the change cannot change its own rules.
    - Guard reads the last complete index of the default branch and does not index. Without one, the review has no graph.
    - Guard builds the graph overlay (changed entities, call sites at risk, blast radius, cross-repo users) and runs the deterministic checks of stage 5 (`deterministic_findings`). `FindingFilter` anchors their findings.
-   - Guard keeps the session in Redis for 6 hours: the user, the base, the tree sha and the check findings. Nothing is in the database yet.
-   - The answer has `review_id`, the check findings and `guide`: the rubric (`prompts.LOCAL`, with the severities and the strictness of the config), team instructions, team and project rules, the Frappe rules, team memories, knowledge base pages, the graph facts, the files that use the changed code, the comment types that the team rarely acts on, and how to submit.
-2. **Review.** The agent reads the code in its working tree. `symbol` gives the definitions, callers and callees of a name on the default branch.
-3. **Submit** (`submit`). The agent sends its findings and verdict once. Only the user who started the review can submit it, and only once.
+   - Guard keeps the session in Redis for 6 hours: the user, the base, the tree sha, the check findings and the guide. Nothing is in the database yet.
+   - `review_context` answers with the guide: the rubric (`prompts.LOCAL`, with the severities and the strictness of the config), team instructions, team and project rules, the Frappe rules, team memories, knowledge base pages, the graph facts, the files that use the changed code, the comment types that the team rarely acts on, and how to submit.
+2. **Review.** The agent reads the code in its working tree. `find_symbol` gives the definitions, callers and callees of a name on the default branch.
+3. **Submit** (`submit_review`). The agent sends its findings and verdict once. Only the user who started the review can submit it, and only once.
    - Guard adds the check findings, runs `FindingFilter`, drops findings on files that are not in the tree, runs `suppression.suppress` without embeddings, and caps the score with `score_cap`.
    - Guard saves a completed Code Review (`trigger = local`, `credits = 0`, no pull request, `head_sha` only when the agent sent the commit) and a Review Finding for each finding, kept or not. Nothing is posted, so `posted` stays 0.
    - The answer has the link to the Code Review and the kept and dropped findings.
 
-`start` is limited to 30 calls an hour for each user, and `symbol` to 300. Health, the metrics of the server, Guard Usage, the review counts of the analytics and of the workspace leave out local reviews. Analytics of findings count posted findings only, so local findings are left out too.
+`start_review` is limited to 30 calls an hour for each user, and `find_symbol` to 300. Health, the metrics of the server, Guard Usage, the review counts of the analytics and of the workspace leave out local reviews. Analytics of findings count posted findings only, so local findings are left out too.
 
 ## Payload reviews
 

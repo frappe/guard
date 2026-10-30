@@ -233,7 +233,7 @@ Index a repository, get its status, ask a question, search code.
 
 ### S3. Terminal and coding agents
 
-frappectl reads reviews and findings and calls the whitelisted methods, with the permissions of the user. MCP clients use the MCP server of Frappe. Guard has no CLI or MCP server of its own. Local reviews (R10) use the same methods.
+frappectl reads reviews and findings and calls the whitelisted methods, with the permissions of the user. Guard has no CLI of its own. Coding agents connect to the MCP server of Guard for local reviews (R10). The Connect Your Agent page gives one setup prompt, and shows when the agent has connected.
 
 ### S5. Fix with your agent
 

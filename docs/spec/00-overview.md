@@ -19,7 +19,7 @@ This document set is the specification. Code follows the spec. When the code and
 | [08-learning.md](08-learning.md) | Feedback, addressed detection, memories, suppression |
 | [09-knowledge-base.md](09-knowledge-base.md) | Generated repository documentation |
 | [10-integrations.md](10-integrations.md) | Code providers, Jira, Linear, cross-repo context |
-| [11-surfaces.md](11-surfaces.md) | Desk UI, query API, frappectl, fix with your agent |
+| [11-surfaces.md](11-surfaces.md) | Desk UI, query API, frappectl, MCP server, fix with your agent |
 | [12-security.md](12-security.md) | Roles, permissions, secrets, untrusted input |
 | [13-ideas.md](13-ideas.md) | Brainstorm: ideas past the baseline |
 | [TODO.md](TODO.md) | Build order and task list |
@@ -32,7 +32,7 @@ This document set is the specification. Code follows the spec. When the code and
 | Reviewer | Reads a summary, a risk score and a diagram before reading the diff. |
 | Team lead | Sets standards, rules and strictness. Reads analytics. |
 | Admin | Connects code providers, picks LLM models, manages people and repositories. |
-| Coding agent | Reads findings and rules through the REST API, with frappectl. |
+| Coding agent | Runs local reviews through the MCP server of Guard. Reads findings with frappectl. |
 
 ## Glossary
 

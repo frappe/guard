@@ -1,5 +1,6 @@
 import os
 import shutil
+import subprocess
 import time
 from contextlib import ExitStack
 from unittest.mock import patch
@@ -7,7 +8,6 @@ from unittest.mock import patch
 import frappe
 from frappe.tests import IntegrationTestCase
 
-from guard import install
 from guard.git.repository import store_for
 from guard.git.store import GitError
 from guard.indexing.jobs import ensure_fresh
@@ -24,7 +24,9 @@ NEW_SIGNATURE = MODELS.replace(
 KEY_LINE = 'BACKUP_KEY = "AKIAABCDEFGHIJKLMNOP"\n'
 
 
-class TestLocalReview(IntegrationTestCase):
+class LocalCase(IntegrationTestCase):
+	"""A repository with an index, and a change in its working tree."""
+
 	def setUp(self):
 		self.repo = TempRepo({"app/__init__.py": "", "app/models.py": MODELS, "app/service.py": SERVICE})
 		self.full_name = f"acme/{frappe.generate_hash(length=6)}"
@@ -55,6 +57,8 @@ class TestLocalReview(IntegrationTestCase):
 			f"git@github.com:{self.full_name}.git", self.base, diff or self.working_tree_diff(), "feature"
 		)
 
+
+class TestLocalReview(LocalCase):
 	def test_apply_writes_the_tree_of_the_base_with_the_patch(self):
 		store = store_for(self.repository)
 		store.fetch_sha(self.base)
@@ -79,7 +83,7 @@ class TestLocalReview(IntegrationTestCase):
 		self.assertIn("update_user_email", guide)
 		self.assertIn("app/service.py", guide)
 		self.assertIn(started["review_id"], guide)
-		self.assertIn("guard.api.local.submit", guide)
+		self.assertIn("submit_review", guide)
 		# Nothing is saved before the agent submits.
 		self.assertFalse(frappe.db.exists("Code Review", {"repository": self.repository}))
 
@@ -190,6 +194,51 @@ class TestLocalReview(IntegrationTestCase):
 		local.remove_abandoned()
 		self.assertFalse(objects.exists())
 
+	def test_an_upload_needs_the_secret_and_works_once(self):
+		review_id, secret = local.begin(self.full_name)
+		diff = self.working_tree_diff().encode()
+		with self.assertRaises(frappe.PermissionError):
+			local.receive(review_id, "wrong", diff, self.base)
+		with self.assertRaises(frappe.ValidationError):
+			local.receive(review_id, secret, diff, "not-a-sha")
+		with self.assertRaises(frappe.ValidationError):
+			local.receive(review_id, secret, b"", self.base)
+		# A failed upload keeps the review waiting, so the agent can send the diff again.
+		received = local.receive(review_id, secret, diff, self.base, "feature", self.base)
+		self.assertEqual(received["files"], 2)
+		with self.assertRaises(frappe.PermissionError):
+			local.receive(review_id, secret, diff, self.base)
+		context = local.context_for(review_id)
+		self.assertIn("update_user_email", context["guide"])
+		name = local.submit(review_id, [])["review"]
+		review = db.values("Code Review", name, ("branch", "head_sha")) or {}
+		self.assertEqual(review["branch"], "feature")
+		self.assertEqual(review["head_sha"], self.base)
+
+	def test_the_body_is_read_after_the_secret_is_checked(self):
+		review_id, _secret = local.begin(self.full_name)
+		with self.assertRaises(frappe.PermissionError):
+			local.receive(review_id, "wrong", self.no_model, self.base)
+
+	def test_a_diff_of_a_file_in_another_encoding_applies(self):
+		(self.repo.path / "app/latin.py").write_bytes("NAME = 'Jos\xe9'\n".encode("latin-1"))
+		self.repo.git("add", "-N", "app/latin.py")
+		diff = subprocess.run(
+			["git", "diff", "--binary", self.base], cwd=self.repo.path, capture_output=True, check=True
+		).stdout
+		review_id, secret = local.begin(self.full_name)
+		local.receive(review_id, secret, diff, self.base)
+		tree = local.context_for(review_id)["tree"]
+		store = store_for(self.repository).scratch(local._objects(review_id))
+		self.assertEqual(store._git("cat-file", "-s", f"{tree}:app/latin.py").strip(), "14")
+
+	def test_a_review_without_its_diff_has_no_context(self):
+		review_id, _secret = local.begin(self.full_name)
+		with self.assertRaises(frappe.ValidationError):
+			local.context_for(review_id)
+		with self.assertRaises(frappe.ValidationError):
+			local.submit(review_id, [])
+
 	def test_a_diff_that_does_not_apply_fails(self):
 		diff = "diff --git a/app/models.py b/app/models.py\n--- a/app/models.py\n+++ b/app/models.py\n@@ -1,1 +1,1 @@\n-nothing here\n+x\n"
 		with self.assertRaises(frappe.ValidationError):
@@ -203,17 +252,3 @@ class TestLocalReview(IntegrationTestCase):
 		definitions = local.symbol(self.full_name, "update_user_email")["definitions"]
 		self.assertEqual(definitions[0]["path"], "app/models.py")
 		self.assertIn("app/service.py", [c["path"] for c in definitions[0]["callers"]])
-
-
-class TestAgentInstructions(IntegrationTestCase):
-	def test_install_fills_empty_agent_instructions_only(self):
-		frappe.db.set_single_value("System Settings", "agent_instructions", "")
-		install.add_agent_instructions()
-		self.assertEqual(
-			frappe.db.get_single_value("System Settings", "agent_instructions"), install.AGENT_INSTRUCTIONS
-		)
-		frappe.db.set_single_value("System Settings", "agent_instructions", "Our own words.")
-		install.add_agent_instructions()
-		self.assertEqual(
-			frappe.db.get_single_value("System Settings", "agent_instructions"), "Our own words."
-		)

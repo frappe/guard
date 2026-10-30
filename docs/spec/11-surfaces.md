@@ -144,7 +144,7 @@ A repository id is `<remote>:<branch>:<owner/repo>`, for example `github:main:ac
 
 ## Terminal and coding agents
 
-Guard has no CLI and no MCP server of its own. People and coding agents use [frappectl](https://github.com/frappe/frappectl), a REST API v2 client for any Frappe site. It signs in with OAuth or an API key and keeps the permissions of the user. Every DocType and whitelisted method is open to it, so Guard does not need a second API.
+Guard has no CLI of its own. People and scripts use [frappectl](https://github.com/frappe/frappectl), a REST API v2 client for any Frappe site. It signs in with OAuth or an API key and keeps the permissions of the user. Every DocType and whitelisted method is open to it, so Guard does not need a second API.
 
 ```bash
 uv tool install frappectl
@@ -157,34 +157,52 @@ frappectl -s guard api method/guard.api.v2.search -F query="where do we retry we
 ```
 
 - `frappectl guide` explains the commands to an agent.
-- MCP clients use the MCP server of Frappe at `<site>/api/v2/mcp`, with OAuth or an API key. Its tool `call_method` calls the same methods. For example: `claude mcp add --transport http guard https://<site>/api/v2/mcp`, then `claude mcp login guard`.
-- On install, Guard sets **System Settings › Agent Instructions** when it is empty. It tells MCP clients to call `guard.api.local.guide` for a review before a push.
+- Coding agents use the MCP server of Guard for local reviews ([MCP server](#mcp-server)).
 - Write methods (`rereview`, `set_finding_status`, ...) check the same permissions as in Desk.
 
-## Local reviews
+## MCP server
 
-A coding agent reviews a change before it is pushed, with its own model. Guard gives it the rules, the graph and its check findings, and keeps the result ([05-review-engine.md](05-review-engine.md#local-reviews)).
+Coding agents (Claude Code, Codex, Cursor, VS Code, ...) connect to `https://<site>/mcp` for local reviews ([05-review-engine.md](05-review-engine.md#local-reviews)). The agent of the developer is the reviewer and pays for the model. Guard gives it the rules, the graph and its check findings, and keeps the result.
 
-| Method | HTTP | Arguments | Answer |
-| - | - | - | - |
-| `guard.api.local.guide` | GET | | The workflow, for the agent |
-| `guard.api.local.start` | POST | `full_name`, `base`, `diff`, `branch`, `head`, `instructions` | `review_id`, `tree` (the sha of the reviewed tree), `findings` of the checks, `guide` |
-| `guard.api.local.symbol` | GET | `full_name`, `name` | Definitions with callers and callees |
-| `guard.api.local.submit` | POST | `review_id`, `findings`, `summary`, `confidence_score`, `confidence_reason`, `risk_level`, `risk_reason` | `review`, `url`, `kept`, `dropped` |
+**Connect.** The Desk page **Connect Your Agent** (`guard-agent`) has:
 
-- `full_name` is `owner/name`, or a remote URL such as `git@github.com:owner/name.git`.
-- The agent sends the diff from the shell, so the diff costs no tokens:
+- One setup prompt for the agent. The agent adds the server at user scope with the command or the config file of its own client, and tells the developer how to sign in. The prompt names the usual mistakes: an overwritten config file, the top-level key of each client, a header or token where OAuth is used.
+- The commands for Claude Code (`claude mcp add --transport http --scope user guard <site>/mcp`, then `/mcp` › Authenticate) and Codex (`codex mcp add guard --url <site>/mcp`, then `codex mcp login guard`).
+- A status line. It turns green when the agent of the user calls Guard, and names the client. The page asks again every 5 seconds until then.
+- A warning when an OAuth setting that the sign-in needs is off.
+- The last 5 local reviews of the user.
+
+**Sign-in.** The agent signs in with the OAuth of the site. A 401 has the `WWW-Authenticate` header of Frappe, which points to `/.well-known/oauth-protected-resource`. The client registers itself (dynamic client registration) and opens the browser once. The protected resource of Frappe is the site URL, so the Public URL in Guard Settings, when set, must have the same host. These OAuth Settings must be on, and are on by default: Show Protected Resource Metadata, Show Auth Server Metadata, Enable Dynamic Client Registration. An API key in `Authorization: token <key>:<secret>` also works.
+
+**Protocol.** `guard/mcp/http.py` is a page renderer, so the address is short. It is stateless: one JSON-RPC message for each POST, one JSON answer, no SSE (GET gets 405). It uses the checks and envelopes of `frappe.mcp` and answers the revisions 2025-03-26, 2025-06-18, 2025-11-25 (`initialize`) and 2026-07-28 (`server/discover`). The `instructions` give the workflow of a local review. A request needs a user signed in by a token (OAuth or an API key): a browser session alone gets 401. A user without a Guard role can connect, and each tool answers that they need the Guard Member role. A 403 would make some clients sign in again. JSON-RPC batches (allowed by 2025-03-26) are not supported. There is no CORS answer, so browser-based clients such as the MCP Inspector need `allow_cors`.
+
+| Tool | Arguments | Answer |
+| - | - | - |
+| `list_repositories` | | The site, the user and the repositories that they can review. The setup prompt calls it to check the connection. |
+| `start_review` | `repository` (the `origin` URL or `owner/name`), `instructions`; without a shell also `diff` and `base` | `review_id` and `command`, the shell command that sends the diff. With `diff`: the guide at once. |
+| `review_context` | `review_id` | The guide: rubric, rules, graph facts, check findings and how to submit |
+| `find_symbol` | `repository`, `name` | Definitions on the default branch, with callers and callees |
+| `submit_review` | `review_id`, `findings`, `summary`, `confidence_score`, `confidence_reason`, `risk_level`, `risk_reason` | `review`, `url`, `kept`, `dropped` |
+
+- A failed tool is a tool result with `isError` and a message that says what to do next.
+- A finding has `path`, `start_line`, `end_line`, `severity`, `comment_type`, `title`, `body`, and can have `category`, `suggestion`, `rule_id` and `confidence`.
+
+**The diff.** The model does not write out the diff. `command` sends it from the shell:
 
 ```bash
-base=$(git merge-base HEAD origin/develop)
-git diff --binary "$base" | jq -Rs --arg base "$base" '{full_name: "acme/api", base: $base, diff: .}' \
-  | frappectl -s guard api method/guard.api.local.start --input -
+cd "$(git rev-parse --show-toplevel)" && base=$(git merge-base HEAD origin/develop) && \
+git diff --binary "$base" | curl -sS --fail-with-body -X POST \
+  -H 'Content-Type: application/octet-stream' -H 'X-Guard-Upload: <secret>' \
+  -H "X-Guard-Base: $base" -H "X-Guard-Head: $(git rev-parse HEAD)" \
+  -H "X-Guard-Branch: $(git branch --show-current)" --data-binary @- '<site>/mcp/upload/<review_id>'
 ```
 
-- Untracked files are not in `git diff`. The guide tells the agent to run `git add -N` on the new files of the change.
-- Over MCP, the diff is a tool argument, and the model writes it out. The guide allows this for small diffs only.
-- A finding has `path`, `start_line`, `end_line`, `severity`, `comment_type`, `title`, `body`, and can have `category`, `suggestion`, `rule_id` and `confidence`.
-- A git `pre-push` hook can run the review headless, for example with `claude -p "Run a Guard local review"`.
+- The upload has no session. The one-time secret of the review is the credential, and the upload acts for the user who started the review. The answer is plain text for the shell, and names the next tool call. An error is a 4xx with `error: <what to do>`.
+- Guard sends the bytes of the diff to `git apply` as they are, so a text file in another encoding than UTF-8 applies.
+- The default branch goes into the command without quotes, so `start_review` refuses a branch with other characters than letters, digits and `._/-`.
+- Untracked files are not in `git diff`. The instructions tell the agent to run `git add -N` on the new files of the change.
+- Without a shell (Claude Desktop), the agent passes `diff` and `base` to `start_review`. The instructions allow this for small diffs only.
+- A git `pre-push` hook can run the review headless, for example with `claude -p "Review my change with Guard"`.
 
 ## Fix with your agent
 

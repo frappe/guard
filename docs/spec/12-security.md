@@ -47,7 +47,12 @@ Four settings, each `Everyone`, `Organization members` or `Guard users`:
 - A local review needs read permission on the Code Repository. Only the user who started it can submit it, and only once.
 - Config and rule files come from the base commit, not from the diff, so a change cannot weaken its own review.
 - Guard applies the diff in a temporary index and a scratch object directory. No ref, branch, working tree or mirror object changes, and Guard runs no code from it.
-- A diff can be 5 MB at most. `start` takes 30 calls an hour for each user.
+- A diff can be 5 MB at most.
+- The MCP server takes only a user signed in by a token in the `Authorization` header (OAuth or an API key). Frappe sets the session id to the user for a token and to a hash for a browser session, so a browser session alone gets 401 and a page that the browser opens cannot call the tools. `frappe.mcp` checks the `Origin` header.
+- `start_review` takes 30 calls an hour for each user, `submit_review` 30 and `find_symbol` 300. The upload takes 60 calls a minute from one address.
+- The command that the agent runs has the default branch without quotes. Guard refuses a branch or a site URL with characters that a shell reads.
+- The upload has no session. Its credential is a 32-character secret in a header, not in the URL, so it is not in access logs. Redis keeps only its blake2b digest, and compares it in constant time. It works once: after a good upload the session drops it. It ends with the session after 6 hours.
+- The upload checks the secret before it reads the body, and again under the lock of the review. It acts for the user who started the review, and checks again that the user is enabled and can read the repository. The IP restriction of the user does not apply to it: the secret is the credential.
 - The guide wraps team text, memories and knowledge base pages in `<data>` blocks.
 - The Code Review keeps the findings, not the diff. The session in Redis holds no diff: `submit` diffs the base and the tree again.
 - `branch` is cut to 140 characters and `instructions` to 4000. A finding body is cut to 4000 characters.

@@ -23,6 +23,9 @@ add_to_apps_screen = [
 	}
 ]
 
+# The MCP server of Guard at `/mcp`, and the upload of diffs for local reviews.
+page_renderer = ["guard.mcp.http.Renderer"]
+
 before_install = "guard.install.before_install"
 after_install = "guard.install.after_install"
 after_migrate = "guard.install.after_migrate"

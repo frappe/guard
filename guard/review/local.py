@@ -1,18 +1,24 @@
 """Local reviews: the coding agent of a developer reviews a change before it is pushed, and pays for
 the model. Guard applies the diff in its mirror, runs its checks and the code graph, and gives the
-agent the rules and the context. Guard runs no model for it. See docs/spec/05-review-engine.md
-(Local reviews)."""
+agent the rules and the context. Guard runs no model for it. The agent calls these functions through
+the MCP tools in `guard/mcp/tools.py`. See docs/spec/05-review-engine.md (Local reviews).
+
+A review moves through three states in the Redis cache: `waiting` for the diff, `ready` with the
+guide, and gone after `submit`. Nothing is in the database before `submit`."""
 
 import dataclasses
+import hashlib
+import hmac
 import re
 import shutil
 import time
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
 import frappe
 from frappe import _
-from frappe.utils import get_url, now_datetime, time_diff_in_seconds
+from frappe.utils import now_datetime, time_diff_in_seconds
 
 from guard.config.resolver import ConfigResolver
 from guard.git.diff import parse_diff
@@ -39,7 +45,8 @@ MAX_FILES = 300  # as many as a payload review
 MAX_FINDINGS = 100  # findings that one submit can send
 # How long a started review waits for its findings. An agent session is rarely longer.
 SESSION_TTL = 6 * 60 * 60
-MAX_GUIDE_CHARS = 80_000  # the agent reads the guide once, so it can be long
+# The agent reads the guide once, so it can be long. MCP clients cut tool answers at about 25k tokens.
+MAX_GUIDE_CHARS = 80_000
 MAX_KNOWLEDGE_CHARS = 3000
 MAX_IMPACTED = 20
 MAX_SYMBOLS = 5
@@ -48,6 +55,9 @@ MAX_INSTRUCTIONS = 4000
 MAX_BODY = 4000  # a finding body is at most 3 sentences; this only stops abuse
 MAX_SUGGESTION = 20_000
 SHA = re.compile(r"[0-9a-f]{7,64}")
+REVIEW_ID = re.compile(r"[0-9a-f]{16}")
+
+WAITING, READY = "waiting", "ready"
 
 FINDING_FIELDS = """Each finding is an object with these keys:
 - path (required): the file, relative to the repository root.
@@ -64,51 +74,14 @@ FINDING_FIELDS = """Each finding is an object with these keys:
 SUBMIT = (
 	"""How to finish:
 1. Show the findings to the developer: severity, path:line, title and body.
-2. Send the findings to Guard once, also when you found nothing. Guard keeps them with the
-   findings of its checks, so the team sees what local reviews catch. Guard posts nothing to the
-   code provider. Write the arguments to a JSON file, then run:
-   frappectl api method/guard.api.local.submit --input <file>
-   Or use the MCP tool `call_method` with method `guard.api.local.submit`.
-   Arguments: {{"review_id": "{review_id}", "findings": [...], "summary": "...",
-   "confidence_score": 0-5, "confidence_reason": "...", "risk_level": "low|medium|high|critical",
-   "risk_reason": "..."}}
-3. Tell the developer the link in the answer of `submit`.
+2. Call `submit_review` once, also when you found nothing, with review_id "{review_id}". Guard keeps
+   the findings with those of its checks, so the team sees what local reviews catch. Guard posts
+   nothing to the code provider.
+3. Give the developer the link in the answer of `submit_review`.
 
 """
 	+ FINDING_FIELDS
 )
-
-GUIDE = """# Guard local review
-
-Guard reviews a change before you push it. You are the reviewer: Guard runs no model for a local
-review. Guard gives you the team rules, its code graph and the findings of its checks.
-
-1. Find the repository and the base. `full_name` is `owner/name` of the `origin` remote. The base
-   is the merge base with the default branch:
-   git fetch origin <default branch>
-   base=$(git merge-base HEAD origin/<default branch>)
-2. Include new files: `git add -N <file>` for each untracked file that belongs to the change.
-3. Start the review. Send the diff from the shell, not as a tool argument, so it costs no tokens:
-   git diff --binary "$base" | jq -Rs --arg full_name "<owner/name>" --arg base "$base" \\
-     --arg branch "$(git branch --show-current)" --arg head "$(git rev-parse HEAD)" \\
-     '{{full_name: $full_name, base: $base, branch: $branch, head: $head, diff: .}}' \\
-     | frappectl api method/guard.api.local.start --input -
-   Add `"instructions": "..."` to ask for a focus. Use the frappectl profile of {site}.
-   `jq -Rs` reads text as UTF-8. A diff of a text file in another encoding does not apply.
-4. The answer has `review_id`, `findings` of Guard's checks and `guide`. Follow `guide`: it has
-   the rubric, the rules and the graph facts for this change.
-5. To see the callers and callees of a symbol on the default branch, call
-   `guard.api.local.symbol` with `full_name` and `name`.
-6. Finish as `guide` says: show the findings, then call `guard.api.local.submit`.
-
-Without frappectl, call `guard.api.local.start` with the MCP tool `call_method`. Then the diff is a
-tool argument: do this only for a small diff.
-
-Do not push for the developer. A local review does not replace the review of the pull request."""
-
-
-def guide() -> str:
-	return GUIDE.format(site=get_url())
 
 
 def repository_for(full_name: str) -> str:
@@ -121,35 +94,135 @@ def repository_for(full_name: str) -> str:
 	raise AssertionError  # frappe.throw raises
 
 
+def repositories() -> list[str]:
+	"""The `owner/name` of each repository that the user can review."""
+	return [str(r) for r in frappe.get_list("Code Repository", pluck="full_name", order_by="full_name")]
+
+
+def begin(full_name: str, instructions: str = "") -> tuple[str, str]:
+	"""Start a review that waits for its diff. Return the review id and the secret of the upload."""
+	repository = repository_for(full_name)
+	review_id, secret = frappe.generate_hash(length=16), frappe.generate_hash(length=32)
+	cache.set(
+		_key(review_id),
+		{
+			"state": WAITING,
+			"user": frappe.session.user,
+			"repository": repository,
+			"instructions": instructions.strip()[:MAX_INSTRUCTIONS],
+			"secret": _digest(secret),
+			"started_at": now_datetime(),
+		},
+		SESSION_TTL,
+	)
+	return review_id, secret
+
+
+def waiting(review_id: str, secret: str) -> dict[str, Any]:
+	"""The waiting review that `secret` opens. The upload checks it before it reads the diff."""
+	session = cache.get(_key(review_id)) if REVIEW_ID.fullmatch(review_id or "") else None
+	if not (
+		session
+		and session.get("state") == WAITING
+		and hmac.compare_digest(str(session.get("secret")), _digest(secret or ""))
+	):
+		frappe.throw(_("This upload is used or expired. Call start_review again."), frappe.PermissionError)
+		raise AssertionError  # frappe.throw raises
+	return session
+
+
+def receive(
+	review_id: str,
+	secret: str,
+	diff: bytes | Callable[[], bytes],
+	base: str,
+	branch: str = "",
+	head: str = "",
+) -> dict[str, Any]:
+	"""Take the diff of a waiting review from the upload of the shell, and act for the user who started
+	the review. The secret is the credential: the upload has no session. `diff` can be a function, so
+	the body is read only after the secret is checked. When the diff does not apply, the review keeps
+	waiting, so the agent can send it again."""
+	waiting(review_id, secret)
+	with cache.exclusive(f"guard:local-receive:{review_id}", 600) as acquired:
+		if not acquired:
+			frappe.throw(_("Guard is reading another upload of this review. Wait for it."))
+		# Again under the lock: another upload can have used the secret.
+		session = waiting(review_id, secret)
+		user = str(session["user"])
+		if not frappe.db.get_value("User", user, "enabled"):
+			frappe.throw(_("User {0} is disabled.").format(user), frappe.PermissionError)
+		frappe.set_user(user)
+		frappe.has_permission("Code Repository", "read", str(session["repository"]), throw=True)
+		_set_change(session, base, branch, head)
+		return _prepare(review_id, session, diff() if callable(diff) else diff)
+
+
 def start(
 	full_name: str, base: str, diff: str, branch: str = "", head: str = "", instructions: str = ""
 ) -> dict[str, Any]:
-	"""Apply the diff to `base`, run the checks and the graph, and keep the review for `submit`."""
-	if len(diff.encode()) > MAX_DIFF_BYTES:
+	"""Start a review with the diff in the call. Only for small diffs: a model writes out each byte."""
+	review_id, _secret = begin(full_name, instructions)
+	session = _session(review_id)
+	_set_change(session, base, branch, head)
+	_prepare(review_id, session, diff)
+	return context_for(review_id)
+
+
+def context_for(review_id: str) -> dict[str, Any]:
+	"""The guide and the check findings of a review whose diff Guard has."""
+	session = _session(review_id)
+	if session["state"] != READY:
+		frappe.throw(
+			_("Guard does not have the diff of review {0} yet. Run the upload command.").format(review_id)
+		)
+	return {
+		"review_id": review_id,
+		"repository": session["full_name"],
+		"base": session["base"],
+		"tree": session["tree"],
+		"files": session["files"],
+		"findings": [_finding(Finding(**f)) for f in session["checks"]],
+		"guide": session["guide"],
+	}
+
+
+def _set_change(session: dict[str, Any], base: str, branch: str, head: str) -> None:
+	session["base"] = _commit(store_for(str(session["repository"])), base)
+	session["branch"] = branch.strip()[:MAX_BRANCH]
+	session["head"] = head.strip().lower() if SHA.fullmatch(head.strip().lower()) else ""
+
+
+def _prepare(review_id: str, session: dict[str, Any], diff: str | bytes) -> dict[str, Any]:
+	"""Apply the diff to the base, run the checks and the graph, and keep the guide."""
+	# Bytes as git wrote them: a text file in another encoding than UTF-8 must still apply.
+	diff = diff.encode() if isinstance(diff, str) else diff
+	if len(diff) > MAX_DIFF_BYTES:
 		frappe.throw(_("The diff is larger than {0} MB.").format(MAX_DIFF_BYTES // 1_000_000))
-	branch, instructions = branch.strip()[:MAX_BRANCH], instructions.strip()[:MAX_INSTRUCTIONS]
-	repository = repository_for(full_name)
-	base = _commit(store_for(repository), base)
-	review_id = frappe.generate_hash(length=16)
+	if not diff.strip():
+		frappe.throw(
+			_(
+				"The diff is empty. Check that `git diff` works and that the change is not committed to the default branch."
+			)
+		)
 	try:
-		return _start(review_id, repository, base, diff, branch, head, instructions)
+		return _apply(review_id, session, diff)
 	except BaseException:
 		shutil.rmtree(_objects(review_id), ignore_errors=True)
 		raise
 
 
-def _start(
-	review_id: str, repository: str, base: str, diff: str, branch: str, head: str, instructions: str
-) -> dict[str, Any]:
+def _apply(review_id: str, session: dict[str, Any], diff: bytes) -> dict[str, Any]:
+	repository, base = str(session["repository"]), str(session["base"])
 	store = store_for(repository).scratch(_objects(review_id))
 	try:
-		tree = store.apply(base, diff if diff.endswith("\n") else diff + "\n")
+		tree = store.apply(base, diff if diff.endswith(b"\n") else diff + b"\n")
 	except GitError as error:
 		frappe.throw(_("The diff does not apply to {0}: {1}").format(base[:12], redact(str(error))[:500]))
 		raise
 	# The diff of the mirror, not the one sent: it has the same form as on a pull request.
 	diff_text = store.diff(base, tree)
-	run = _run(repository, store, base, tree, diff_text, branch)
+	run = _run(repository, store, base, tree, diff_text, session["branch"])
 	if not run.files:
 		frappe.throw(_("The diff has no files to review: they are ignored, binary or empty."))
 	index = _index(run)
@@ -168,30 +241,19 @@ def _start(
 	found = deterministic_findings(run, others, index)
 	FindingFilter(run.files, run.settings).run(found)
 	found = [f for f in found if f.kept]
-	cache.set(
-		_key(review_id),
+	session.update(
 		{
-			"user": frappe.session.user,
-			"repository": repository,
-			"base": base,
+			"state": READY,
+			"secret": None,
+			"full_name": run.full_name,
 			"tree": tree,
-			"head": head if SHA.fullmatch(head or "") else "",
-			"branch": branch,
-			"instructions": instructions,
+			"files": len(run.files),
 			"checks": [dataclasses.asdict(f) for f in found],
-			"started_at": now_datetime(),
-		},
-		SESSION_TTL,
+			"guide": guide_for(run, found, review_id, session["instructions"]),
+		}
 	)
-	return {
-		"review_id": review_id,
-		"repository": run.full_name,
-		"base": base,
-		"tree": tree,
-		"files": len(run.files),
-		"findings": [_finding(f) for f in found],
-		"guide": guide_for(run, found, review_id, instructions),
-	}
+	cache.set(_key(review_id), session, SESSION_TTL)
+	return {"review_id": review_id, "files": len(run.files), "findings": len(found)}
 
 
 def guide_for(run: ReviewRun, found: list[Finding], review_id: str, instructions: str = "") -> str:
@@ -244,10 +306,11 @@ def submit(
 	with cache.exclusive(f"guard:local-submit:{review_id}", 120) as acquired:
 		if not acquired:
 			frappe.throw(_("Review {0} is being submitted now. Wait for that call.").format(review_id))
-		session = cache.get(_key(review_id))
-		if not session or session.get("user") != frappe.session.user:
-			frappe.throw(_("Guard has no started review {0}. Start the review again.").format(review_id))
-			raise AssertionError  # frappe.throw raises
+		session = _session(review_id)
+		if session["state"] != READY:
+			frappe.throw(
+				_("Guard does not have the diff of review {0}. Run the upload command.").format(review_id)
+			)
 		repository = str(session["repository"])
 		frappe.has_permission("Code Repository", "read", repository, throw=True)
 		store = store_for(repository).scratch(_objects(review_id))
@@ -461,6 +524,19 @@ def _finding(finding: Finding) -> dict[str, Any]:
 
 def _key(review_id: str) -> str:
 	return f"guard:local-review:{review_id}"
+
+
+def _session(review_id: str) -> dict[str, Any]:
+	"""The review that this user started."""
+	session = cache.get(_key(str(review_id)))
+	if not session or session.get("user") != frappe.session.user:
+		frappe.throw(_("Guard has no started review {0}. Call start_review again.").format(review_id))
+		raise AssertionError  # frappe.throw raises
+	return session
+
+
+def _digest(secret: str) -> str:
+	return hashlib.blake2b(secret.encode(), digest_size=32).hexdigest()
 
 
 def _objects(review_id: str) -> Path:

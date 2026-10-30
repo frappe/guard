@@ -189,7 +189,7 @@ class GitStore:
 		)
 		return _parse_batch(process.stdout)
 
-	def apply(self, base: str, patch: str) -> str:
+	def apply(self, base: str, patch: str | bytes) -> str:
 		"""Write the tree of `base` with `patch` applied, and return its sha. No ref points at it.
 
 		A temporary index holds the result, so no ref changes. Use it on a `scratch` store, so the
@@ -296,7 +296,7 @@ class GitStore:
 		self,
 		*args: str,
 		auth: bool = False,
-		stdin: str | None = None,
+		stdin: str | bytes | None = None,
 		config: tuple[str, ...] = (),
 		env: dict[str, str] | None = None,
 	) -> str:
@@ -309,7 +309,7 @@ class GitStore:
 		try:
 			result = subprocess.run(
 				command,
-				input=stdin.encode() if stdin is not None else None,
+				input=stdin.encode() if isinstance(stdin, str) else stdin,
 				capture_output=True,
 				timeout=TIMEOUT,
 				env={**self._env(), **(env or {})},

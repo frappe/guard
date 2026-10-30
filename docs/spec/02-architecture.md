@@ -20,7 +20,7 @@ flowchart LR
     REV -- comments, status, reactions --> SCM
     UI[Frappe Desk] --> API[Whitelisted API]
     FCTL[frappectl and coding agents] --> API
-    AGT[MCP clients] --> FMCP[Frappe MCP server] --> API
+    AGT[Coding agents] --> MCP[Guard MCP server] --> REV
     API --> DB
 ```
 
@@ -38,7 +38,8 @@ flowchart LR
 | Knowledge base | `guard/knowledge/` | Generates and syncs repository documents. |
 | Integrations | `guard/integrations/` | Jira, Confluence, Linear. |
 | LLM layer | `guard/llm/` | Chat, tool calls, structured output, embeddings, usage. |
-| API | `guard/api/` | Whitelisted methods for the UI, the query API and local reviews (`local.py`). frappectl and the MCP server of Frappe call the same methods. |
+| API | `guard/api/` | Whitelisted methods for the UI and the query API. frappectl calls the same methods. |
+| MCP server | `guard/mcp/` | `/mcp` for coding agents: the tools of local reviews, and the upload of their diffs. |
 | Desk UI | `guard/guard/` | Workspace, form scripts, desk pages, reports, number cards, charts. |
 
 ## AI providers
