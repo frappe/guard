@@ -10,6 +10,9 @@ from guard.review.rule_files import RULE_PREFIX
 from guard.review.run import ReviewRun
 from guard.utils import db
 
+# The check of a review in an outage: no model read the commit yet (`ReviewRun.outage`).
+OUTAGE_TEXT = "Checks posted. The AI review waits for an AI provider that is down"
+
 
 class Publisher:
 	def __init__(self, run: ReviewRun):
@@ -188,7 +191,12 @@ class Publisher:
 			score = self.run.verdict.confidence_score
 			open_count = self._open_findings()
 			text = f"{score}/5 · {open_count} open finding(s)"
-			self._status("success" if score == 5 and not open_count else "failure", text)
+			if self.run.outage:
+				# The full review follows, so this is not the result. A required check stays open, as
+				# it does while reviews wait for the AI provider.
+				self._status("queued", f"{OUTAGE_TEXT} · {open_count} open finding(s)")
+			else:
+				self._status("success" if score == 5 and not open_count else "failure", text)
 		elif not posted and self.run.settings.get("status_comments"):
 			self.adapter.post_comment(
 				self.repo, self.number, f"{len(self.run.files)} files reviewed, no comments."

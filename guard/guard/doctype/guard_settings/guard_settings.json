@@ -8,6 +8,7 @@
  "field_order": [
   "gateway_tab",
   "offline_mode",
+  "outage_fallback_after",
   "default_ai_provider",
   "gateway_col",
   "request_timeout",
@@ -89,6 +90,15 @@
    "fieldname": "offline_mode",
    "fieldtype": "Check",
    "label": "Offline Mode"
+  },
+  {
+   "default": "900",
+   "depends_on": "eval:!doc.offline_mode",
+   "description": "Seconds that a review waits for an AI provider that is down. Then it posts the checks that need no model, and a full review follows when the AI provider answers. 0: reviews wait for the AI provider.",
+   "fieldname": "outage_fallback_after",
+   "fieldtype": "Int",
+   "label": "Review Without AI After (Seconds)",
+   "non_negative": 1
   },
   {
    "description": "Serves every model that has no AI provider of its own. Blank means offline mode.",

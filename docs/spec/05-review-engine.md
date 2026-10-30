@@ -49,7 +49,7 @@ Every 5 minutes, and once after each migrate, `fail_dead_reviews` looks for the 
 ### Failure
 
 - A gateway 402 or 429 puts the job back in the queue with a delay: 2, 10, 20, then 40 minutes. Rate limits can last an hour. Before that, the HTTP client waits for a short time, and calls that ran side by side go again one at a time, so the turns already done are kept.
-- An AI provider that keeps failing (5xx answers or no connection, after the retries) is an outage. The review goes back to the queue. Three outages in a row open the breaker of that AI provider, and the reviews that call it wait without using up their retries ([02-architecture.md](02-architecture.md#ai-providers)).
+- An AI provider that keeps failing (5xx answers or no connection, after the retries) is an outage. The review goes back to the queue. Three outages in a row open the breaker of that AI provider, and the reviews that call it wait without using up their retries ([02-architecture.md](02-architecture.md#ai-providers)). After `outage_fallback_after` seconds of the outage, a review posts the checks that need no model, and a full review follows when the AI provider answers.
 - One gateway call, with its retries, gets two request timeouts (`request_timeout` in Guard Settings) in all. Each retry gets only the time that is left. A call that hangs then ends as a gateway outage after about 10 minutes, not after seven full timeouts.
 - A busy code graph index puts the job back with a delay of 1, 5, then 15 minutes.
 - Any other error ends the review as Failed. Guard adds 😕, sets the status to `error`, and stores the error on the Code Review.

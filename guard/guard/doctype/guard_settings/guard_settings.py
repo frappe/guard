@@ -51,6 +51,7 @@ class GuardSettings(Document):
 		max_turns_plus: DF.Int
 		monthly_credit_cap: DF.Int
 		offline_mode: DF.Check
+		outage_fallback_after: DF.Int
 		plus_ai_provider: DF.Link | None
 		plus_cached_input_price: DF.Float
 		plus_input_price: DF.Float

@@ -22,6 +22,8 @@ DEFAULT_TURNS = {"base": 10, "plus": 16, "apex": 24}
 DEFAULT_CONCURRENT_REVIEWS = 4
 # Seconds, long enough for the fix-up pushes that often come right after a push.
 DEFAULT_PUSH_REVIEW_DELAY = 120
+# A short blip of an AI provider is not worth a review without a model. 15 minutes is longer than most.
+DEFAULT_OUTAGE_FALLBACK = 900
 # Input tokens of the automatic reviews of one pull request in 24 hours. Only a few pull requests pass
 # it: they had 10 to 50 million in a day, mostly in re-reviews that posted little.
 DEFAULT_PULL_REQUEST_TOKENS = 10_000_000
@@ -235,6 +237,12 @@ def push_review_delay() -> int:
 	"""Seconds that an automatic review of a push waits, so that a newer push can replace it first."""
 	value = _value("push_review_delay")
 	return DEFAULT_PUSH_REVIEW_DELAY if value in (None, "") else max(cint(value), 0)
+
+
+def outage_fallback_after() -> int:
+	"""Seconds of an outage after which a review runs without a model. 0 means reviews wait."""
+	value = _value("outage_fallback_after")
+	return DEFAULT_OUTAGE_FALLBACK if value in (None, "") else max(cint(value), 0)
 
 
 def pull_request_daily_tokens() -> int:

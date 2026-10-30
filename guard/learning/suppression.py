@@ -17,7 +17,9 @@ def text_of(finding: Finding) -> str:
 	return f"{finding.title}\n{finding.body[:800]}"
 
 
-def suppress(findings: list[Finding], repository: str | None) -> None:
+def suppress(findings: list[Finding], repository: str | None, similar: bool = True) -> None:
+	"""Drop findings the team ignores. `similar` False skips the comparison with past findings,
+	which needs the embedding model."""
 	if not repository:
 		return
 	candidates = [f for f in findings if f.kept and f.severity != "P0" and not f.is_security]
@@ -30,6 +32,8 @@ def suppress(findings: list[Finding], repository: str | None) -> None:
 				"Suppressed",
 				f"the team rarely addresses `{finding.comment_type}` comments in this repository",
 			)
+	if not similar:
+		return
 	store = VectorStore()
 	vectors = Embedder().embed([text_of(f) for f in candidates])
 	for finding, vector in zip(candidates, vectors, strict=True):

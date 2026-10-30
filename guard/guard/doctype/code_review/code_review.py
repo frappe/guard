@@ -46,6 +46,7 @@ class CodeReview(Document):
 		instructions: DF.LongText | None
 		job_id: DF.Data | None
 		merge_base_sha: DF.Data | None
+		outage_fallback: DF.Check
 		output_tokens: DF.Int
 		posted_count: DF.Int
 		pull_request: DF.Link | None

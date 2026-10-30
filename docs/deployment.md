@@ -47,6 +47,8 @@ On a hosted platform, add the app to the bench and install it on the site from t
 
 To review with no model cost, turn on **Offline Mode** in Guard Settings. Guard then calls no AI provider. Reviews post only the checks that need no model: secrets, calls to other repositories, project test rules and, for a Frappe app, the Frappe checks. Guard does not answer questions in threads. A change of the mode rebuilds the search vectors of every repository.
 
+When an AI provider stays down, reviews wait for it. After **Review Without AI After (Seconds)** (default 900), a waiting review posts the checks that need no model, and a full review of the same commit follows when the AI provider answers. Set it to 0 to keep reviews waiting.
+
 ## 3. Create the GitHub App
 
 1. Open the settings of the organization or account that will own the App. Go to **Developer settings**, then **GitHub Apps**, then **New GitHub App**.

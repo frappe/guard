@@ -85,16 +85,19 @@ def catch_up() -> None:
 		db.commit()
 
 
-def ensure_fresh(repository: str, sha: str | None = None) -> str:
+def ensure_fresh(repository: str, sha: str | None = None, refresh: bool = True) -> str:
 	"""Make the default index cover `sha` (or the branch head). Run inline.
 
 	Raise IndexBusy when another job is indexing it now, and IndexFailed when the run fails or
-	failed in the last hour.
+	failed in the last hour. With `refresh` False, do not index: raise IndexFailed when the index is
+	not ready.
 	"""
 	index = index_for(repository)
 	row = db.values("Repository Index", index, ("status", "sha"))
 	if row and row["status"] == "completed" and (sha is None or row["sha"] == sha):
 		return index
+	if not refresh:
+		raise IndexFailed("the index is not ready, and Guard does not index while an AI provider is down")
 	if error := recent_failure(index):
 		raise IndexFailed(error)
 	try:

@@ -23,6 +23,7 @@ All DocTypes are in the module "Guard". Field lists show the main fields only. S
 | `public_url` | Data | Base URL for links in comments. Default: the site URL. |
 | `trigger_by_authoring`, `trigger_by_tagging`, `chat_permission`, `teach_permission` | Select | `Everyone`, `Organization members`, `Guard users` |
 | `monthly_credit_cap` | Int | 0 means no cap. |
+| `outage_fallback_after` | Int | Seconds that a review waits for an AI provider that is down. Then it posts the checks that need no model, and a full review follows when the AI provider answers. Default 900. 0: reviews wait. |
 | `push_review_delay` | Int | Seconds that an automatic review of a push waits. Default 120. 0 turns the wait off. |
 | `pull_request_daily_tokens` | Int | Input tokens that the reviews of one pull request can use in 24 hours before a push gets no automatic review. Default 10,000,000. 0 means no limit. |
 | `auto_enable_new_repositories` | Check | |
@@ -180,6 +181,7 @@ A repository has one row for each pull request number: a unique index on `reposi
 | `important_files`, `context_used`, `changed_files`, `config_snapshot` | JSON | |
 | `files_reviewed`, `findings_count`, `posted_count`, `suppressed_count` | Int | |
 | `credits`, `input_tokens`, `output_tokens` | Int | `input_tokens` is the whole prompt of every call. Token and turn counts add up over all attempts, also the ones that failed, were cancelled or were killed. Guard writes them before each agent turn. |
+| `outage_fallback` | Check | No model read this review: an AI provider was down. A full review of the same commit follows. |
 | `cached_tokens` | Int | The part of `input_tokens` that the gateway read from its prompt cache |
 | `agent_turns` | Int | Model turns of the review agents |
 | `agent_round_limit` | Int | Rounds that the agents of the review can take: the turn limit, lower on a re-review of a push or a backport, or both passes of an apex review in parts. A push lets a review finish after half of them. |
