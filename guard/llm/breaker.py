@@ -12,7 +12,7 @@ from collections.abc import Iterable
 from typing import Any
 
 import frappe
-from frappe.utils import now_datetime
+from frappe.utils import get_datetime, now_datetime
 
 from guard.review.jobs import retry_review
 from guard.utils import cache, db, notify
@@ -31,6 +31,19 @@ def wait_seconds(ai_providers: Iterable[str] | None = None) -> int:
 	0 when all their breakers are closed."""
 	names = known() if ai_providers is None else ai_providers
 	return max((_wait(name) for name in set(names)), default=0)
+
+
+def outage_seconds(ai_providers: Iterable[str]) -> int:
+	"""Seconds since the longest outage of these AI providers began, among those whose breaker is
+	open. 0 when none is open."""
+	now = now_datetime()
+	seconds = [0]
+	for name in set(ai_providers):
+		outage = cache.get(_key(OUTAGE, name))
+		since = get_datetime(outage.get("since")) if isinstance(outage, dict) else None
+		if _wait(name) and since:
+			seconds.append(int((now - since).total_seconds()))
+	return max(seconds)
 
 
 def record_failure(reason: str, ai_provider: str = "") -> None:

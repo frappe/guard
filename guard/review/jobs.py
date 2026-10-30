@@ -377,9 +377,60 @@ def close_stuck_checks(days: int = 1) -> int:
 
 
 def after_review(review: str) -> None:
-	"""Auto-approve and tour, after the review is saved."""
+	"""Auto-approve and tour, after the review is saved. After a review in an outage, queue the full
+	review."""
 	from guard.conversation.tour import build_tour
 	from guard.learning.approve import maybe_approve
+	from guard.llm.client import offline_chat
 
+	if not db.value("Code Review", review, "outage_fallback"):
+		maybe_approve(review)
+		build_tour(review)
+		return
+	# First: the full review must follow even when the rest fails.
+	follow_up(review)
 	maybe_approve(review)
-	build_tour(review)
+	# The fast model can be the one that is down.
+	with offline_chat():
+		build_tour(review)
+
+
+def follow_up(review: str) -> str | None:
+	"""Queue a full review of the commit of a review in an outage. It waits while the AI provider is
+	down, and its tries tell when it answers again. Until it ends, the check of the commit stays
+	queued, as it does while a review waits for the AI provider."""
+	row = db.values(
+		"Code Review",
+		review,
+		("pull_request", "head_sha", "trigger", "requested_by", "requested_tier", "instructions", "creation"),
+	)
+	if not row or not row["pull_request"]:
+		return None
+	pr = db.values("Pull Request", str(row["pull_request"]), ("state", "head_sha", "latest_review")) or {}
+	# A newer push has its own review, and a closed pull request needs none.
+	if (
+		pr.get("state") != "open"
+		or pr.get("head_sha") != row["head_sha"]
+		or pr.get("latest_review") != review
+	):
+		return None
+	# A second run of `after_review` must not replace the follow-up that waits.
+	if frappe.db.exists(
+		"Code Review",
+		{
+			"pull_request": row["pull_request"],
+			"head_sha": row["head_sha"],
+			"creation": [">", row["creation"]],
+			"status": ["in", ["Queued", "Running", "Completed"]],
+		},
+	):
+		return None
+	return create_review(
+		str(row["pull_request"]),
+		# A push too reads the whole diff: no model read the review in the outage (`get_delta`).
+		str(row["trigger"]),
+		str(row["requested_by"] or ""),
+		str(row["requested_tier"] or ""),
+		str(row["instructions"] or ""),
+		status_check=False,
+	)

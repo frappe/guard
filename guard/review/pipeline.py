@@ -1,5 +1,6 @@
 """Run one Code Review from start to end. See docs/spec/05-review-engine.md."""
 
+import contextlib
 import dataclasses
 import time
 from typing import TYPE_CHECKING, Any, cast
@@ -21,6 +22,7 @@ from guard.indexing.jobs import ensure_fresh
 from guard.integrations import tickets
 from guard.learning import suppression
 from guard.llm import breaker
+from guard.llm.client import offline_chat
 from guard.llm.types import GatewayBusy, GatewayDown, Usage
 from guard.providers import adapter_for_repository
 from guard.review import (
@@ -42,6 +44,7 @@ from guard.review import (
 from guard.review.agent import Agent, run_together, tools
 from guard.review.findings import FindingFilter, score_cap
 from guard.review.jobs import WAITING_FOR_LAST, WAITING_FOR_SLOT
+from guard.review.prompt import ContextPack
 from guard.review.publish import Publisher, remove_eyes, set_status
 from guard.review.run import Delta, ReviewRun, Verdict
 from guard.review.task import BUDGET_TOKENS, compose
@@ -96,6 +99,8 @@ class ReviewPipeline:
 		self.started = time.time()
 		self.current: ReviewRun | None = None  # the run of this attempt, once prepared
 		self.busy: GatewayBusy | None = None  # why this attempt went back to the queue, if it did
+		# This attempt runs without a model, because an AI provider that it needs is down.
+		self.outage = False
 		# Written to `job_id` when this job starts the review. A deploy can start a second job of the
 		# same review, with the same RQ job id, while the first still runs. The newest claim wins.
 		self.claim: str | None = None
@@ -149,15 +154,18 @@ class ReviewPipeline:
 			# Before a park: else a cancelled review stays Queued while it waits for the gateway or a slot.
 			self.check_cancel()
 			if wait := breaker.wait_seconds(self.ai_providers()):
-				self.park(attempt, wait, GATEWAY_DOWN)
-				return
+				if not self.falls_back():
+					self.park(attempt, wait, GATEWAY_DOWN)
+					return
+				self.outage = True
 			if self.slots_full():
 				self.park(attempt, SLOT_WAIT, WAITING_FOR_SLOT)
 				return
 			if self.last_review_runs():
 				self.park(attempt, SLOT_WAIT, WAITING_FOR_LAST)
 				return
-			self.execute()
+			with offline_chat() if self.outage else contextlib.nullcontext():
+				self.execute()
 		except JobReplaced:
 			db.rollback()
 			self.job_replaced = True
@@ -173,6 +181,7 @@ class ReviewPipeline:
 			if db.value("Code Review", name, "status") == "Cancelled":
 				state.show_cancelled(name)
 		except GatewayDown as down:
+			# No fallback here: the next try falls back, when the outage is old enough.
 			breaker.record_failure(str(down), down.ai_provider)
 			if wait := breaker.wait_seconds([down.ai_provider]):
 				self.park(attempt, wait, GATEWAY_DOWN)
@@ -212,6 +221,25 @@ class ReviewPipeline:
 		if config.route("embedding").online:
 			slots.append("embedding")
 		return {config.route(slot).ai_provider_name for slot in slots}
+
+	def falls_back(self) -> bool:
+		"""Review without a model now: an AI provider that this review needs has been down for
+		`outage_fallback_after` seconds. Not twice for one commit: the full review that follows a
+		review in an outage waits for the AI provider (`jobs.follow_up`)."""
+		limit = guard_settings.outage_fallback_after()
+		if not limit or self.review.source != "pull_request" or not self.review.pull_request:
+			return False
+		if breaker.outage_seconds(self.ai_providers()) < limit:
+			return False
+		return not frappe.db.exists(
+			"Code Review",
+			{
+				"pull_request": self.review.pull_request,
+				"head_sha": self.review.head_sha,
+				"outage_fallback": 1,
+				"status": "Completed",
+			},
+		)
 
 	def slots_full(self) -> bool:
 		"""As many reviews run as `max_concurrent_reviews` allows.
@@ -288,7 +316,8 @@ class ReviewPipeline:
 		run.usage.add(earlier)
 		run.turns = int(self.review.agent_turns or 0)
 		run.rounds = int(self.review.agent_rounds or 0)
-		run.offline = guard_settings.offline()
+		run.outage = self.outage
+		run.offline = guard_settings.offline() or run.outage
 		self.current = run
 		publisher = Publisher(run)
 		self.stage("start")
@@ -319,18 +348,24 @@ class ReviewPipeline:
 		)
 		run.context_used = [{"title": f"{t.key} {t.title}", "url": t.url, "source": t.source} for t in linked]
 		team = db.value("Code Repository", run.repository, "team") if run.repository else None
-		built = context.build(
-			run.head,
-			focus_changed,
-			run.blast,
-			run.graph,
-			run.cfg,
-			focus,
-			linked,
-			run.full_name,
-			team,
-			run.repository,
-			run.rule_files,
+		# Only the agent reads the context. Offline, it does not run, and the search for similar code
+		# needs the embedding model, which can be the AI provider that is down.
+		built = (
+			context.BuiltContext(ContextPack())
+			if run.offline
+			else context.build(
+				run.head,
+				focus_changed,
+				run.blast,
+				run.graph,
+				run.cfg,
+				focus,
+				linked,
+				run.full_name,
+				team,
+				run.repository,
+				run.rule_files,
+			)
 		)
 		self.stage("review")
 		run.findings += checks.secret_findings(run.files)
@@ -365,7 +400,8 @@ class ReviewPipeline:
 		existing = self.existing_findings()
 		finding_filter = FindingFilter(run.files, run.settings, existing, run.fresh_lines)
 		finding_filter.run(run.findings)
-		suppression.suppress(run.findings, run.repository)
+		# In an outage, no embeddings: the embedding model can be down too.
+		suppression.suppress(run.findings, run.repository, similar=not run.outage)
 		# Before the score: the earlier findings that still apply count, as on the status check.
 		stale.close_stale(run, finding_filter.reraised)
 		# Only the model's verdict: the graph verdict below does not rest on findings. The verdict of
@@ -378,13 +414,17 @@ class ReviewPipeline:
 			run.delta.carry_over(run.verdict)
 		earlier = [row["severity"] for row in run.earlier_open]
 		run.verdict.confidence_score = min(run.verdict.confidence_score, score_cap(run.findings, earlier))
+		if run.outage:
+			# Below 5, so it does not auto-approve. Its follow-up gives the score of the full review.
+			run.verdict.confidence_score = min(run.verdict.confidence_score, 4)
 		self.stage("publish")
 		names = publisher.save_findings()
 		number = self.review_number()
 		publisher.publish(names, number)
 		publisher.finish()
 		self.stage("after")
-		suppression.remember(names, run.findings, run.repository)
+		if not run.outage:
+			suppression.remember(names, run.findings, run.repository)
 		self.after(run, number)
 
 	def index(self, run: ReviewRun) -> str | None:
@@ -392,7 +432,9 @@ class ReviewPipeline:
 		if not run.repository:
 			return None
 		try:
-			return ensure_fresh(run.repository)
+			# Indexing embeds chunks. In an outage the embedding model can be down, and a failed index
+			# blocks indexing for an hour.
+			return ensure_fresh(run.repository, refresh=not run.outage)
 		except IndexFailed as error:
 			run.notes.append(
 				"The code graph is not available, so this review read the diff and the changed files only. "
@@ -480,7 +522,7 @@ class ReviewPipeline:
 			frappe_app=frappe_plugin.is_frappe_app({e.path for e in store.ls_tree(head)}),
 		)
 		run.notes = list(config.errors)
-		run.fresh_lines = self.get_fresh_lines(store, pr.last_reviewed_sha or "", head)
+		run.fresh_lines = self.get_fresh_lines(store, pr, head)
 		run.delta = self.get_delta(store, pr, head, merge_base, run.files)
 		if run.delta is None:
 			run.delta = self.backport_delta(run, store, number)
@@ -559,7 +601,8 @@ class ReviewPipeline:
 			self.review.requested_tier or None,
 			facts,
 			contracts,
-			first_review=self.review_number() == 1,
+			first_review=self.review_number() == 1
+			or (run.pr is not None and self.model_reviewed_sha(run.pr) is None),
 		)
 		self.review.db_set("tier", run.tier)
 
@@ -790,6 +833,7 @@ class ReviewPipeline:
 				"posted_count": len(posted),
 				"suppressed_count": sum(1 for f in run.findings if f.status == "Suppressed"),
 				"credits": 0 if run.offline else guard_settings.CREDITS.get(run.tier, 1),
+				"outage_fallback": int(run.outage),
 				"input_tokens": run.usage.input_tokens,
 				"output_tokens": run.usage.output_tokens,
 				"cached_tokens": run.usage.cached_tokens,
@@ -896,13 +940,30 @@ class ReviewPipeline:
 			(self.review.pull_request, self.review.name),
 		)
 
-	def get_fresh_lines(self, store: GitStore, last_sha: str, head: str) -> dict[str, set[int]] | None:
-		"""Head lines added since the last reviewed commit. Empty when that commit is gone."""
+	def get_fresh_lines(self, store: GitStore, pr: "PullRequest", head: str) -> dict[str, set[int]] | None:
+		"""Head lines added since the last reviewed commit. Empty when that commit is gone. None when
+		no model read an earlier review: then this review posts as a first review."""
 		if self.review_number() <= 1:
+			return None
+		last_sha = self.model_reviewed_sha(pr)
+		if last_sha is None:
 			return None
 		if not last_sha or not store.has_commit(last_sha):
 			return {}
 		return {f.path: f.added_lines() for f in parse_diff(store.diff(last_sha, head))}
+
+	def model_reviewed_sha(self, pr: "PullRequest") -> str | None:
+		"""The commit of the last completed review that did not run in an outage. "" when it is not
+		known, None when there is no such review. The full review that follows a review in an outage
+		reads the same commit, so the review in the outage does not count."""
+		if not pr.latest_review or not db.value("Code Review", str(pr.latest_review), "outage_fallback"):
+			return pr.last_reviewed_sha or ""
+		rows = db.rows(
+			"""SELECT head_sha FROM `tabCode Review` WHERE pull_request = %s AND status = 'Completed'
+			AND outage_fallback = 0 ORDER BY completed_at DESC LIMIT 1""",
+			(str(pr.name),),
+		)
+		return str(rows[0][0] or "") if rows else None
 
 	def get_delta(
 		self, store: GitStore, pr: "PullRequest", head: str, merge_base: str, files: list[FileDiff]
@@ -928,6 +989,7 @@ class ReviewPipeline:
 				"important_files",
 				"diagram_type",
 				"diagram",
+				"outage_fallback",
 			),
 		)
 		since = str(pr.last_reviewed_sha)
@@ -936,6 +998,8 @@ class ReviewPipeline:
 			not last
 			or last.get("status") != "Completed"
 			or not last.get("agent_turns")
+			# Agent turns from before the outage do not cover the code: the review fell back.
+			or last.get("outage_fallback")
 			or last.get("head_sha") != since
 			or last.get("merge_base_sha") != merge_base
 			or since == head
@@ -1051,9 +1115,14 @@ def by_risk(run: ReviewRun) -> list[FileDiff]:
 def graph_verdict(run: ReviewRun) -> Verdict:
 	"""A verdict from the graph alone, when the model gave none (no gateway, or no answer)."""
 	contracts = [e for e in run.changed if e.contract_changed]
-	why = "Guard is in offline mode" if run.offline else "The AI review did not run"
+	if run.outage:
+		why = "An AI provider is down. Guard reviews again when it answers. Until then"
+	elif run.offline:
+		why = "Guard is in offline mode, so"
+	else:
+		why = "The AI review did not run, so"
 	lines = [
-		f"Guard reviewed {len(run.files)} file(s) with the codebase graph. {why}, so the line comments come from checks that need no model."
+		f"Guard reviewed {len(run.files)} file(s) with the codebase graph. {why} the line comments come from checks that need no model."
 	]
 	if run.blast and run.blast.sentence():
 		lines.append(run.blast.sentence())

@@ -43,6 +43,7 @@
   "suppressed_count",
   "counts_col2",
   "credits",
+  "outage_fallback",
   "input_tokens",
   "output_tokens",
   "cached_tokens",
@@ -279,6 +280,14 @@
    "fieldname": "credits",
    "fieldtype": "Int",
    "label": "Credits"
+  },
+  {
+   "default": "0",
+   "description": "No model read this review: an AI provider was down. A full review follows when it answers.",
+   "fieldname": "outage_fallback",
+   "fieldtype": "Check",
+   "label": "Reviewed in an Outage",
+   "read_only": 1
   },
   {
    "fieldname": "input_tokens",

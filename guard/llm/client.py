@@ -41,6 +41,8 @@ _responder: Responder | None = None
 # Model calls of one job in flight at once. A review holds one of `max_concurrent_reviews`
 # slots, so the gateway sees at most this many calls for each slot.
 PARALLEL_CALLS = 4
+# Set in a review that runs without a model while an AI provider is down (`offline_chat`).
+_offline_chat: contextvars.ContextVar[bool] = contextvars.ContextVar("guard_offline_chat", default=False)
 
 
 class Dialect(Protocol):
@@ -54,6 +56,17 @@ class Dialect(Protocol):
 		temperature: float,
 		cache_key: str = "",
 	) -> ChatResult: ...
+
+
+@contextmanager
+def offline_chat() -> Iterator[None]:
+	"""Answer every chat call in this block offline, as in offline mode. Embeddings do not change: hash
+	vectors must not go into an index of model vectors."""
+	token = _offline_chat.set(True)
+	try:
+		yield
+	finally:
+		_offline_chat.reset(token)
 
 
 @contextmanager
@@ -77,7 +90,7 @@ class LLMClient:
 		config = guard_settings.gateway()
 		self.route = config.route(tier)
 		# Offline mode answers every call offline, also the responder of a test.
-		self.offline_mode = config.offline
+		self.offline_mode = config.offline or _offline_chat.get()
 		self.model = self.route.model
 		self.ai_provider = self.route.ai_provider_name
 		self.purpose = purpose
@@ -213,7 +226,7 @@ class LLMClient:
 
 	def _dialect(self) -> Dialect:
 		provider = self.route.ai_provider
-		if not (provider and self.route.online):
+		if not (provider and self.route.online) or self.offline_mode:
 			return OfflineDialect()
 		if provider.dialect == "anthropic":
 			return AnthropicDialect(provider.url, provider.api_key, provider.timeout)
