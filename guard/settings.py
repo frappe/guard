@@ -42,7 +42,8 @@ class AIProviderConfig:
 
 @dataclass
 class Route:
-	"""A model and the AI provider that serves it. Without both, Guard works offline."""
+	"""A model and the AI provider that serves it. Without both, Guard works offline. In offline
+	mode, no route has an AI provider."""
 
 	model: str
 	ai_provider: AIProviderConfig | None
@@ -69,6 +70,7 @@ class GatewayConfig:
 	fast_model: str = ""
 	embedding_model: str = ""
 	embedding_dimensions: int = 1024
+	offline: bool = False
 
 	@property
 	def enabled(self) -> bool:
@@ -109,16 +111,23 @@ def gateway() -> GatewayConfig:
 	doc = settings()
 	slot_ai_providers = {slot: str(doc.get(f"{slot}_ai_provider") or "") for slot in SLOTS}
 	default_ai_provider = doc.default_ai_provider or ""
+	offline = bool(doc.offline_mode)
 	return GatewayConfig(
 		models={"base": doc.base_model or "", "plus": doc.plus_model or "", "apex": doc.apex_model or ""},
-		# Only those that a model can use: each has a key to decrypt.
-		ai_providers=ai_providers([default_ai_provider, *slot_ai_providers.values()]),
+		# Only those that a model can use: each has a key to decrypt. Offline, none: every route is offline.
+		ai_providers={} if offline else ai_providers([default_ai_provider, *slot_ai_providers.values()]),
 		default_ai_provider=default_ai_provider,
 		slot_ai_providers=slot_ai_providers,
 		fast_model=doc.fast_model or "",
 		embedding_model=doc.embedding_model or "",
 		embedding_dimensions=cint(doc.embedding_dimensions) or 1024,
+		offline=offline,
 	)
+
+
+def offline() -> bool:
+	"""Offline mode is on: Guard makes no calls to AI providers."""
+	return flag("offline_mode")
 
 
 def ai_providers(names: Iterable[str]) -> dict[str, AIProviderConfig]:

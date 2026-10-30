@@ -249,7 +249,7 @@ def count(table):
 
 class TestChecks(UnitTestCase):
 	def test_secret_and_frappe_checks(self):
-		from guard.review import checks
+		from guard.review import checks, frappe_pack
 
 		text = (
 			'diff --git a/app/x.py b/app/x.py\n--- a/app/x.py\n+++ b/app/x.py\n@@ -1 +1,4 @@\n x = 1\n+TOKEN = "ghp_'
@@ -259,19 +259,19 @@ class TestChecks(UnitTestCase):
 		files = parse_diff(text)
 		secrets = checks.secret_findings(files)
 		self.assertEqual([(f.severity, f.start_line) for f in secrets], [("P0", 2)])
-		frappe_pack = checks.frappe_findings(files, lambda path: None)
-		self.assertEqual([f.title for f in frappe_pack], ["SQL built from strings"])
+		pack = frappe_pack.findings(files, lambda path: None, {})
+		self.assertEqual([f.title for f in pack], ["SQL built from strings"])
 		self.assertNotIn("ghp_", checks.mask_secrets(files[0].annotated()))
 
 	def test_frappe_checks_fire_only_where_their_rule_applies(self):
 		# suite#881: 117 findings from these checks, and the verifier refuted every one. The guest
 		# endpoints checked access, and the commits and bypasses were in patches, jobs and helpers.
-		from guard.review import checks
+		from guard.review import frappe_pack
 
 		source = FRAPPE_SOURCE.splitlines()
 		diff = f"diff --git a/app/api.py b/app/api.py\nnew file mode 100644\n--- /dev/null\n+++ b/app/api.py\n@@ -0,0 +1,{len(source)} @@\n"
 		files = parse_diff(diff + "".join(f"+{line}\n" for line in source))
-		found = checks.frappe_findings(files, lambda path: FRAPPE_SOURCE)
+		found = frappe_pack.findings(files, lambda path: FRAPPE_SOURCE, {})
 		flagged = [source[f.start_line - 1].strip() for f in found]
 		self.assertEqual(
 			[(f.title, line) for f, line in zip(found, flagged, strict=True)],
@@ -281,7 +281,8 @@ class TestChecks(UnitTestCase):
 					"Permission check is bypassed",
 					'frappe.get_doc("Note", name).delete(ignore_permissions=True)',
 				),
-				("Explicit commit", "frappe.db.commit()"),
+				# A GET endpoint: the commit also escapes the rollback of the request, which is worse.
+				("Change on a GET request", "frappe.db.commit()"),
 				("Explicit commit", "frappe.db.commit()"),
 				(
 					"SQL built from strings",
@@ -290,7 +291,8 @@ class TestChecks(UnitTestCase):
 			],
 		)
 		# The commits that stay are in the whitelisted method and in the document hook.
-		self.assertEqual([f.start_line for f in found if f.title == "Explicit commit"], [39, 46])
+		commits = [f.start_line for f in found if source[f.start_line - 1].strip() == "frappe.db.commit()"]
+		self.assertEqual(commits, [39, 46])
 
 	def test_code_that_names_a_secret_is_not_one(self):
 		from guard.review.checks import _secret_kind

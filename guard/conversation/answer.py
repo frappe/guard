@@ -3,6 +3,7 @@
 from dataclasses import dataclass, field
 from typing import Any
 
+from guard import settings as guard_settings
 from guard.llm.client import LLMClient
 from guard.llm.types import Message, ToolSpec, Usage
 from guard.review import agent as review_agent
@@ -33,6 +34,8 @@ def read_tools(run: ReviewRun) -> list[ToolSpec]:
 def answer(run: ReviewRun, question: str, thread: str = "", extra: str = "", tier: str = "base") -> Answer:
 	client = LLMClient(tier=tier, purpose="conversation", usage=run.usage)
 	if not client.online:
+		if guard_settings.offline():
+			return Answer("Guard is in offline mode, so I cannot answer questions.", run.usage)
 		return Answer("The AI gateway is not set up, so I cannot answer yet.", run.usage)
 	diff = "\n\n".join(f.annotated() for f in run.files)[:60_000]
 	prompt = "\n\n".join(

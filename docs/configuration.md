@@ -54,6 +54,7 @@ You can put a `.guard/` folder or a `guard.toml` file in any directory. Guard wa
 - A setting in a lower directory replaces the value from a higher one.
 - Rules, files, notes, instructions and ignore patterns add up.
 - `disabled_rules` turns off a rule from a higher level, by its `id`.
+- `enabled_checks` and `disabled_checks` add up. A check that a higher level turns off stays off.
 
 Paths and scopes in a file are relative to the directory of that file.
 
@@ -140,6 +141,8 @@ default_open = true
 | `instructions` | Free text for the reviewer. Instructions from all levels add up. |
 | `[[rules]]` | `rule` (required), `id`, `scope`, `severity` (`low`, `medium`, `high`), `enabled`. |
 | `disabled_rules` | Rule ids to turn off at this level and below. |
+| `enabled_checks` | For a Frappe app: ids of built-in checks that are off by default, to turn on. For example `["frappe-security-file-traversal", "missing-argument-type-hint"]`. |
+| `disabled_checks` | For a Frappe app: ids of built-in checks to turn off, for example `["frappe-cur-frm-usage"]`. |
 | `[[files]]` | Like `files.toml`. |
 | `[[notes]]` | `content` (required), `scope`. Short facts, for example "This module is legacy." |
 | `context.repos` | Related repositories, as `owner/repo`. Guard can search their code during a review. |

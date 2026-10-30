@@ -34,9 +34,19 @@ LISTS = (
 	"exclude_branches",
 	"include_keywords",
 	"ignore_keywords",
+	# Rule ids of the Frappe review pack (`guard.review.frappe_pack`) to turn on and off.
+	"enabled_checks",
+	"disabled_checks",
 )
 # Exclusions add up across levels, so a lower config cannot drop a skip set above it.
-ADDITIVE = ("exclude_authors", "exclude_branches", "disabled_labels", "ignore_keywords")
+ADDITIVE = (
+	"exclude_authors",
+	"exclude_branches",
+	"disabled_labels",
+	"ignore_keywords",
+	"enabled_checks",
+	"disabled_checks",
+)
 KNOWN_KEYS = {
 	"strictness",
 	"comment_types",
@@ -165,6 +175,7 @@ def normalize(raw: Any, source: str, directory: str = "") -> Layer:
 	for key in LISTS:
 		if key in raw:
 			settings[key] = [str(v) for v in raw[key]]
+	_known_checks(layer)
 	sections = raw.get("sections") or {}
 	if sections:
 		settings["sections"] = {
@@ -200,6 +211,21 @@ def _context(raw: dict, layer: Layer, directory: str) -> None:
 		)
 	layer.disabled_rules = [str(r) for r in raw.get("disabled_rules") or []]
 	layer.repos = [str(r) for r in (raw.get("context") or {}).get("repos") or []]
+
+
+def _known_checks(layer: Layer) -> None:
+	"""Drop ids in `enabled_checks` and `disabled_checks` that name no rule of the Frappe review pack,
+	and note them. Not an error of the whole config: a rule that a later Guard renames must not drop the
+	other settings of the file."""
+	from guard.review.frappe_pack import RULES
+
+	known = {r.id for r in RULES}
+	for key in ("enabled_checks", "disabled_checks"):
+		names = layer.settings.get(key)
+		if names is None:
+			continue
+		layer.errors += [f"{layer.source}: {key}: unknown check `{n}`" for n in names if n not in known]
+		layer.settings[key] = [n for n in names if n in known]
 
 
 def files_from(items: list[dict], source: str, directory: str) -> list[FileRef]:

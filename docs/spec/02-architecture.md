@@ -69,6 +69,8 @@ Some models write tool calls in their own markup, and the server can fail to par
 
 A model without an enabled AI provider uses the offline fallback. So does every model when no AI provider is set. The fallback returns empty findings and hash-based embeddings. Tests use it.
 
+**Offline mode** (`offline_mode` in Guard Settings) takes every model offline on purpose, also when AI providers are set: `settings.gateway()` then gives no AI provider to any route, and the client does not call the responder of a test either. A review runs the checks that need no model (secrets, cross-repository calls, project test rules, the Frappe review pack) and posts them, at the base tier and for 0 credits. It runs no agent, no verifier and no sandbox. Questions in threads get a fixed answer. A change of the mode rebuilds all vectors, because the embedding route changes.
+
 ## Processes and queues
 
 Guard uses the Frappe RQ workers. It adds no new process. A worker can run several reviews on threads (see the hosts below).
@@ -160,6 +162,7 @@ guard/
   providers/            base.py, github.py, sync.py
   review/               pipeline.py, run.py, context.py, task.py, agent.py, prompts.py, findings.py,
                         checks.py, verify.py, render.py, publish.py, sandbox.py, trigger.py, jobs.py,
-                        cli_review.py, crossrepo.py, rule_files.py, permissions.py, links.py, tips.py
+                        cli_review.py, crossrepo.py, rule_files.py, permissions.py, links.py, tips.py,
+                        frappe_pack/ (engine.py, syntax.py, py_rules.py, js_rules.py)
   webhooks/             endpoint.py, events.py, github.py, handler.py, polling.py
 ```

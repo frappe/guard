@@ -29,6 +29,7 @@ from guard.review import (
 	checks,
 	context,
 	crossrepo,
+	frappe_pack,
 	links,
 	prompts,
 	rule_checks,
@@ -287,6 +288,7 @@ class ReviewPipeline:
 		run.usage.add(earlier)
 		run.turns = int(self.review.agent_turns or 0)
 		run.rounds = int(self.review.agent_rounds or 0)
+		run.offline = guard_settings.offline()
 		self.current = run
 		publisher = Publisher(run)
 		self.stage("start")
@@ -340,8 +342,15 @@ class ReviewPipeline:
 		)
 		run.findings += rule_checks.findings(run.files, run.head, run.base, rules)
 		if run.frappe_app:
-			run.findings += checks.frappe_findings(run.files, run.head)
-		run.sandbox = sandbox.Sandbox(run) if sandbox.wanted(run) else None
+			files = run.config.files if run.config else {}
+			run.findings += frappe_pack.findings(
+				run.files,
+				run.head,
+				run.settings,
+				lambda path: files[path].settings if path in files else None,
+			)
+		# Only the agent runs commands in the sandbox.
+		run.sandbox = sandbox.Sandbox(run) if sandbox.wanted(run) and not run.offline else None
 		try:
 			self.agent(run, built)
 		finally:
@@ -521,7 +530,7 @@ class ReviewPipeline:
 
 	def pick_tier(self, run: ReviewRun, changed: list[ChangedEntity]) -> None:
 		"""A push re-review gets the tier of its delta: a small fix after a large change is small."""
-		if run.delta and run.delta.covers_all:
+		if run.offline or (run.delta and run.delta.covers_all):
 			run.tier = "base"  # no agent runs
 			self.review.db_set("tier", run.tier)
 			return
@@ -582,7 +591,7 @@ class ReviewPipeline:
 
 	def credits_allow(self, run: ReviewRun) -> bool:
 		cap = int(guard_settings.settings().monthly_credit_cap or 0)
-		if not cap:
+		if not cap or run.offline:
 			return True
 		used = int(
 			db.scalar(
@@ -613,6 +622,8 @@ class ReviewPipeline:
 		whole = run.files
 		if run.delta is not None and run.delta.covers_all:
 			run.verdict = backport.verdict(run)
+			return
+		if run.offline:
 			return
 		if run.delta is not None:
 			run.files = run.delta.files
@@ -778,7 +789,7 @@ class ReviewPipeline:
 				"findings_count": len(run.findings),
 				"posted_count": len(posted),
 				"suppressed_count": sum(1 for f in run.findings if f.status == "Suppressed"),
-				"credits": guard_settings.CREDITS.get(run.tier, 1),
+				"credits": 0 if run.offline else guard_settings.CREDITS.get(run.tier, 1),
 				"input_tokens": run.usage.input_tokens,
 				"output_tokens": run.usage.output_tokens,
 				"cached_tokens": run.usage.cached_tokens,
@@ -1040,8 +1051,9 @@ def by_risk(run: ReviewRun) -> list[FileDiff]:
 def graph_verdict(run: ReviewRun) -> Verdict:
 	"""A verdict from the graph alone, when the model gave none (no gateway, or no answer)."""
 	contracts = [e for e in run.changed if e.contract_changed]
+	why = "Guard is in offline mode" if run.offline else "The AI review did not run"
 	lines = [
-		f"Guard reviewed {len(run.files)} file(s) with the codebase graph. The AI review did not run, so no line comments came from a model."
+		f"Guard reviewed {len(run.files)} file(s) with the codebase graph. {why}, so the line comments come from checks that need no model."
 	]
 	if run.blast and run.blast.sentence():
 		lines.append(run.blast.sentence())
@@ -1050,7 +1062,8 @@ def graph_verdict(run: ReviewRun) -> Verdict:
 			f"- `{entity.qualified_name}` changed its contract; {len(entity.not_updated)} caller(s) may break."
 		)
 	risk = "high" if any(e.not_updated for e in contracts) else "medium" if contracts else "low"
-	score = 3 if risk == "high" else 5
+	# Never 5: no model read the change, so a clean graph must not auto-approve it.
+	score = 3 if risk == "high" else 4
 	return Verdict(
 		summary="\n".join(lines),
 		confidence_score=score,

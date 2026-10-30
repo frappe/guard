@@ -8,7 +8,8 @@ All DocTypes are in the module "Guard". Field lists show the main fields only. S
 
 | Field | Type | Notes |
 | - | - | - |
-| `default_ai_provider` | Link AI Provider | Serves every model whose AI provider field is blank. Blank means offline. |
+| `offline_mode` | Check | Make no calls to AI providers. Reviews post only the checks that need no model. A change rebuilds all vectors. |
+| `default_ai_provider` | Link AI Provider | Serves every model whose AI provider field is blank. Blank means offline mode. |
 | `request_timeout` | Int | Seconds for one request to an AI provider. Default 300. |
 | `base_model`, `plus_model`, `apex_model` | Data | Model id for each tier, as its AI provider names it. |
 | `fast_model` | Data | Classifiers, titles, small summaries. Blank uses the base tier. |

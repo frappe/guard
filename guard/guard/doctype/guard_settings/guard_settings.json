@@ -7,6 +7,7 @@
  "engine": "InnoDB",
  "field_order": [
   "gateway_tab",
+  "offline_mode",
   "default_ai_provider",
   "gateway_col",
   "request_timeout",
@@ -83,7 +84,14 @@
    "label": "AI Models"
   },
   {
-   "description": "Serves every model that has no AI provider of its own. Leave blank for offline mode.",
+   "default": "0",
+   "description": "Make no calls to AI providers: no AI review, no answers to questions, and hash embeddings. Reviews post the checks that need no model. A change rebuilds all vectors.",
+   "fieldname": "offline_mode",
+   "fieldtype": "Check",
+   "label": "Offline Mode"
+  },
+  {
+   "description": "Serves every model that has no AI provider of its own. Blank means offline mode.",
    "fieldname": "default_ai_provider",
    "fieldtype": "Link",
    "label": "Default AI Provider",
@@ -496,7 +504,7 @@
  "index_web_pages_for_search": 0,
  "issingle": 1,
  "links": [],
- "modified": "2026-10-29 16:00:00.000000",
+ "modified": "2026-10-30 14:27:09.794432",
  "modified_by": "Administrator",
  "module": "Guard",
  "name": "Guard Settings",

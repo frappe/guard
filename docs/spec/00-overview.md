@@ -72,7 +72,7 @@ Use these names. Do not use other names for the same thing.
 3. **Config as code.** Settings live in the repository when possible. The closest config wins. Rules add up.
 4. **Provider-neutral core.** The review engine does not know which provider it talks to. Adapters translate.
 5. **Model-neutral core.** The engine talks to one LLM interface. Admins connect one or more AI providers, and pick the models and the AI provider of each.
-6. **Works offline for tests.** Every LLM and embedding call has a deterministic fallback, so tests run with no network.
+6. **Works offline.** Every LLM and embedding call has a deterministic fallback, so tests run with no network. Offline mode in Guard Settings uses it on a live site too, to review with no model cost.
 7. **Untrusted input.** Code, comments, tickets and knowledge base text are data, not instructions.
 8. **Frappe native.** DocTypes, roles, background jobs, realtime and the REST API come from Frappe. Do not rebuild them.
 
