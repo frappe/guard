@@ -64,7 +64,7 @@ class KnowledgeBuilder:
 		"""Write every document, or only the paths in `only`.
 
 		A build of only some documents does not change `kb_status` when it starts or fails: the other
-		documents stay valid. Pushes mark documents stale and MCP reads them only while it is Ready.
+		documents stay valid. Pushes mark documents stale only while it is Ready.
 		"""
 		if only is None:
 			frappe.db.set_value("Code Repository", self.repository, "kb_status", "Building")
@@ -431,7 +431,7 @@ def recover_stuck() -> None:
 	"""Every 5 minutes: end the Queued or Building status of a build whose job stopped, for example
 	in a deploy.
 
-	Pushes mark documents stale and MCP reads them only while the status is Ready or Queued. A
+	Pushes mark documents stale only while the status is Ready or Queued. A
 	repository with a finished earlier build still has its documents, so it goes back to Ready.
 	"""
 	for row in frappe.get_all(

@@ -133,11 +133,11 @@ repo root down to the file. Scalars: the closest value wins. Rules, files, notes
 **Providers.** The core is provider-neutral: use `providers.adapter_for_repository(repo)` →
 `ProviderAdapter` (`providers/base.py`). `GitHubAdapter` is the only adapter now.
 
-**Other surfaces.** `api/ui.py` (Desk), `api/v2.py` (query API), `api/cli.py` (endpoints for the CLI),
-`api/public.py` (signed links, `review/links.py`), `api/health.py`, `mcp/` (JSON-RPC MCP server).
-`cli/guard_cli.py` is a standalone CLI that must use the **standard library only** (users download it
-from the site). Desk UI lives in `guard/guard/` as plain Frappe JS (pages, form/list scripts,
-reports, workspace). There is no frontend build.
+**Other surfaces.** `api/ui.py` (Desk), `api/v2.py` (query API), `api/public.py` (signed links,
+`review/links.py`), `api/health.py`. Guard has no CLI or MCP server of its own: terminals and coding
+agents use [frappectl](https://github.com/frappe/frappectl) against the same whitelisted methods and
+DocTypes. Desk UI lives in `guard/guard/` as plain Frappe JS (pages, form/list scripts, reports,
+workspace). There is no frontend build.
 
 Scheduled jobs and permission hooks are in `guard/hooks.py`. Team-scoped permissions are in
 `guard/permissions.py`.

@@ -86,7 +86,7 @@ class Sandbox:
 		from guard.git.repository import store_for
 
 		if not self.run.repository:
-			raise SandboxError("CLI reviews have no repository copy to run")
+			raise SandboxError("Payload reviews have no repository copy to run")
 		archive = subprocess.run(
 			["git", "-C", str(store_for(self.run.repository).path), "archive", self.run.head_sha],
 			capture_output=True,

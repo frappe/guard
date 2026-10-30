@@ -142,57 +142,22 @@ A repository id is `<remote>:<branch>:<owner/repo>`, for example `github:main:ac
 - `genius: true` uses the plus model and more turns.
 - `session_id` keeps the conversation in a Chat Session of kind API.
 
-## MCP server
+## Terminal and coding agents
 
-- Endpoint: `POST /api/method/guard.mcp.server.handle`. JSON-RPC 2.0, MCP streamable HTTP in JSON response mode.
-- Methods: `initialize`, `notifications/initialized`, `ping`, `tools/list`, `tools/call`.
-- Auth: `Authorization: token <api key>:<api secret>`, or a Frappe OAuth bearer token.
-- Every tool checks the permissions of the caller.
-
-| Group | Tools |
-| - | - |
-| Account | `get_me`, `list_repositories` |
-| Pull requests | `list_pull_requests`, `list_merge_requests`, `get_merge_request`, `list_merge_request_comments` |
-| Reviews | `list_code_reviews`, `get_code_review`, `trigger_code_review` |
-| Comments | `search_guard_comments` |
-| Custom context | `list_custom_context`, `get_custom_context`, `search_custom_context`, `create_custom_context` |
-| Knowledge base | `list_knowledge_bases`, `list_knowledge_base_documents`, `get_knowledge_base_document`, `search_knowledge_base` |
-| Analytics | `list_analytics_filter_options`, `get_analytics_overview`, `list_analytics_findings` |
-| Code | `search_code`, `get_callers`, `get_callees` |
-
-- Repository identifiers: `name`, `remote`, `default_branch` together, or the namespace id (the Code Repository name).
-- Knowledge base and comment text come back with `untrustedContent: true` and a notice.
-- Errors use the MCP error format with a plain message.
-
-## CLI
-
-One Python file with no dependencies outside the standard library. Install:
+Guard has no CLI and no MCP server of its own. People and coding agents use [frappectl](https://github.com/frappe/frappectl), a REST API v2 client for any Frappe site. It signs in with OAuth or an API key and keeps the permissions of the user. Every DocType and whitelisted method is open to it, so Guard does not need a second API.
 
 ```bash
-curl -fsSL "<site>/api/method/guard.api.cli.download" -o ~/.local/bin/guard && chmod +x ~/.local/bin/guard
+uv tool install frappectl
+frappectl auth login https://<site> --oauth --name guard
+frappectl -s guard doc list "Code Review" -f pull_request=<name> --limit 5
+frappectl -s guard doc list "Review Finding" -f code_review=<id> -f status=Open --fields "path,start_line,severity,title,body"
+frappectl -s guard api method/guard.api.ui.fix_prompt -F target=<pull request or finding>
+frappectl -s guard api method/guard.api.ui.rereview -F pull_request=<name>
+frappectl -s guard api method/guard.api.v2.search -F query="where do we retry webhooks" -F 'repositories:=["github:main:acme/api"]'
 ```
 
-### Commands
-
-| Command | Purpose |
-| - | - |
-| `guard login` | Browser sign-in through `/desk/guard-cli-login`. The CLI prints a one-time code, the page shows it, and the key goes only to `127.0.0.1` when the codes match. `--api-key` reads `key:secret` from stdin. |
-| `guard logout`, `guard whoami` | |
-| `guard review` | Review the current branch against its base. |
-| `guard review show [ID]` | Show a review, or list recent reviews. |
-| `guard review status [--commit SHA]` | Exit codes: 0 done, 1 none, 2 invalid, 3 running, 4 failed, 5 cancelled, 130 interrupted. |
-| `guard config [PATH]` | Effective config with sources. `--json` |
-| `guard settings [list\|get\|set\|unset\|path]` | Local settings: `color`, `site`, `review.output`, `review.layout`, `review.context`, `review.width` |
-| `guard fix install\|status\|uninstall\|open URL` | Fix bridge |
-| `guard update` | Download the newest CLI from the site |
-
-### `guard review` options
-
-`--branch`, `--resume`, `--include PATHS`, `--instructions TEXT`, `--plus`, `--apex`, `--json`, `--text`, `--agent`, `--layout comments|diff`, `--diff`, `--context N` (0 to 60, default 15), `--width N` (40 to 240), `--color`, `--no-color`.
-
-- The CLI reviews committed changes that are not in the base branch. It ignores uncommitted changes.
-- The CLI holds back files that look like secrets: names such as `.env`, `*.pem`, `*.key`, `id_rsa*`, `*credentials*`, and content with private key headers or known token shapes. `--include` sends them.
-- CLI reviews run at base unless `--plus` or `--apex` is given.
+- `frappectl guide` explains the commands to an agent.
+- Write methods (`rereview`, `set_finding_status`, ...) check the same permissions as in Desk.
 
 ## Fix with your agent
 
@@ -206,20 +171,10 @@ The Review Finding form shows the fix prompt and these actions:
 
 | Agent | Action |
 | - | - |
-| Claude Code | Open `guard-fix://` link (bridge runs `claude "<prompt>"` in the local repository) |
-| Codex | Open `guard-fix://` link (bridge runs `codex "<prompt>"`) |
 | Cursor | Open `cursor://anysphere.cursor-deeplink/prompt?text=<prompt>` |
 | Conductor, Devin | Copy the prompt and open the app |
-| Any | Copy the prompt |
+| Any, for example Claude Code or Codex | Copy the prompt |
 
 The user picks agents in Guard User. Admins set default agents in Guard Settings.
-
-### Bridge
-
-1. `guard fix install` registers the `guard-fix://` URL handler. On Linux it writes a desktop entry and runs `xdg-mime`. On macOS it builds a small AppleScript app with `osacompile`.
-2. A click on a `guard-fix://` link runs `guard fix open <url>`.
-3. The CLI gets the prompt from the API.
-4. The CLI finds the local folder for the repository in `~/.config/guard/repos.json`. If there is none, it asks once and saves the answer.
-5. The CLI opens a terminal in that folder and starts the agent with the prompt.
 
 The prompt has the file paths, line numbers, the finding text and the suggested code for every finding in the request.

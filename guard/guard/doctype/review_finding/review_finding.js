@@ -18,13 +18,10 @@ frappe.ui.form.on("Review Finding", {
 			);
 		}
 		const prompt = frm.doc.fix_prompt || "";
-		const target = encodeURIComponent(frm.doc.name);
 		frm.get_field("fix_html").$wrapper.html(`<div class="frappe-card" style="padding:12px">
 			<b>${__("Fix with your agent")}</b>
 			<div style="margin-top:8px">
 				<button class="btn btn-xs btn-default copy">${__("Copy prompt")}</button>
-				<a class="btn btn-xs btn-default" href="guard-fix://open?target=${target}&agent=claude">Claude Code</a>
-				<a class="btn btn-xs btn-default" href="guard-fix://open?target=${target}&agent=codex">Codex</a>
 				<a class="btn btn-xs btn-default" href="cursor://anysphere.cursor-deeplink/prompt?text=${encodeURIComponent(
 					prompt.slice(0, 6000)
 				)}">Cursor</a>
@@ -32,7 +29,7 @@ frappe.ui.form.on("Review Finding", {
 				<a class="btn btn-xs btn-default copy" data-open="https://app.devin.ai">Devin</a>
 			</div>
 			<p class="text-muted small" style="margin-top:8px">${__(
-				"Claude Code and Codex need the bridge: run <code>guard fix install</code>."
+				"For Claude Code, Codex and other agents, copy the prompt and paste it."
 			)}</p></div>`);
 		frm.get_field("fix_html")
 			.$wrapper.find(".copy")

@@ -113,7 +113,7 @@ One record for each Frappe user. Name = user id.
 | `languages` | JSON | Bytes for each language. |
 | `kb_status` | Select | `None`, `Queued`, `Building`, `Ready`, `Failed`. Queued from the request that asks for a build until its job starts. |
 
-The record name is a random hash. MCP and the API call it the namespace id.
+The record name is a random hash.
 
 ### Repository Index
 
@@ -165,14 +165,14 @@ A repository has one row for each pull request number: a unique index on `reposi
 
 | Field | Type | Notes |
 | - | - | - |
-| `pull_request`, `repository` | Link | `pull_request` is blank for CLI reviews. |
+| `pull_request`, `repository` | Link | `pull_request` is blank for payload reviews. |
 | `source` | Select | `pull_request`, `cli`, `api` |
 | `status` | Select | `Queued`, `Running`, `Completed`, `Failed`, `Cancelled`, `Skipped` |
 | `trigger` | Select | `open`, `push`, `rebase`, `mention`, `retrigger`, `manual`, `cli`, `api` |
 | `requested_by` | Data | Provider login. |
 | `requested_tier`, `tier` | Select | |
 | `head_sha`, `base_sha`, `merge_base_sha`, `branch` | Data | |
-| `instructions` | Long Text | From the trigger comment or the CLI. |
+| `instructions` | Long Text | From the trigger comment. |
 | `strictness` | Int | |
 | `summary` | Markdown | |
 | `confidence_score`, `confidence_reason` | Int, Small Text | |
@@ -246,7 +246,7 @@ Every comment on a pull request, human or bot. Learning, thread replies and comm
 | `team` | Link | Blank means organization scope. |
 | `repository_scope` | Small Text | One pattern each line, wildcards allowed (`acme/*`). Blank means all. |
 | `path_scope` | Small Text | One glob each line. Blank means all. |
-| `source` | Select | `Dashboard`, `Learned`, `Suggested`, `MCP`, `Chat` |
+| `source` | Select | `Dashboard`, `Learned`, `Suggested`, `MCP` (records from the removed MCP server), `Chat` |
 | `usage_count`, `addressed_count`, `merged_count` | Int | |
 | `addressed_rate` | Percent | `addressed_count / merged_count` |
 | `evidence` | JSON | Review Feedback or Pull Request Comment names behind a learned or suggested item. The form shows them as a table. |

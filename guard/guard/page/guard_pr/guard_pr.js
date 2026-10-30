@@ -616,17 +616,14 @@ class GuardReviewPage {
 	}
 
 	async fix_all() {
-		const result = await frappe.xcall("guard.api.cli.fix_prompt", { target: this.name });
+		const result = await frappe.xcall("guard.api.ui.fix_prompt", { target: this.name });
 		frappe.utils.copy_to_clipboard(result.prompt);
-		const url = `guard-fix://open?target=${encodeURIComponent(this.name)}&agent=claude`;
 		frappe.msgprint(
-			`${__("The fix prompt is on your clipboard.")}<br><br><a href="${url}">${__(
-				"Open in Claude Code"
-			)}</a> · <a href="guard-fix://open?target=${encodeURIComponent(
-				this.name
-			)}&agent=codex">Codex</a> · <a href="cursor://anysphere.cursor-deeplink/prompt?text=${encodeURIComponent(
+			`${__(
+				"The fix prompt is on your clipboard. Paste it into your coding agent."
+			)}<br><br><a href="cursor://anysphere.cursor-deeplink/prompt?text=${encodeURIComponent(
 				result.prompt.slice(0, 6000)
-			)}">Cursor</a>`,
+			)}">${__("Open in Cursor")}</a>`,
 			__("Fix all")
 		);
 	}

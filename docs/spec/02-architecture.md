@@ -19,10 +19,8 @@ flowchart LR
     IDX --> GW
     REV -- comments, status, reactions --> SCM
     UI[Frappe Desk] --> API[Whitelisted API]
-    CLI[CLI] --> API
-    MCP[MCP clients] --> MCPS[MCP endpoint]
+    FCTL[frappectl and coding agents] --> API
     API --> DB
-    MCPS --> DB
 ```
 
 | Component | Package | Job |
@@ -39,9 +37,7 @@ flowchart LR
 | Knowledge base | `guard/knowledge/` | Generates and syncs repository documents. |
 | Integrations | `guard/integrations/` | Jira, Confluence, Linear. |
 | LLM layer | `guard/llm/` | Chat, tool calls, structured output, embeddings, usage. |
-| API | `guard/api/` | Whitelisted methods for the UI, the CLI and the query API. |
-| MCP | `guard/mcp/` | JSON-RPC MCP endpoint. |
-| CLI | `guard/cli/` | Standalone CLI. Python standard library only. |
+| API | `guard/api/` | Whitelisted methods for the UI and the query API. frappectl calls the same methods. |
 | Desk UI | `guard/guard/` | Workspace, form scripts, desk pages, reports, number cards, charts. |
 
 ## AI providers
@@ -141,14 +137,13 @@ A job that writes a Pull Request and its Code Review in one transaction writes t
 ```text
 guard/
   guard/doctype/        DocTypes (module "Guard") and form scripts
-  guard/page/           desk pages: guard_pr (list, overview, tour, diff, chat), guard_chat, guard_cli_login
+  guard/page/           desk pages: guard_pr (list, overview, tour, diff, chat), guard_chat
   guard/report/         script reports: guard_analytics, bugs_caught, my_guard
   guard/workspace/, guard/number_card/, guard/dashboard_chart/, guard/number_cards.py
-  analytics.py          metrics for reports, number cards and MCP
+  analytics.py          metrics for reports and number cards
   permissions.py        team-scoped permission hooks
   settings.py           typed Guard Settings access
-  api/                  ui.py (Desk), v2.py (query API), cli.py (CLI), public.py (signed links)
-  cli/                  guard_cli.py, the standalone CLI
+  api/                  ui.py (Desk), v2.py (query API), public.py (signed links)
   config/               schema.py, resolver.py, dashboard.py, gate.py, globs.py
   conversation/         mentions.py, threads.py, answer.py, chat.py, codebase.py, tour.py
   git/                  store.py, diff.py, repository.py
@@ -160,7 +155,6 @@ guard/
   learning/             feedback.py, memory_writer.py, memories.py, addressed.py, suppression.py,
                         suggestions.py, approve.py
   llm/                  client.py, openai_dialect.py, anthropic_dialect.py, markup.py, offline.py, embeddings.py, http.py
-  mcp/                  server.py, tools.py
   providers/            base.py, github.py, sync.py
   review/               pipeline.py, run.py, context.py, task.py, agent.py, prompts.py, findings.py,
                         checks.py, verify.py, render.py, publish.py, sandbox.py, trigger.py, jobs.py,

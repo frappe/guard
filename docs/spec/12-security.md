@@ -41,7 +41,6 @@ Four settings, each `Everyone`, `Organization members` or `Guard users`:
 - Provider tokens, private keys, webhook secrets, the API key of each AI provider and integration tokens are Password fields.
 - Git commands get credentials through `-c http.extraHeader=...` for each call. Guard never writes a token to a remote URL or to git config.
 - Logs and errors pass through a redactor that removes known secrets and token shapes.
-- The CLI stores its API key in `~/.config/guard/credentials` with mode 0600.
 
 ## Webhooks
 

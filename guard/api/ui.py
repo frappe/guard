@@ -6,6 +6,7 @@ import frappe
 from frappe import _
 
 from guard import settings as guard_settings
+from guard.config.resolver import ConfigResolver
 from guard.git.diff import parse_diff
 from guard.git.repository import store_for
 from guard.learning import memories
@@ -235,10 +236,37 @@ def build_knowledge_base(repository: str) -> None:
 
 @frappe.whitelist(methods=["GET", "POST"])
 def explain_config(repository: str, path: str = "") -> dict[str, Any]:
+	"""The effective config for a path on the default branch, with the source of each value."""
 	frappe.has_permission("Code Repository", "read", repository, throw=True)
-	from guard.api.cli import config
+	store = store_for(repository)
+	ref = store.rev_parse(f"refs/heads/{db.value('Code Repository', repository, 'default_branch')}")
+	return ConfigResolver.from_store(repository, store, ref).explain(path)
 
-	return config(str(db.value("Code Repository", repository, "full_name")), path)
+
+@frappe.whitelist(methods=["GET", "POST"])
+def fix_prompt(target: str) -> dict[str, Any]:
+	"""The fix prompt of one finding, or of every open finding of a pull request."""
+	if frappe.db.exists("Review Finding", target):
+		doc = frappe.get_doc("Review Finding", target)
+		doc.check_permission("read")
+		repository = str(doc.get("repository") or "")
+		prompts = [str(doc.get("fix_prompt") or "")]
+	else:
+		frappe.has_permission("Pull Request", "read", target, throw=True)
+		repository = str(db.value("Pull Request", target, "repository") or "")
+		prompts = [
+			str(r[0] or "")
+			for r in db.rows(
+				"SELECT fix_prompt FROM `tabReview Finding` WHERE pull_request = %s AND status = 'Open' AND posted = 1 ORDER BY path, start_line",
+				(target,),
+			)
+		]
+	full_name = db.value("Code Repository", repository, "full_name") if repository else ""
+	text = "\n\n---\n\n".join(p for p in prompts if p)
+	return {
+		"repository": full_name,
+		"prompt": f"Fix these code review findings in {full_name}.\n\n{text}" if len(prompts) > 1 else text,
+	}
 
 
 @frappe.whitelist(methods=["POST"])

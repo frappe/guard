@@ -397,10 +397,10 @@ Severity marks: 🔴 P0, 🟠 P1, 🟡 P2.
 4. Add credits to the Code Review: 1, 3 or 10.
 5. Publish the realtime event `guard_review_updated`.
 
-## Branch and CLI reviews
+## Payload reviews
 
-A CLI review has no pull request. The CLI sends the base branch, the head commit, the diff and the changed file contents. Guard uses the repository index if the remote matches a known repository. The pipeline skips stages 2, 9 and 10. The result is in the Code Review and the CLI reads it from the API.
+A payload review (`source = cli`) has no pull request. `cli_payload` holds the base branch, the head commit, the diff and the changed file contents, so the review needs no mirror. Guard uses the repository index if `full_name` matches a known repository. The pipeline skips stages 2, 9 and 10. The result is in the Code Review. Evals use payload reviews.
 
 ## Evals
 
-`guard/evals/cases/*.json` holds recorded pull requests: the CLI review payload and the findings a good review must raise. `bench --site <site> execute guard.evals.run.run` replays each case as a CLI review and prints which expected findings came back. It needs the AI gateway. The Evals workflow runs it in CI on pull requests that change the review, the LLM layer, the config or the evals, and by hand with a choice of model. It reads the gateway from the `GUARD_EVAL_*` secrets and skips without them. No scheduler runs there, so a review that parks on a rate limit waits 90 seconds and runs again, up to 8 times. A billing error (402) does not pass while the eval waits: the review fails at once, the remaining cases do not run, and the job fails with the gateway's message. Add a case when another reviewer catches what Guard missed.
+`guard/evals/cases/*.json` holds recorded pull requests: the review payload and the findings a good review must raise. `bench --site <site> execute guard.evals.run.run` replays each case as a payload review and prints which expected findings came back. It needs the AI gateway. The Evals workflow runs it in CI on pull requests that change the review, the LLM layer, the config or the evals, and by hand with a choice of model. It reads the gateway from the `GUARD_EVAL_*` secrets and skips without them. No scheduler runs there, so a review that parks on a rate limit waits 90 seconds and runs again, up to 8 times. A billing error (402) does not pass while the eval waits: the review fails at once, the remaining cases do not run, and the job fails with the gateway's message. Add a case when another reviewer catches what Guard missed.

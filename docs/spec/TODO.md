@@ -91,8 +91,6 @@ Build order. Each milestone ends with passing tests and one commit or more. Feat
 ## M10. Surfaces
 
 - [x] Query API with streaming.
-- [x] MCP server and tools.
-- [x] CLI with login, review, show, status, config, settings, fix bridge.
 - [x] Analytics API.
 
 ## M11. Desk UI

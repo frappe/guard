@@ -1,4 +1,5 @@
-"""Branch reviews from the CLI: the diff and file contents come in the request."""
+"""Payload reviews (`source = cli`): the diff and file contents come in `cli_payload`, not from a
+mirror. Evals replay recorded pull requests this way."""
 
 from typing import TYPE_CHECKING, Any
 

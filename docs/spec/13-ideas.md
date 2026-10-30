@@ -34,7 +34,6 @@ Ideas past the baseline in [01-features.md](01-features.md). Each idea has a sta
 | O1 | **Polling mode** for providers that cannot reach the site with webhooks, for example a laptop bench. A job lists open pull requests every 5 minutes and makes the same events. | v1 |
 | O2 | **Replay and eval.** Run a past pull request again with new settings or another model, and compare. Up-voted and addressed findings are the positive set. | later |
 | O3 | Cost view: tokens and gateway spend for each review, team and month, from gateway usage. | later |
-| O4 | Pre-push hook recipe with `guard review status`. | v1 (docs only) |
 
 ## Platform
 

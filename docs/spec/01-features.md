@@ -89,11 +89,6 @@ On a new review Guard edits the same summary comment. It does not post a second 
 - A re-review marks old findings as outdated when their lines are gone.
 - The review counter in the footer goes up by one.
 
-### R10. Local and branch reviews
-
-- The CLI sends a branch diff to Guard and gets a review back without a pull request.
-- The result has the same findings, severity and summary as a pull request review.
-
 ### R11. Auto-approve
 
 - Guard approves a pull request only after a review with score 5/5, no findings, and a risk level at or below the risk ceiling.
@@ -231,17 +226,13 @@ Guard has no separate front end. Every screen is Frappe Desk:
 
 Index a repository, get its status, ask a question, search code.
 
-### S3. MCP server
+### S3. Terminal and coding agents
 
-Tools for account, repositories, pull requests, reviews, comment search, custom context, knowledge base and analytics.
-
-### S4. CLI
-
-`guard review`, `review show`, `review status`, `config [path]`, `login`, `logout`, `whoami`, `settings`, `fix`.
+frappectl reads reviews and findings and calls the whitelisted methods, with the permissions of the user. Guard has no CLI or MCP server of its own.
 
 ### S5. Fix with your agent
 
-Each comment links to the finding in Desk. The form gives a prompt, a copy button, deep links, and a local bridge command. **Fix All** sends every open finding at once. Supported agents: Claude Code, Codex, Cursor, Conductor, Devin.
+Each comment links to the finding in Desk. The form gives a prompt, a copy button, and deep links. **Fix All** sends every open finding at once. Supported agents: Claude Code, Codex, Cursor, Conductor, Devin.
 
 ### S6. Analytics
 

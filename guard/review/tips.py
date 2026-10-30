@@ -4,7 +4,7 @@ from guard import settings as guard_settings
 from guard.utils import db
 
 CONFIG_TIP = "_Tip: teach Guard your team's rules for good with `.guard/rules.md` or `[[rules]]` in `.guard/config.toml`._"
-FIX_TIP = "_Tip: fix every open finding at once with your coding agent: use **Fix all** in the summary, or run `guard fix install` once._"
+FIX_TIP = "_Tip: fix every open finding at once with your coding agent: use **Fix all** in the summary._"
 
 
 def enabled() -> bool:

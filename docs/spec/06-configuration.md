@@ -22,7 +22,7 @@ If `.guard/` and `guard.toml` are in the same directory, Guard reads `.guard/` a
 - All config comes from the head of the base branch: settings, rules, files, notes, instructions, ignore patterns and `auto_approve`. A pull request cannot turn on reviews, lift a skip, add instructions or loosen approval for itself.
 - A branch made before a config change gets the current config.
 - A config change in a pull request applies after it is merged.
-- A CLI review has no base branch to trust. It reads the config that the CLI sends from its head commit.
+- A payload review (`source = cli`, used by evals) has no base branch to trust. It reads the config files in its payload.
 
 ## `.guard/` folder
 
@@ -223,4 +223,4 @@ Guard parses each file with `tomllib` and checks the keys and types. A file with
 
 ## Explain
 
-`guard.config.resolver.ConfigResolver.explain(path)` returns the effective config for a path and the source of each value. The CLI `guard config <path>` and the API use it.
+`guard.config.resolver.ConfigResolver.explain(path)` returns the effective config for a path and the source of each value. The **Explain config** action on the Code Repository form uses it through `guard.api.ui.explain_config`.

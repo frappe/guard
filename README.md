@@ -35,7 +35,7 @@ Guard is a Frappe app. One site serves one company. Everyone uses Frappe Desk.
 - Builds a knowledge base for each repository and reads Jira, Confluence and Linear tickets.
 - Resolves its own threads when the code fixes them, and, when a repository turns on auto-approve, approves a pull request after a clean 5/5 review.
 - Runs targeted tests in a rootless container, when runtime validation is on.
-- Serves a query API, an MCP server and a `guard` CLI for local branch reviews and fixes with coding agents.
+- Serves a query API, and gives a fix prompt for each finding to paste into a coding agent.
 
 ## Install
 
@@ -67,8 +67,7 @@ Without an AI provider, Guard still indexes code, runs the graph checks, the sec
 | - | - |
 | GitHub | `@guard`, `@guard review this at apex`, `@guard is this thread-safe?`, replies in Guard threads, 👍 and 👎 |
 | Desk | The **Guard** workspace, **Pull Request Review** (`/desk/guard-pr`), **Codebase Chat**, **Guard Health** (queues, failures, the AI providers and the indexes), and the Guard Analytics, Bugs Caught and My Guard reports |
-| Terminal | `curl -fsSL "<site>/api/method/guard.api.cli.download" -o ~/.local/bin/guard && chmod +x ~/.local/bin/guard`, then `guard login` and `guard review` |
-| Coding agents | MCP at `<site>/api/method/guard.mcp.server.handle` with `Authorization: token <key>:<secret>` |
+| Terminal and coding agents | [frappectl](https://github.com/frappe/frappectl): `frappectl auth login <site> --oauth`, then for example `frappectl doc list "Review Finding" -f status=Open` |
 
 ## Develop
 
