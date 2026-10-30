@@ -10,6 +10,7 @@ from frappe.rate_limiter import rate_limit
 from guard.review import local
 
 STARTS_PER_HOUR = 30  # a start applies a diff and reads the graph: cheap, but not free
+SYMBOLS_PER_HOUR = 300  # an agent looks up many symbols in one review
 
 
 @frappe.whitelist(methods=["GET"])
@@ -30,6 +31,7 @@ def start(
 
 
 @frappe.whitelist(methods=["GET"])
+@rate_limit(limit=SYMBOLS_PER_HOUR, seconds=60 * 60, user_based=True, ip_based=False)
 def symbol(full_name: str, name: str) -> dict[str, Any]:
 	"""Definitions of a function, class or method on the default branch, with callers and callees."""
 	return local.symbol(full_name, name)

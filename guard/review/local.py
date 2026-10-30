@@ -5,6 +5,9 @@ agent the rules and the context. Guard runs no model for it. See docs/spec/05-re
 
 import dataclasses
 import re
+import shutil
+import time
+from pathlib import Path
 from typing import Any
 
 import frappe
@@ -40,6 +43,10 @@ MAX_GUIDE_CHARS = 80_000  # the agent reads the guide once, so it can be long
 MAX_KNOWLEDGE_CHARS = 3000
 MAX_IMPACTED = 20
 MAX_SYMBOLS = 5
+MAX_BRANCH = 140  # the length of a Data field
+MAX_INSTRUCTIONS = 4000
+MAX_BODY = 4000  # a finding body is at most 3 sentences; this only stops abuse
+MAX_SUGGESTION = 20_000
 SHA = re.compile(r"[0-9a-f]{7,64}")
 
 FINDING_FIELDS = """Each finding is an object with these keys:
@@ -87,6 +94,7 @@ review. Guard gives you the team rules, its code graph and the findings of its c
      '{{full_name: $full_name, base: $base, branch: $branch, head: $head, diff: .}}' \\
      | frappectl api method/guard.api.local.start --input -
    Add `"instructions": "..."` to ask for a focus. Use the frappectl profile of {site}.
+   `jq -Rs` reads text as UTF-8. A diff of a text file in another encoding does not apply.
 4. The answer has `review_id`, `findings` of Guard's checks and `guide`. Follow `guide`: it has
    the rubric, the rules and the graph facts for this change.
 5. To see the callers and callees of a symbol on the default branch, call
@@ -119,9 +127,21 @@ def start(
 	"""Apply the diff to `base`, run the checks and the graph, and keep the review for `submit`."""
 	if len(diff.encode()) > MAX_DIFF_BYTES:
 		frappe.throw(_("The diff is larger than {0} MB.").format(MAX_DIFF_BYTES // 1_000_000))
+	branch, instructions = branch.strip()[:MAX_BRANCH], instructions.strip()[:MAX_INSTRUCTIONS]
 	repository = repository_for(full_name)
-	store = store_for(repository)
-	base = _commit(store, base)
+	base = _commit(store_for(repository), base)
+	review_id = frappe.generate_hash(length=16)
+	try:
+		return _start(review_id, repository, base, diff, branch, head, instructions)
+	except BaseException:
+		shutil.rmtree(_objects(review_id), ignore_errors=True)
+		raise
+
+
+def _start(
+	review_id: str, repository: str, base: str, diff: str, branch: str, head: str, instructions: str
+) -> dict[str, Any]:
+	store = store_for(repository).scratch(_objects(review_id))
 	try:
 		tree = store.apply(base, diff if diff.endswith("\n") else diff + "\n")
 	except GitError as error:
@@ -148,7 +168,6 @@ def start(
 	found = deterministic_findings(run, others, index)
 	FindingFilter(run.files, run.settings).run(found)
 	found = [f for f in found if f.kept]
-	review_id = frappe.generate_hash(length=16)
 	cache.set(
 		_key(review_id),
 		{
@@ -159,7 +178,6 @@ def start(
 			"head": head if SHA.fullmatch(head or "") else "",
 			"branch": branch,
 			"instructions": instructions,
-			"diff": diff_text,
 			"checks": [dataclasses.asdict(f) for f in found],
 			"started_at": now_datetime(),
 		},
@@ -169,6 +187,7 @@ def start(
 		"review_id": review_id,
 		"repository": run.full_name,
 		"base": base,
+		"tree": tree,
 		"files": len(run.files),
 		"findings": [_finding(f) for f in found],
 		"guide": guide_for(run, found, review_id, instructions),
@@ -205,9 +224,9 @@ def guide_for(run: ReviewRun, found: list[Finding], review_id: str, instructions
 		)
 	if found:
 		lines = "\n".join(f"- {f.severity} {f.path}:{f.start_line} {f.title}" for f in found)
-		parts.append("Findings of Guard's checks, already part of this review:\n" + lines)
+		parts.append("Findings of Guard's checks, already part of this review:\n" + data("checks", lines))
 	if run.notes:
-		parts.append("Notes:\n" + "\n".join(f"- {note}" for note in run.notes))
+		parts.append("Notes:\n" + data("notes", "\n".join(f"- {note}" for note in run.notes)))
 	parts.append(SUBMIT.format(review_id=review_id))
 	return "\n\n".join(p for p in parts if p)[:MAX_GUIDE_CHARS]
 
@@ -223,23 +242,25 @@ def submit(
 ) -> dict[str, Any]:
 	"""Filter the findings of the agent with those of the checks, and save them as a Code Review."""
 	with cache.exclusive(f"guard:local-submit:{review_id}", 120) as acquired:
-		session = cache.get(_key(review_id)) if acquired else None
+		if not acquired:
+			frappe.throw(_("Review {0} is being submitted now. Wait for that call.").format(review_id))
+		session = cache.get(_key(review_id))
 		if not session or session.get("user") != frappe.session.user:
 			frappe.throw(_("Guard has no started review {0}. Start the review again.").format(review_id))
 			raise AssertionError  # frappe.throw raises
 		repository = str(session["repository"])
 		frappe.has_permission("Code Repository", "read", repository, throw=True)
-		store = store_for(repository)
+		store = store_for(repository).scratch(_objects(review_id))
 		try:
-			run = _run(
-				repository, store, session["base"], session["tree"], session["diff"], session["branch"]
-			)
+			# The tree stays in the scratch objects, so the session does not need to hold the diff.
+			diff_text = store.diff(session["base"], session["tree"])
+			run = _run(repository, store, session["base"], session["tree"], diff_text, session["branch"])
 		except GitError:
 			frappe.throw(_("Guard lost the change of review {0}. Start the review again.").format(review_id))
 			raise
 		run.review = _save_review(run, session, review_id)
 		run.findings = [Finding(**f) for f in session["checks"]]
-		run.findings += [Finding.from_arguments(f) for f in findings[:MAX_FINDINGS] if isinstance(f, dict)]
+		run.findings += [_from_agent(f) for f in findings[:MAX_FINDINGS] if isinstance(f, dict)]
 		FindingFilter(run.files, run.settings).run(run.findings)
 		for finding in run.findings:
 			# A finding outside the diff can be about a caller. One on a missing file is a mistake.
@@ -271,6 +292,7 @@ def submit(
 		)
 		Publisher(run).save_findings()
 		cache.delete(_key(review_id))
+		shutil.rmtree(_objects(review_id), ignore_errors=True)
 	return {
 		"review": run.review.name,
 		"url": links.code_review(str(run.review.name)),
@@ -399,7 +421,8 @@ def _save_review(run: ReviewRun, session: dict[str, Any], review_id: str) -> Any
 			"requested_by": frappe.session.user,
 			"triggered_by_user": frappe.session.user,
 			"strictness": run.settings.get("strictness"),
-			"head_sha": session["head"] or run.head_sha,
+			# A commit, when the agent sent one. The reviewed tree is not a commit, so it is not kept.
+			"head_sha": session["head"],
 			"base_sha": run.base_sha,
 			"merge_base_sha": run.base_sha,
 			"branch": run.head_branch,
@@ -413,6 +436,14 @@ def _save_review(run: ReviewRun, session: dict[str, Any], review_id: str) -> Any
 			"changed_files": frappe.as_json([{"path": f.path, "status": f.status} for f in run.all_files]),
 		}
 	).insert(ignore_permissions=True)
+
+
+def _from_agent(args: dict[str, Any]) -> Finding:
+	finding = Finding.from_arguments(args)
+	finding.rule_id = str(finding.rule_id)[:140] if isinstance(finding.rule_id, str | int) else None
+	finding.body = finding.body[:MAX_BODY]
+	finding.suggestion = finding.suggestion[:MAX_SUGGESTION]
+	return finding
 
 
 def _finding(finding: Finding) -> dict[str, Any]:
@@ -430,3 +461,18 @@ def _finding(finding: Finding) -> dict[str, Any]:
 
 def _key(review_id: str) -> str:
 	return f"guard:local-review:{review_id}"
+
+
+def _objects(review_id: str) -> Path:
+	"""The git objects of one local review: the patched blobs and trees."""
+	return Path(frappe.get_site_path("private", "guard", "local", review_id))
+
+
+def remove_abandoned() -> None:
+	"""Every hour: delete the objects of local reviews that nobody submitted. Their session expired."""
+	root = _objects("x").parent
+	if not root.is_dir():
+		return
+	for directory in root.iterdir():
+		if directory.stat().st_mtime < time.time() - SESSION_TTL:
+			shutil.rmtree(directory, ignore_errors=True)

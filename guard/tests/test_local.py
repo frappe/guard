@@ -1,3 +1,6 @@
+import os
+import shutil
+import time
 from contextlib import ExitStack
 from unittest.mock import patch
 
@@ -55,6 +58,8 @@ class TestLocalReview(IntegrationTestCase):
 	def test_apply_writes_the_tree_of_the_base_with_the_patch(self):
 		store = store_for(self.repository)
 		store.fetch_sha(self.base)
+		store = store.scratch(local._objects(frappe.generate_hash(length=16)))
+		self.addCleanup(lambda: shutil.rmtree(store.objects or "", ignore_errors=True))
 		tree = store.apply(self.base, self.working_tree_diff())
 		self.assertEqual(store.show(tree, "app/models.py"), NEW_SIGNATURE + KEY_LINE)
 		self.assertEqual(store.show(tree, "app/notes.py"), "NOTE = 1\n")
@@ -139,7 +144,18 @@ class TestLocalReview(IntegrationTestCase):
 
 	def test_a_review_is_submitted_once_and_by_the_user_who_started_it(self):
 		started = self.start()
-		frappe.set_user("Guest")
+		other = "local-other@example.com"
+		if not frappe.db.exists("User", other):
+			frappe.get_doc(
+				{
+					"doctype": "User",
+					"email": other,
+					"first_name": "Other",
+					"send_welcome_email": 0,
+					"roles": [{"role": "Guard Member"}],
+				}
+			).insert(ignore_permissions=True)
+		frappe.set_user(other)
 		try:
 			with self.assertRaises(frappe.ValidationError):
 				local.submit(started["review_id"], [])
@@ -148,6 +164,31 @@ class TestLocalReview(IntegrationTestCase):
 		local.submit(started["review_id"], [])
 		with self.assertRaises(frappe.ValidationError):
 			local.submit(started["review_id"], [])
+
+	def test_the_review_keeps_no_tree_as_head_and_cuts_the_branch(self):
+		started = local.start(self.full_name, self.base, self.working_tree_diff(), "b" * 300)
+		name = local.submit(started["review_id"], [])["review"]
+		review = db.values("Code Review", name, ("head_sha", "branch")) or {}
+		self.assertFalse(review["head_sha"])
+		self.assertEqual(review["branch"], "b" * local.MAX_BRANCH)
+
+	def test_the_objects_of_the_change_stay_out_of_the_mirror(self):
+		started = self.start()
+		objects = local._objects(started["review_id"])
+		self.assertTrue(objects.is_dir())
+		store = store_for(self.repository)
+		self.assertIsNone(store.show(started["tree"], "app/notes.py"))
+		local.submit(started["review_id"], [])
+		self.assertFalse(objects.exists())
+
+	def test_abandoned_objects_are_removed(self):
+		objects = local._objects(self.start()["review_id"])
+		local.remove_abandoned()
+		self.assertTrue(objects.exists())
+		old = time.time() - local.SESSION_TTL - 60
+		os.utime(objects, (old, old))
+		local.remove_abandoned()
+		self.assertFalse(objects.exists())
 
 	def test_a_diff_that_does_not_apply_fails(self):
 		diff = "diff --git a/app/models.py b/app/models.py\n--- a/app/models.py\n+++ b/app/models.py\n@@ -1,1 +1,1 @@\n-nothing here\n+x\n"

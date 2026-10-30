@@ -47,7 +47,8 @@ def execute(filters: dict | None = None) -> tuple:
 def usage(filters: dict, group: str, prices: PriceList) -> list[dict[str, Any]]:
 	"""One row each group. Tokens count every attempt of every review. Credits count completed reviews,
 	as the monthly credit cap does. The cost of each tier uses the prices of that tier."""
-	conditions = ["r.creation >= %(start)s", "r.creation < %(end)s"]
+	# Local reviews run no model on the site and take no credits.
+	conditions = ["r.creation >= %(start)s", "r.creation < %(end)s", "r.source != 'local'"]
 	values: dict[str, Any] = {
 		"start": day(filters.get("from_date"), -29),
 		"end": add_days(day(filters.get("to_date"), 0), 1),

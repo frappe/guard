@@ -168,7 +168,7 @@ A coding agent reviews a change before it is pushed, with its own model. Guard g
 | Method | HTTP | Arguments | Answer |
 | - | - | - | - |
 | `guard.api.local.guide` | GET | | The workflow, for the agent |
-| `guard.api.local.start` | POST | `full_name`, `base`, `diff`, `branch`, `head`, `instructions` | `review_id`, `findings` of the checks, `guide` |
+| `guard.api.local.start` | POST | `full_name`, `base`, `diff`, `branch`, `head`, `instructions` | `review_id`, `tree` (the sha of the reviewed tree), `findings` of the checks, `guide` |
 | `guard.api.local.symbol` | GET | `full_name`, `name` | Definitions with callers and callees |
 | `guard.api.local.submit` | POST | `review_id`, `findings`, `summary`, `confidence_score`, `confidence_reason`, `risk_level`, `risk_reason` | `review`, `url`, `kept`, `dropped` |
 

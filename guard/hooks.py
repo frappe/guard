@@ -42,6 +42,7 @@ scheduler_events = {
 		],
 		"17 * * * *": ["guard.review.jobs.close_stuck_checks"],
 		"41 * * * *": ["guard.indexing.jobs.catch_up"],
+		"53 * * * *": ["guard.review.local.remove_abandoned"],
 		"*/15 * * * *": [
 			"guard.learning.addressed.poll_reactions",
 			"guard.api.health.check_failure_rate",

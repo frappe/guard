@@ -45,6 +45,16 @@ class GitStore:
 		self.clone_url = clone_url
 		self.auth_header = auth_header
 		self.path = Path(frappe.get_site_path("private", "guard", "git", f"{name}.git"))
+		# New objects go here instead of into the mirror. See `scratch`.
+		self.objects: Path | None = None
+
+	def scratch(self, directory: Path) -> "GitStore":
+		"""This mirror, with new objects written to `directory`. The mirror stays unchanged, and
+		deleting `directory` deletes them. A repack would keep objects that no ref reaches forever."""
+		store = GitStore(self.name, self.clone_url, self.auth_header)
+		store.objects = directory
+		directory.mkdir(parents=True, exist_ok=True)
+		return store
 
 	# ------------------------------------------------------------- remote
 
@@ -182,8 +192,8 @@ class GitStore:
 	def apply(self, base: str, patch: str) -> str:
 		"""Write the tree of `base` with `patch` applied, and return its sha. No ref points at it.
 
-		A temporary index holds the result, so the mirror and its refs do not change. Raise GitError
-		when the patch does not apply to `base`.
+		A temporary index holds the result, so no ref changes. Use it on a `scratch` store, so the
+		objects do not go into the mirror. Raise GitError when the patch does not apply to `base`.
 		"""
 		with tempfile.TemporaryDirectory(prefix="guard-apply-") as directory:
 			env = {"GIT_INDEX_FILE": str(Path(directory) / "index")}
@@ -315,6 +325,10 @@ class GitStore:
 	def _env(self) -> dict[str, str]:
 		env = dict(os.environ)
 		env.update({"GIT_TERMINAL_PROMPT": "0", "GIT_ASKPASS": "true", "LC_ALL": "C"})
+		if self.objects is not None:
+			# Absolute: git reads these after `-C` changes the directory, and site paths are relative.
+			env["GIT_OBJECT_DIRECTORY"] = str(self.objects.resolve())
+			env["GIT_ALTERNATE_OBJECT_DIRECTORIES"] = str((self.path / "objects").resolve())
 		return env
 
 
