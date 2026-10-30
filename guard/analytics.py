@@ -9,8 +9,6 @@ from frappe.utils import getdate, now_datetime, nowdate
 
 from guard.utils import db
 
-PERIODS = ("this week", "this month", "this quarter", "this year", "all time")
-
 
 @dataclass
 class Filters:

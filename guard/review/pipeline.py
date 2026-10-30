@@ -443,7 +443,7 @@ class ReviewPipeline:
 			return None
 
 	def rule_files(self, run: ReviewRun) -> list[tuple[str, str]]:
-		"""CLAUDE.md and similar from the base branch. A CLI review has no base branch: they come from its head."""
+		"""CLAUDE.md and similar from the base branch. A payload review has no base branch: they come from its head."""
 		if not run.config_sha or not run.repository:
 			return rule_files.collect(run.paths, run.head, run.list_dir)
 		store, sha = store_for(run.repository), run.config_sha

@@ -151,8 +151,8 @@ uv tool install frappectl
 frappectl auth login https://<site> --oauth --name guard
 frappectl -s guard doc list "Code Review" -f pull_request=<name> --limit 5
 frappectl -s guard doc list "Review Finding" -f code_review=<id> -f status=Open --fields "path,start_line,severity,title,body"
-frappectl -s guard api method/guard.api.ui.fix_prompt -F target=<pull request or finding>
-frappectl -s guard api method/guard.api.ui.rereview -F pull_request=<name>
+frappectl -s guard api method/guard.api.ui.fix_prompt -f target=<pull request or finding>
+frappectl -s guard api method/guard.api.ui.rereview -f pull_request=<name>
 frappectl -s guard api method/guard.api.v2.search -F query="where do we retry webhooks" -F 'repositories:=["github:main:acme/api"]'
 ```
 
