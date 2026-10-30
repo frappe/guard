@@ -68,6 +68,7 @@ Without an AI provider, Guard still indexes code, runs the graph checks, the sec
 | GitHub | `@guard`, `@guard review this at apex`, `@guard is this thread-safe?`, replies in Guard threads, 👍 and 👎 |
 | Desk | The **Guard** workspace, **Pull Request Review** (`/desk/guard-pr`), **Codebase Chat**, **Guard Health** (queues, failures, the AI providers and the indexes), and the Guard Analytics, Bugs Caught and My Guard reports |
 | Terminal and coding agents | [frappectl](https://github.com/frappe/frappectl): `frappectl auth login <site> --oauth`, then for example `frappectl doc list "Review Finding" -f status=Open` |
+| Reviews before a push | Your coding agent reviews with its own model and Guard's rules and graph. Over MCP (`<site>/api/v2/mcp`) or frappectl, start with `guard.api.local.guide` |
 
 ## Develop
 

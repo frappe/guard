@@ -157,7 +157,34 @@ frappectl -s guard api method/guard.api.v2.search -F query="where do we retry we
 ```
 
 - `frappectl guide` explains the commands to an agent.
+- MCP clients use the MCP server of Frappe at `<site>/api/v2/mcp`, with OAuth or an API key. Its tool `call_method` calls the same methods. For example: `claude mcp add --transport http guard https://<site>/api/v2/mcp`, then `claude mcp login guard`.
+- On install, Guard sets **System Settings › Agent Instructions** when it is empty. It tells MCP clients to call `guard.api.local.guide` for a review before a push.
 - Write methods (`rereview`, `set_finding_status`, ...) check the same permissions as in Desk.
+
+## Local reviews
+
+A coding agent reviews a change before it is pushed, with its own model. Guard gives it the rules, the graph and its check findings, and keeps the result ([05-review-engine.md](05-review-engine.md#local-reviews)).
+
+| Method | HTTP | Arguments | Answer |
+| - | - | - | - |
+| `guard.api.local.guide` | GET | | The workflow, for the agent |
+| `guard.api.local.start` | POST | `full_name`, `base`, `diff`, `branch`, `head`, `instructions` | `review_id`, `findings` of the checks, `guide` |
+| `guard.api.local.symbol` | GET | `full_name`, `name` | Definitions with callers and callees |
+| `guard.api.local.submit` | POST | `review_id`, `findings`, `summary`, `confidence_score`, `confidence_reason`, `risk_level`, `risk_reason` | `review`, `url`, `kept`, `dropped` |
+
+- `full_name` is `owner/name`, or a remote URL such as `git@github.com:owner/name.git`.
+- The agent sends the diff from the shell, so the diff costs no tokens:
+
+```bash
+base=$(git merge-base HEAD origin/develop)
+git diff --binary "$base" | jq -Rs --arg base "$base" '{full_name: "acme/api", base: $base, diff: .}' \
+  | frappectl -s guard api method/guard.api.local.start --input -
+```
+
+- Untracked files are not in `git diff`. The guide tells the agent to run `git add -N` on the new files of the change.
+- Over MCP, the diff is a tool argument, and the model writes it out. The guide allows this for small diffs only.
+- A finding has `path`, `start_line`, `end_line`, `severity`, `comment_type`, `title`, `body`, and can have `category`, `suggestion`, `rule_id` and `confidence`.
+- A git `pre-push` hook can run the review headless, for example with `claude -p "Run a Guard local review"`.
 
 ## Fix with your agent
 

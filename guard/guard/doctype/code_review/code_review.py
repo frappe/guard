@@ -57,7 +57,7 @@ class CodeReview(Document):
 		review_number: DF.Int
 		risk_level: DF.Literal["", "low", "medium", "high", "critical"]
 		risk_reason: DF.SmallText | None
-		source: DF.Literal["pull_request", "cli", "api"]
+		source: DF.Literal["pull_request", "cli", "api", "local"]
 		stage: DF.Data | None
 		stage_seconds: DF.JSON | None
 		started_at: DF.Datetime | None
@@ -66,7 +66,7 @@ class CodeReview(Document):
 		summary: DF.MarkdownEditor | None
 		suppressed_count: DF.Int
 		tier: DF.Literal["", "base", "plus", "apex"]
-		trigger: DF.Literal["open", "push", "rebase", "mention", "retrigger", "manual", "cli", "api"]
+		trigger: DF.Literal["open", "push", "rebase", "mention", "retrigger", "manual", "cli", "api", "local"]
 		triggered_by_user: DF.Link | None
 		usage_detail: DF.JSON | None
 	# end: auto-generated types

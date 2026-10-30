@@ -52,7 +52,7 @@ def failure_rate() -> dict[str, Any]:
 	row = (
 		db.dict_rows(
 			"""SELECT COUNT(*) AS ended, SUM(status = 'Failed') AS failed FROM `tabCode Review`
-			WHERE status IN ('Completed', 'Failed') AND completed_at > %s""",
+			WHERE status IN ('Completed', 'Failed') AND source != 'local' AND completed_at > %s""",
 			(add_to_date(now_datetime(), hours=-1),),
 		)
 		or [{}]
@@ -109,7 +109,7 @@ def _queues() -> list[dict[str, Any]]:
 
 def _reviews(hours: int = 24) -> dict[str, int]:
 	rows = db.rows(
-		"SELECT status, COUNT(*) FROM `tabCode Review` WHERE creation > %s GROUP BY status",
+		"SELECT status, COUNT(*) FROM `tabCode Review` WHERE source != 'local' AND creation > %s GROUP BY status",
 		(add_to_date(now_datetime(), hours=-hours),),
 	)
 	return {str(status): int(count) for status, count in rows}

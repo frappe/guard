@@ -42,6 +42,15 @@ Four settings, each `Everyone`, `Organization members` or `Guard users`:
 - Git commands get credentials through `-c http.extraHeader=...` for each call. Guard never writes a token to a remote URL or to git config.
 - Logs and errors pass through a redactor that removes known secrets and token shapes.
 
+## Local reviews
+
+- A local review needs read permission on the Code Repository. Only the user who started it can submit it, and only once.
+- Config and rule files come from the base commit, not from the diff, so a change cannot weaken its own review.
+- Guard applies the diff in a temporary index. No ref, branch or working tree changes, and Guard runs no code from it.
+- A diff can be 5 MB at most. `start` takes 30 calls an hour for each user.
+- The guide wraps team text, memories and knowledge base pages in `<data>` blocks.
+- The Code Review keeps the findings, not the diff. The session in Redis holds the diff for 6 hours.
+
 ## Webhooks
 
 - Every endpoint checks the signature with a constant-time compare before it parses the body.

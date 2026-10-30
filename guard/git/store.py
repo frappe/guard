@@ -2,6 +2,7 @@
 
 import os
 import subprocess
+import tempfile
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -178,6 +179,18 @@ class GitStore:
 		)
 		return _parse_batch(process.stdout)
 
+	def apply(self, base: str, patch: str) -> str:
+		"""Write the tree of `base` with `patch` applied, and return its sha. No ref points at it.
+
+		A temporary index holds the result, so the mirror and its refs do not change. Raise GitError
+		when the patch does not apply to `base`.
+		"""
+		with tempfile.TemporaryDirectory(prefix="guard-apply-") as directory:
+			env = {"GIT_INDEX_FILE": str(Path(directory) / "index")}
+			self._git("read-tree", base, env=env)
+			self._git("apply", "--cached", "--whitespace=nowarn", stdin=patch, env=env)
+			return self._git("write-tree", env=env).strip()
+
 	def diff(self, base: str, head: str, paths: list[str] | None = None, context: int = 3) -> str:
 		args = ["diff", "--no-color", "--no-ext-diff", "--find-renames", f"-U{context}", base, head]
 		if paths:
@@ -270,7 +283,12 @@ class GitStore:
 			yield
 
 	def _git(
-		self, *args: str, auth: bool = False, stdin: str | None = None, config: tuple[str, ...] = ()
+		self,
+		*args: str,
+		auth: bool = False,
+		stdin: str | None = None,
+		config: tuple[str, ...] = (),
+		env: dict[str, str] | None = None,
 	) -> str:
 		command = ["git", "-C", str(self.path), *NO_GC]
 		if auth and self.auth_header:
@@ -284,7 +302,7 @@ class GitStore:
 				input=stdin.encode() if stdin is not None else None,
 				capture_output=True,
 				timeout=TIMEOUT,
-				env=self._env(),
+				env={**self._env(), **(env or {})},
 				check=False,
 			)
 		except subprocess.TimeoutExpired as error:

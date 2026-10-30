@@ -45,12 +45,19 @@ UNIQUE_INDEXES = (
 )
 
 
+AGENT_INSTRUCTIONS = (
+	"This site runs Guard, which reviews code. To review a change before it is pushed, call the method "
+	"`guard.api.local.guide` and follow it."
+)
+
+
 def before_install():
 	create_roles()
 
 
 def after_install():
 	after_migrate()
+	add_agent_instructions()
 
 
 def after_migrate():
@@ -63,6 +70,16 @@ def after_migrate():
 	from guard.review.jobs import restart_dead_reviews
 
 	restart_dead_reviews()
+
+
+def add_agent_instructions():
+	"""Point MCP clients at the guide of local reviews, when the site has no agent instructions yet.
+	Keep what an admin wrote."""
+	if not frappe.get_meta("System Settings").has_field("agent_instructions"):
+		return
+	if str(frappe.db.get_single_value("System Settings", "agent_instructions") or "").strip():
+		return
+	frappe.db.set_single_value("System Settings", "agent_instructions", AGENT_INSTRUCTIONS)
 
 
 def create_roles():

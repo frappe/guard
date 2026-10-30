@@ -71,7 +71,7 @@ def summary(filters: Filters) -> dict[str, Any]:
 	]
 	review_where, review_values = filters.where("r", "creation")
 	reviews = db.scalar(
-		f"SELECT COUNT(*) FROM `tabCode Review` r WHERE r.status = 'Completed' AND {review_where}",
+		f"SELECT COUNT(*) FROM `tabCode Review` r WHERE r.status = 'Completed' AND r.source != 'local' AND {review_where}",
 		review_values,
 	)
 	bugs = bugs_caught(filters)
@@ -115,7 +115,7 @@ def series(filters: Filters, metric: str = "reviews", bucket: str = "day") -> li
 	fmt = {"day": "%%Y-%%m-%%d", "week": "%%x-W%%v", "month": "%%Y-%%m"}[bucket]
 	if metric == "reviews":
 		where, values = filters.where("r", "creation")
-		query = f"SELECT DATE_FORMAT(r.creation, '{fmt}') AS bucket, COUNT(*) AS value FROM `tabCode Review` r WHERE r.status = 'Completed' AND {where} GROUP BY bucket ORDER BY bucket"
+		query = f"SELECT DATE_FORMAT(r.creation, '{fmt}') AS bucket, COUNT(*) AS value FROM `tabCode Review` r WHERE r.status = 'Completed' AND r.source != 'local' AND {where} GROUP BY bucket ORDER BY bucket"
 	elif metric == "bugs":
 		where, values = filters.where("f", "creation")
 		query = f"""SELECT DATE_FORMAT(f.creation, '{fmt}') AS bucket, SUM(f.severity = 'P0') AS p0, SUM(f.severity = 'P1') AS p1,
@@ -137,7 +137,7 @@ def leaderboard(filters: Filters, metric: str = "reviews", limit: int = 10) -> l
 	if metric == "reviews":
 		where, values = filters.where("r", "creation")
 		query = f"""SELECT c.full_name AS label, COUNT(*) AS value FROM `tabCode Review` r JOIN `tabCode Repository` c ON c.name = r.repository
-			WHERE r.status = 'Completed' AND {where} GROUP BY c.full_name ORDER BY value DESC LIMIT {int(limit)}"""
+			WHERE r.status = 'Completed' AND r.source != 'local' AND {where} GROUP BY c.full_name ORDER BY value DESC LIMIT {int(limit)}"""
 	elif metric == "bugs":
 		where, values = filters.where("f", "creation")
 		query = f"""SELECT c.full_name AS label, COUNT(*) AS value FROM `tabReview Finding` f JOIN `tabCode Repository` c ON c.name = f.repository

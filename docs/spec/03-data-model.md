@@ -166,9 +166,9 @@ A repository has one row for each pull request number: a unique index on `reposi
 | Field | Type | Notes |
 | - | - | - |
 | `pull_request`, `repository` | Link | `pull_request` is blank for payload reviews. |
-| `source` | Select | `pull_request`, `cli`, `api` |
+| `source` | Select | `pull_request`, `cli`, `api`, `local` (a local review, [05-review-engine.md](05-review-engine.md#local-reviews)) |
 | `status` | Select | `Queued`, `Running`, `Completed`, `Failed`, `Cancelled`, `Skipped` |
-| `trigger` | Select | `open`, `push`, `rebase`, `mention`, `retrigger`, `manual`, `cli`, `api` |
+| `trigger` | Select | `open`, `push`, `rebase`, `mention`, `retrigger`, `manual`, `cli`, `api`, `local` |
 | `requested_by` | Data | Provider login. |
 | `requested_tier`, `tier` | Select | |
 | `head_sha`, `base_sha`, `merge_base_sha`, `branch` | Data | |

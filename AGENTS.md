@@ -135,8 +135,9 @@ repo root down to the file. Scalars: the closest value wins. Rules, files, notes
 
 **Other surfaces.** `api/ui.py` (Desk), `api/v2.py` (query API), `api/public.py` (signed links,
 `review/links.py`), `api/health.py`. Guard has no CLI or MCP server of its own: terminals and coding
-agents use [frappectl](https://github.com/frappe/frappectl) against the same whitelisted methods and
-DocTypes. Desk UI lives in `guard/guard/` as plain Frappe JS (pages, form/list scripts, reports,
+agents use [frappectl](https://github.com/frappe/frappectl) or the MCP server of Frappe (`/api/v2/mcp`)
+against the same whitelisted methods and DocTypes. `api/local.py` + `review/local.py` serve local reviews:
+the agent of the developer reviews with its own model, and Guard runs no model for them. Desk UI lives in `guard/guard/` as plain Frappe JS (pages, form/list scripts, reports,
 workspace). There is no frontend build.
 
 Scheduled jobs and permission hooks are in `guard/hooks.py`. Team-scoped permissions are in

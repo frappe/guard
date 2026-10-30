@@ -46,15 +46,15 @@ def compose(run: ReviewRun, built: BuiltContext, extra: str = "", tokens: int = 
 		meta.append("Commits:\n" + "\n".join(f"- {c.subject}" for c in run.commits[-30:]))
 	parts.append("Pull request:\n" + data("pull request", "\n".join(meta) + "\n\n" + (run.description or "")))
 	parts.append(_delta(run))
-	parts.append(_rules(run))
-	parts.append(_project_rules(run))
+	parts.append(team_rules(run))
+	parts.append(project_rules(run))
 	if run.frappe_app:
 		parts.append(checks.FRAPPE_RULES)
 	if run.blast and run.blast.sentence():
 		parts.append(f"Blast radius from the graph: {run.blast.sentence()}")
 		if run.blast.untested:
 			parts.append("Changed public functions with no test path: " + ", ".join(run.blast.untested[:10]))
-	changed = _changed(run)
+	changed = changed_entities(run)
 	if changed:
 		parts.append("Changed entities and call sites at risk:\n" + data("graph", changed))
 	if built.pack.questions:
@@ -117,7 +117,7 @@ def _priority(reason: str) -> int:
 	return next((rank for prefix, rank in PRIORITY if reason.startswith(prefix)), 3)
 
 
-def _rules(run: ReviewRun) -> str:
+def team_rules(run: ReviewRun) -> str:
 	if not run.config:
 		return ""
 	lines: list[str] = []
@@ -142,7 +142,7 @@ def _rules(run: ReviewRun) -> str:
 	return "Team rules:\n" + data("rules", "\n".join(lines)) if lines else ""
 
 
-def _project_rules(run: ReviewRun) -> str:
+def project_rules(run: ReviewRun) -> str:
 	"""The project rules that cover the changed files, as a checklist."""
 	rules = [r for r in rule_files.project_rules(run.rule_files) if any(r.covers(p) for p in run.paths)]
 	if not rules:
@@ -191,7 +191,7 @@ def _delta(run: ReviewRun) -> str:
 	return "\n\n".join(parts)
 
 
-def _changed(run: ReviewRun) -> str:
+def changed_entities(run: ReviewRun) -> str:
 	blocks = []
 	# On a re-review, only the entities of the files in the diff: the others were reviewed before.
 	names = run.delta.names if run.delta else None

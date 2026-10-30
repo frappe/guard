@@ -94,7 +94,7 @@
    "fieldname": "source",
    "fieldtype": "Select",
    "label": "Source",
-   "options": "pull_request\ncli\napi"
+   "options": "pull_request\ncli\napi\nlocal"
   },
   {
    "default": "Queued",
@@ -116,7 +116,7 @@
    "fieldtype": "Select",
    "in_standard_filter": 1,
    "label": "Trigger",
-   "options": "open\npush\nrebase\nmention\nretrigger\nmanual\ncli\napi"
+   "options": "open\npush\nrebase\nmention\nretrigger\nmanual\ncli\napi\nlocal"
   },
   {
    "fieldname": "requested_by",

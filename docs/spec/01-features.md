@@ -89,6 +89,11 @@ On a new review Guard edits the same summary comment. It does not post a second 
 - A re-review marks old findings as outdated when their lines are gone.
 - The review counter in the footer goes up by one.
 
+### R10. Local reviews
+
+- A developer gets a review of a change before they push it. Their coding agent reviews it with its own model, so the review costs the site no tokens and no credits.
+- Guard gives the agent the team rules, the code graph and the findings of its checks, and keeps the result as a Code Review. Nothing is posted to the code provider.
+
 ### R11. Auto-approve
 
 - Guard approves a pull request only after a review with score 5/5, no findings, and a risk level at or below the risk ceiling.
@@ -228,7 +233,7 @@ Index a repository, get its status, ask a question, search code.
 
 ### S3. Terminal and coding agents
 
-frappectl reads reviews and findings and calls the whitelisted methods, with the permissions of the user. Guard has no CLI or MCP server of its own.
+frappectl reads reviews and findings and calls the whitelisted methods, with the permissions of the user. MCP clients use the MCP server of Frappe. Guard has no CLI or MCP server of its own. Local reviews (R10) use the same methods.
 
 ### S5. Fix with your agent
 

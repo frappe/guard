@@ -42,7 +42,7 @@ from guard.review import (
 	verify,
 )
 from guard.review.agent import Agent, run_together, tools
-from guard.review.findings import FindingFilter, score_cap
+from guard.review.findings import Finding, FindingFilter, score_cap
 from guard.review.jobs import WAITING_FOR_LAST, WAITING_FOR_SLOT
 from guard.review.prompt import ContextPack
 from guard.review.publish import Publisher, remove_eyes, set_status
@@ -368,22 +368,7 @@ class ReviewPipeline:
 			)
 		)
 		self.stage("review")
-		run.findings += checks.secret_findings(run.files)
-		run.findings += crossrepo.missing_targets(run.files, run.head, others, index)
-		run.findings += crossrepo.break_findings(run.changed)
-		rules = rule_files.project_rules(run.rule_files)
-		run.findings += checks.missing_test_findings(
-			run.files, [f.path for f in run.all_files if f.status != "deleted"], rules
-		)
-		run.findings += rule_checks.findings(run.files, run.head, run.base, rules)
-		if run.frappe_app:
-			files = run.config.files if run.config else {}
-			run.findings += frappe_pack.findings(
-				run.files,
-				run.head,
-				run.settings,
-				lambda path: files[path].settings if path in files else None,
-			)
+		run.findings += deterministic_findings(run, others, index)
 		# Only the agent runs commands in the sandbox.
 		run.sandbox = sandbox.Sandbox(run) if sandbox.wanted(run) and not run.offline else None
 		try:
@@ -1110,6 +1095,29 @@ def by_risk(run: ReviewRun) -> list[FileDiff]:
 
 	# sorted() keeps the diff order when two files tie.
 	return sorted(run.files, key=lambda f: (-score.get(f.path, 0), -changed_lines(f)))
+
+
+def deterministic_findings(
+	run: ReviewRun, others: list[crossrepo.OtherRepository], index: str | None
+) -> list[Finding]:
+	"""The findings of the checks that need no model. Local reviews run them too."""
+	findings = checks.secret_findings(run.files)
+	findings += crossrepo.missing_targets(run.files, run.head, others, index)
+	findings += crossrepo.break_findings(run.changed)
+	rules = rule_files.project_rules(run.rule_files)
+	findings += checks.missing_test_findings(
+		run.files, [f.path for f in run.all_files if f.status != "deleted"], rules
+	)
+	findings += rule_checks.findings(run.files, run.head, run.base, rules)
+	if run.frappe_app:
+		files = run.config.files if run.config else {}
+		findings += frappe_pack.findings(
+			run.files,
+			run.head,
+			run.settings,
+			lambda path: files[path].settings if path in files else None,
+		)
+	return findings
 
 
 def graph_verdict(run: ReviewRun) -> Verdict:

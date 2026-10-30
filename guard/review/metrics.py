@@ -77,7 +77,7 @@ def _reviews(since: datetime) -> list[Review]:
 		f"""SELECT completed_at, creation, started_at, status, tier, duration, agent_turns, agent_rounds,
 			input_tokens, output_tokens, cached_tokens, findings_count, posted_count, attempt, stage_seconds
 		FROM `tabCode Review`
-		WHERE completed_at > %s AND status IN ({", ".join(["%s"] * len(ENDED))})""",
+		WHERE source != 'local' AND completed_at > %s AND status IN ({", ".join(["%s"] * len(ENDED))})""",
 		(since, *ENDED),
 	)
 	return [
