@@ -45,6 +45,8 @@ On a hosted platform, add the app to the bench and install it on the site from t
 7. Set **Public URL** to `https://guard.example.com`. Links in review comments use this URL.
 8. Save.
 
+To review with no model cost, turn on **Offline Mode** in Guard Settings. Guard then calls no AI provider. Reviews post only the checks that need no model: secrets, calls to other repositories, project test rules and, for a Frappe app, the Frappe checks. Guard does not answer questions in threads. A change of the mode rebuilds the search vectors of every repository.
+
 ## 3. Create the GitHub App
 
 1. Open the settings of the organization or account that will own the App. Go to **Developer settings**, then **GitHub Apps**, then **New GitHub App**.

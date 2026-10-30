@@ -13,7 +13,7 @@ From lowest to highest priority:
 5. Root config: `.guard/` or `guard.toml` at the repository root.
 6. Nested config, from the root down to the directory of the file.
 
-Settings: the closest value wins. The skip lists (`exclude_authors`, `exclude_branches`, `disabled_labels`, `ignore_keywords`) are the exception: they add up across levels. Rules, files, notes, instructions and ignore patterns: all levels add up. A config can turn off a dashboard or parent rule by its id with `disabled_rules`.
+Settings: the closest value wins. The skip lists (`exclude_authors`, `exclude_branches`, `disabled_labels`, `ignore_keywords`) and the check lists (`enabled_checks`, `disabled_checks`) are the exception: they add up across levels. Rules, files, notes, instructions and ignore patterns: all levels add up. A config can turn off a dashboard or parent rule by its id with `disabled_rules`.
 
 If `.guard/` and `guard.toml` are in the same directory, Guard reads `.guard/` and ignores `guard.toml`.
 
@@ -126,6 +126,8 @@ exclude_authors = ["dependabot[bot]"]
 | `instructions` | string | Free-form instructions. Concatenated across levels. |
 | `[[rules]]` | array of tables | `rule` (required), `id`, `scope`, `severity` (`low`, `medium`, `high`), `enabled` |
 | `disabled_rules` | array | Rule ids to turn off at this level and below |
+| `enabled_checks` | array | Ids of Frappe review pack rules that are off by default, to turn on ([05-review-engine.md](05-review-engine.md#frappe-review-pack)). An unknown id is an error. |
+| `disabled_checks` | array | Ids of Frappe review pack rules to turn off. It wins over `enabled_checks`. |
 | `[[files]]` | array of tables | `path` (required), `description`, `scope` |
 | `[[notes]]` | array of tables | `content` (required), `scope` |
 | `context.repos` | array | Related repositories, `owner/repo` on the same provider |
@@ -169,6 +171,7 @@ Walk from the root to the directory of the file. At each level:
 - Scalar settings and arrays replace the parent value, except the skip lists, which add to it. Section tables merge key by key.
 - `rules`, `files`, `notes`, `instructions` and `ignore_patterns` add to the list so far.
 - `disabled_rules` removes rules by id from the list so far.
+- `enabled_checks` and `disabled_checks` add to the lists so far. A lower level cannot turn on a check that a higher level turned off.
 
 ### For the pull request
 

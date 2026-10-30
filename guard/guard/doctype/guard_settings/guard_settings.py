@@ -50,6 +50,7 @@ class GuardSettings(Document):
 		max_turns_base: DF.Int
 		max_turns_plus: DF.Int
 		monthly_credit_cap: DF.Int
+		offline_mode: DF.Check
 		plus_ai_provider: DF.Link | None
 		plus_cached_input_price: DF.Float
 		plus_input_price: DF.Float
@@ -122,8 +123,8 @@ class GuardSettings(Document):
 
 def _embedding_route(doc: Document) -> tuple[str, str]:
 	"""The embedding model and its AI provider. A change of either makes all vectors stale. Without a
-	model, Guard uses hash embeddings, whatever the AI provider."""
+	model, or in offline mode, Guard uses hash embeddings, whatever the AI provider."""
 	model = str(doc.get("embedding_model") or "")
-	if not model:
+	if not model or doc.get("offline_mode"):
 		return "", ""
 	return model, str(doc.get("embedding_ai_provider") or doc.get("default_ai_provider") or "")

@@ -74,7 +74,10 @@ class LLMClient:
 	"""
 
 	def __init__(self, tier: str = "base", purpose: str = "", usage: Usage | None = None):
-		self.route = guard_settings.gateway().route(tier)
+		config = guard_settings.gateway()
+		self.route = config.route(tier)
+		# Offline mode answers every call offline, also the responder of a test.
+		self.offline_mode = config.offline
 		self.model = self.route.model
 		self.ai_provider = self.route.ai_provider_name
 		self.purpose = purpose
@@ -165,7 +168,7 @@ class LLMClient:
 		cache_key: str = "",
 	) -> ChatResult:
 		try:
-			if _responder:
+			if _responder and not self.offline_mode:
 				request = ChatRequest(self.model, messages, tools, tool_choice, self.purpose, cache_key)
 				result = _responder(request)
 			else:

@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING, Any, cast
 import frappe
 from frappe import _
 
+from guard import settings as guard_settings
 from guard.git.diff import parse_diff
 from guard.git.repository import store_for
 from guard.learning import memories
@@ -288,6 +289,8 @@ def improve_rule(text: str) -> str:
 	"""Rewrite a vague rule into a specific, checkable one."""
 	client = LLMClient.fast(purpose="improve_rule")
 	if not client.online:
+		if guard_settings.offline():
+			frappe.throw(_("Guard is in offline mode. Turn it off in Guard Settings first."))
 		frappe.throw(_("Set up the AI gateway in Guard Settings first."))
 	return client.complete(
 		"Rewrite a code review rule so a reviewer can check it on one change. Make it specific and measurable. Keep the intent. Answer with the rule only.",

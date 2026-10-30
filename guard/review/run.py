@@ -127,6 +127,8 @@ class ReviewRun:
 	changed: list[ChangedEntity] = field(default_factory=list)
 	blast: BlastRadius | None = None
 	tier: str = "base"
+	# Offline mode was on when the review started: no agent runs, and the review costs no credits.
+	offline: bool = False
 	instructions: str = ""
 	frappe_app: bool = False
 	rule_files: list[tuple[str, str]] = field(default_factory=list)  # (path, text) of CLAUDE.md and similar

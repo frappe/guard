@@ -155,14 +155,30 @@ Every item from code, comments, tickets or documents goes inside a fenced block 
 
 ## Stage 5: Agent
 
-Before the agent, checks that need no model add findings: secrets in the diff, calls to other repositories ([10-integrations.md](10-integrations.md)), project test rules and, for a Frappe app, the Frappe review pack. Each Frappe check finds a pattern on an added line, then reads the function around it at the head and fires only where its rule applies:
+Before the agent, checks that need no model add findings: secrets in the diff, calls to other repositories ([10-integrations.md](10-integrations.md)), project test rules and, for a Frappe app, the Frappe review pack.
 
-- `allow_guest=True`: when the body of the endpoint calls no access check, such as `frappe.has_permission`, `check_permission`, `frappe.only_for` or a helper like `require_admin()`.
-- `ignore_permissions=True`: in a whitelisted method, when no access check comes before it and no comment explains it. Patches, jobs and helpers that no caller reaches do not count.
-- `frappe.db.commit()`: in a whitelisted method or a document hook (`validate`, `on_update` and so on). Patches and jobs commit on purpose.
-- String-built `frappe.db.sql`: always.
+### Frappe review pack
 
-A line with `# nosemgrep` on it or just above it was reviewed, and no check fires on it. A check on the line alone posted 117 findings on one large pull request, and the verifier refuted them all.
+`guard/review/frappe_pack/` ports the rules of [frappe/semgrep-rules](https://github.com/frappe/semgrep-rules) to tree-sitter, so they run in the worker with no model and no Semgrep. Each rule has the id of its Semgrep rule. It reads the whole file at the head, Python, desk JavaScript (`.js`, not `.min.js`) or JSON, and reports only where its match touches a line that the change added. Rules skip test files, except `frappe-test-whitelist-missing-protection`.
+
+- **On by default:** the rules that find bugs or holes. For example `frappe-sql-format-injection`, `guest-whitelisted-method`, `unchecked-frappe-permission-call`, `whitelisted-side-effect-on-get`, `frappe-breaks-multitenancy`, `frappe-realtime-pick-room`, `frappe-single-value-type-safety`, the translation rules and `relaxed-permissions`.
+- **Off by default:** the rules that ask a person to audit code that is often fine: `frappe-setuser`, `frappe-security-file-traversal` (`open()`), `frappe-codeinjection-eval`, `frappe-ssti`, `missing-argument-type-hint`, `frappe-no-functional-code`, `frappe-print-function-in-doctypes`, `overusing-args`, `useless-get-doc-dict`, `use-vanilla-js-include` and `frappe-modifying-but-not-comitting-other-method`.
+
+A config turns a rule on with `enabled_checks` and off with `disabled_checks` ([06-configuration.md](06-configuration.md)). Each file uses its own resolved config.
+
+Some rules read more context than Semgrep, because a wrong comment on a pull request costs trust:
+
+- `guest-whitelisted-method`: only when the body of the endpoint calls no access check, such as `frappe.has_permission`, `check_permission`, `frappe.only_for` or a helper like `require_admin()`.
+- `frappe-ignore-permissions` (Guard only): `ignore_permissions=True` in a whitelisted method, when no access check comes before it and no comment explains it. Patches, jobs and helpers that no caller reaches do not count.
+- `frappe-manual-commit`: only in a whitelisted method or a document hook (`validate`, `on_update` and so on). Patches and jobs commit on purpose.
+- `frappe-modifying-but-not-comitting`: only the fields of the DocType, from the JSON beside the controller. Without the JSON, every attribute that is not private, in a class that extends `Document` or a controller.
+- `frappe-enqueue-without-after-commit`: only in DocType controllers.
+- `frappe-after-save-controller-hook`: only in DocType controllers.
+- `frappe-sql-format-injection`: also `%` and `+` with a value that is not a literal, as the old Guard check did.
+
+A rule that fails on a file logs an Error Log and loses only its own findings.
+
+A `# nosemgrep` comment on the line, or on a comment line just above it, covers the line. With ids (`# nosemgrep: frappe-manual-commit`) it covers only those rules. So one comment satisfies both Guard and Semgrep in CI. Each finding body tells how to add it. One line gets one finding, from the most severe rule. A check on the line alone posted 117 findings on one large pull request, and the verifier refuted them all.
 
 `guard.review.agent.ReviewAgent` runs a tool-calling loop against the tier model.
 

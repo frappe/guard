@@ -56,6 +56,8 @@ Build order. Each milestone ends with passing tests and one commit or more. Feat
 - [x] Agent tools and agent loop. Tier strategies.
 - [x] Verification, filter, dedupe, cap, score.
 - [x] Secret scan (Q2), Frappe review pack (Q1), blast radius (G2), test impact (G4).
+- [x] Frappe review pack on tree-sitter, ported from frappe/semgrep-rules, with `enabled_checks` and `disabled_checks`.
+- [x] Offline mode: reviews with checks that need no model, and no calls to AI providers.
 - [x] Renderer: summary comment, inline comments, footer, signed links.
 - [x] Publish: comments, status, reactions, description update.
 
