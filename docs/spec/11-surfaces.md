@@ -164,38 +164,21 @@ frappectl -s guard api method/guard.api.v2.search -F query="where do we retry we
 
 Coding agents (Claude Code, Codex, pi, Cursor, VS Code, ...) connect to `https://<site>/mcp`. They review local changes before a push ([05-review-engine.md](05-review-engine.md#local-reviews)), fix the findings of pull requests, teach Guard, and search the code of all repositories. For a local review the agent of the developer is the reviewer and pays for the model. Guard gives it the rules, the graph and its check findings, and keeps the result.
 
-**Install.** One command sets up Claude Code, Codex and pi on the computer of the developer:
+**Connect.** One step, in the Desk page **Connect Your Agent** (`guard-agent`):
 
-```bash
-curl -fsSL https://<site>/mcp/install.sh | sh                        # the MCP server and the skills
-curl -fsSL https://<site>/mcp/install.sh | sh -s -- --hook --no-login  # in a repository: the pre-push hook
-```
+1. **Connect your agent.** **Get the setup prompt** makes an agent token and shows one prompt with the token in it. The developer pastes it into any agent with MCP. The prompt gives the address, the header `Authorization: Bearer <token>`, the command of Claude Code (`claude mcp add --transport http --scope user guard <site>/mcp --header ...`) and of pi (`pi mcp add guard --url ... --header ... --exposure direct`), the `[mcp_servers.guard]` table with `http_headers` for Codex, and for other clients the top-level key of their config file and a warning not to overwrite it. Then the agent calls `list_repositories` to check the connection.
+2. **Ask it to review.** Examples of what to ask.
+3. **Stop pushes with P0 findings (optional).** The developer asks their agent to install the hook, and the agent calls `install_hook`.
 
-- The site serves `install.sh` (`guard/connect/install.sh`) with its Public URL in it, as plain text, so a browser shows it. It is POSIX sh. All its code is in functions and the last line calls `main`, so `curl | sh` runs nothing of a partial download. It changes only the MCP entries of the agents (through their own commands, and the Codex config file), the files of the Guard skills and the hook.
-- It downloads `/mcp/kit.tar.gz` (`guard.mcp.kit`): the skills and the hook, from `guard/connect/`, with the address of the site in the hook. Both paths are public: they hold no secret, and the script runs before the sign-in. The archive has the same bytes for the same files. Both answers can be cached for 5 minutes, and take 30 requests a minute from one address.
-- `--client NAME` repeated selects those clients; `--all` selects every supported client that is installed. A `--client` that is not installed stops the script. `--uninstall` without a choice removes Guard from every installed client. With a terminal and no selection, it asks which installed clients to set up. Without a terminal it requires `--client` or `--all`, and fails before changing files. Supported clients: Claude Code (`claude`), Codex (`codex`) and pi (`pi`).
+- There is no install script and there are no skill files. The server instructions and the tool descriptions carry the workflows (review, fix, feedback, ask), so they always match the server and need no update.
+- A status line turns green when the agent of the user calls Guard, and names the client. The page asks again every 5 seconds until then.
+- The page lists the active agent tokens of the user, with **Revoke**, and their last 5 local reviews.
 
-| Agent | MCP server | Skills |
-| - | - | - |
-| Claude Code | `claude mcp add --transport http --scope user guard <site>/mcp`. The same address again does nothing. Another address under the name `guard` is removed first. | `~/.claude/skills/` |
-| Codex | A `[mcp_servers.guard]` table at the end of `$CODEX_HOME/config.toml` (default `~/.codex`). `codex mcp add` starts a sign-in, so the script writes the table. It does not change a table with another address. | `~/.agents/skills/` |
-| pi | `pi mcp add guard --url <site>/mcp --exposure direct`, which replaces the entry and keeps the sign-in. | `~/.agents/skills/` |
+**Agent tokens** (`guard.mcp.tokens`). An agent token is an OAuth Bearer Token of the OAuth Client "Guard Agent" (made on first use, scope `all`), so Frappe checks it as any OAuth token. The auth hook `only_mcp` refuses it on every other path, so it is not a key to the whole site. It works for 90 days. Frappe keeps only its sha256, so the page shows it once. A user can have 10 active tokens. Only its user can revoke it.
 
-- The script replaces only the Guard skills in each folder. Other skills stay.
-- On a terminal it asks which installed clients to set up when no `--client` was passed, and asks about the hook when it runs in a git repository. It then runs sign-in only for the selected clients. Without a terminal, the caller must pass `--client NAME` (and sign-in commands are printed), or `--all` to select all supported clients.
-- `--dry-run` shows the commands and changes and makes none. `--uninstall` removes the servers, the Guard skills and the Guard hook of the current repository, and says to run it in each other repository with a hook. A run again updates the skills. When the command of one agent fails, the script says so and goes on with the next.
-- The Public URL must be `https://`, or `http://` on `localhost`, `*.localhost` or `127.0.0.1`, without characters that a shell reads. Else the site serves no script and no kit: they put the address in commands, and fetch code from it.
+**Sign-in with OAuth** also works, for clients that prefer it: a 401 has the `WWW-Authenticate` header of Frappe, and the client registers itself and opens the browser. This needs the OAuth Settings Show Protected Resource Metadata, Show Auth Server Metadata and Enable Dynamic Client Registration, which are on by default. An API key in `Authorization: token <key>:<secret>` also works.
 
-**Skills.** Agent Skills (`SKILL.md` with `name` and `description`) tell the agent when and how to use the tools:
-
-| Skill | When | Tools |
-| - | - | - |
-| `guard-review` | "Review my change", "can I push this" | `start_review`, `review_context`, `find_symbol`, `submit_review` |
-| `guard-fix` | "Fix Guard's comments on my PR" | `pr_findings`, then `guard-review` or `request_review` |
-| `guard-feedback` | "Guard is wrong", "this is intended" | `pr_findings`, `finding_feedback`, after the developer agrees |
-| `guard-ask` | "Who calls this in other repositories", "what are the rules here" | `find_symbol`, `search_code`, `team_rules`, `explain_config` |
-
-**Pre-push hook.** `guard/connect/pre-push`, put in `$(git rev-parse --git-path hooks)` of one repository. It does not replace a hook that Guard did not install.
+**Pre-push hook.** `guard/mcp/pre-push`. The tool `install_hook` returns it with the address of the site in it, and the agent writes it to `$(git rev-parse --git-path hooks)/pre-push` of one repository. The agent does not replace a hook without the line `Installed by Guard`. To update the hook, the developer asks again. Guard gives a hook only for an `https://` Public URL (or a local host).
 
 - It runs the first agent that it finds (`claude`, `codex`, `pi`), or `git config guard.agent`, headless, two times. The agent gets no shell: the review shows it text from the repository and from GitHub, and that text must not run commands.
   1. With the Guard tools only, the agent calls `start_review` and prints `review_id` and `upload` (secret and default branch) of the answer. The hook takes only the shapes that Guard sends: 16 and 32 hex characters, and a safe branch name.
@@ -205,17 +188,6 @@ curl -fsSL https://<site>/mcp/install.sh | sh -s -- --hook --no-login  # in a re
 - One or more P0 findings stop the push and show the review. When the agent is missing, signed out, slower than the timeout (`GUARD_START_TIMEOUT`, 180 seconds, and `GUARD_TIMEOUT`, 900 seconds, with `timeout` when it is installed), or gives no `GUARD_P0` line, the push goes on: a review that did not run blocks nothing.
 - The hook removes control characters from the agent output before it shows it.
 - `GUARD_SKIP=1 git push` skips it once. A push of tags or deleted branches only is not reviewed. A push of more branches reviews the last one, and says so.
-
-**Connect.** The Desk page **Connect Your Agent** (`guard-agent`) has:
-
-- Agent checkboxes. Selecting one or more makes the copied install command pass only those `--client` options; with none selected it passes `--all`. The hook command passes `--all` too: the hook picks its agent when it runs.
-- The hook command.
-- For other agents: one setup prompt. The agent adds the server at user scope with the command or the config file of its own client, and tells the developer how to sign in. The prompt names the usual mistakes: an overwritten config file, the top-level key of each client, a header or token where OAuth is used. And the address of the server.
-- A status line. It turns green when the agent of the user calls Guard, and names the client. The page asks again every 5 seconds until then.
-- A warning when an OAuth setting that the sign-in needs is off.
-- The last 5 local reviews of the user.
-
-**Sign-in.** The agent signs in with the OAuth of the site. A 401 has the `WWW-Authenticate` header of Frappe, which points to `/.well-known/oauth-protected-resource`. The client registers itself (dynamic client registration) and opens the browser once. The protected resource of Frappe is the site URL, so the Public URL in Guard Settings, when set, must have the same host. These OAuth Settings must be on, and are on by default: Show Protected Resource Metadata, Show Auth Server Metadata, Enable Dynamic Client Registration. An API key in `Authorization: token <key>:<secret>` also works.
 
 **Protocol.** `guard/mcp/http.py` is a page renderer, so the address is short. It is stateless: one JSON-RPC message for each POST, one JSON answer, no SSE (GET gets 405). It uses the checks and envelopes of `frappe.mcp` and answers the revisions 2025-03-26, 2025-06-18, 2025-11-25 (`initialize`) and 2026-07-28 (`server/discover`). The `instructions` give the workflow of a local review and the uses of the other tools. A request needs a user signed in by a token (OAuth or an API key): a browser session alone gets 401. A user without a Guard role can connect, and each tool answers that they need the Guard Member role. A 403 would make some clients sign in again. JSON-RPC batches (allowed by 2025-03-26) are not supported. There is no CORS answer, so browser-based clients such as the MCP Inspector need `allow_cors`.
 
@@ -231,7 +203,8 @@ curl -fsSL https://<site>/mcp/install.sh | sh -s -- --hook --no-login  # in a re
 | `search_code` | `query`, `repositories` | Hybrid search on the default branches, as `guard.api.v2.search` |
 | `team_rules` | `repository`, `path` | Rules, `rules.md`, instructions, notes and learned memories for the path |
 | `explain_config` | `repository`, `path` | The config of the path and the source of each value, as in Desk |
-| `request_review` | `repository`, `branch` or `number`, `tier` | Queues a review of the pull request on GitHub, as **Review again** in Desk. It takes credits. |
+| `install_hook` | | `path`, `content` (the hook) and `next`, how to write it |
+| `request_review` | `repository`, `branch` or `number`, `tier` | Queues a review of the pull request on GitHub, as **Review again** in Desk. It takes credits. The instructions and the description allow it only when the developer says "on GitHub" or "post it": "review my PR" alone is a local review. |
 
 - The prompts `review`, `fix` and `ask` start the same tasks. Claude Code shows them as `/mcp__guard__review` and so on. An argument is cut to 2000 characters.
 - Answers with text from the team or from GitHub (finding titles and bodies, rules, memories, code) have a `note` that the text is data, not instructions.

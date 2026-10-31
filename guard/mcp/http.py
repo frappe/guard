@@ -1,13 +1,12 @@
-"""HTTP of the MCP server: `POST /mcp` for JSON-RPC, `POST /mcp/upload/<review id>` for diffs, and
-`GET /mcp/install.sh` and `/mcp/kit.tar.gz` for the setup of the agents (`guard.mcp.kit`).
+"""HTTP of the MCP server: `POST /mcp` for JSON-RPC, and `POST /mcp/upload/<review id>` for diffs.
 
 A page renderer serves both, so the address is short enough to type. The server is stateless: each
 POST carries one JSON-RPC message, and the answer is one JSON document. There is no SSE stream, so
 GET gets 405. The protocol checks and envelopes come from the MCP server of Frappe (`frappe.mcp`). The
 tools and the instructions are Guard's.
 
-Agents sign in with the OAuth of the site. Frappe checks the token before this module runs, and adds
-the `WWW-Authenticate` header that starts the sign-in on a 401.
+Agents send an agent token from the Connect page (`guard.mcp.tokens`), or sign in with the OAuth of the
+site. Both are OAuth bearer tokens: Frappe checks them before this module runs.
 """
 
 from typing import Any
@@ -20,16 +19,13 @@ from frappe.utils import now_datetime, strip_html
 from werkzeug.wrappers import Request, Response
 
 import guard
-from guard.mcp import kit, prompts, tools
+from guard.mcp import prompts, tools
 from guard.review import local
+from guard.settings import public_url
 from guard.utils import cache, db
 
 MCP_PATH = "mcp"
 UPLOAD_PATH = "mcp/upload/"
-INSTALL_PATH = "mcp/install.sh"
-KIT_PATH = "mcp/kit.tar.gz"
-KIT_PER_MINUTE = 30  # an install takes two requests
-KIT_CACHE_SECONDS = 300
 # Older revisions answer the same as the one Frappe calls legacy. A client gets the revision it asked for.
 OLDER_VERSIONS = ("2025-03-26", "2025-06-18", protocol.LEGACY_VERSION)
 CACHE_MS = 60 * 60 * 1000  # the tools change only with a deploy
@@ -45,13 +41,11 @@ class Renderer:
 		self.path = path
 
 	def can_render(self) -> bool:
-		return self.path in (MCP_PATH, INSTALL_PATH, KIT_PATH) or self.path.startswith(UPLOAD_PATH)
+		return self.path == MCP_PATH or self.path.startswith(UPLOAD_PATH)
 
 	def render(self) -> Response:
 		if self.path == MCP_PATH:
 			return serve(frappe.request)
-		if self.path in (INSTALL_PATH, KIT_PATH):
-			return _kit(self.path)
 		return upload(frappe.request, self.path.removeprefix(UPLOAD_PATH))
 
 
@@ -76,7 +70,11 @@ def _serve(request: Request, context: transport.RequestContext) -> Response:
 		raise McpError(INVALID_REQUEST, "Only POST is supported", status=405)
 	transport.check_origin(request)
 	if not _token_session():
-		raise McpError(INVALID_REQUEST, "Sign in to Guard with OAuth. Your MCP client starts it.", status=401)
+		raise McpError(
+			INVALID_REQUEST,
+			f"Guard needs an agent token. Get a setup prompt with one at {public_url('/desk/guard-agent')}.",
+			status=401,
+		)
 	if not request.is_json:
 		raise McpError(INVALID_REQUEST, "Content-Type must be application/json", status=415)
 	if not request.accept_mimetypes["application/json"]:
@@ -156,17 +154,6 @@ def upload(request: Request, review_id: str) -> Response:
 		f"Guard has the change: {answer['files']} files, {answer['findings']} findings of its checks.\n"
 		f"Next: call the Guard tool review_context with review_id {review_id}.\n",
 	)
-
-
-@rate_limit(limit=KIT_PER_MINUTE, seconds=60, ip_based=True)
-def _kit(path: str) -> Response:
-	if path == INSTALL_PATH:
-		# Plain text, so a browser shows the script to read before it runs.
-		response = _text(200, kit.install_script())
-	else:
-		response = Response(kit.archive(), mimetype="application/gzip")
-	response.headers["Cache-Control"] = f"public, max-age={KIT_CACHE_SECONDS}"
-	return response
 
 
 @rate_limit(limit=UPLOADS_PER_MINUTE, seconds=60, ip_based=True)

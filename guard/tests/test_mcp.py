@@ -1,11 +1,9 @@
-import io
 import json
 import os
 import subprocess
-import tarfile
 import tempfile
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 from unittest.mock import patch
 
 import frappe
@@ -16,7 +14,7 @@ from werkzeug.wrappers import Request, Response
 
 from guard.api import agent
 from guard.llm.embeddings import Embedder
-from guard.mcp import http, kit, prompts, tools
+from guard.mcp import http, prompts, tokens, tools
 from guard.tests.test_learning import FINDING, LearningCase
 from guard.tests.test_local import NEW_SIGNATURE, LocalCase
 from guard.utils import cache, db
@@ -27,10 +25,9 @@ EMBED = Embedder.embed
 FAKE_CURL = """#!/bin/sh
 for a; do case $a in @*) cp "${a#@}" "$GUARD_TEST_BODY" ;; X-Guard-*) echo "$a" ;; esac; done
 """
-# For the scripts: a curl that serves the kit and logs uploads, and agents that log their arguments.
+# For the hook: a curl that logs uploads, and agents that log their arguments.
 STUB_CURL = """#!/bin/sh
 for a; do case $a in
-*/mcp/kit.tar.gz) cat "$GUARD_TEST_KIT"; exit 0 ;;
 @*) cp "${a#@}" "$GUARD_TEST_BODY" ;;
 http*) echo "curl $a" >> "$GUARD_TEST_LOG" ;;
 esac; done
@@ -39,7 +36,6 @@ exit "${GUARD_TEST_CURL:-0}"
 STUB_AGENT = """#!/bin/sh
 echo "$(basename "$0") $*" >> "$GUARD_TEST_LOG"
 case "$*" in
-"mcp get"*) exit 1 ;;
 *start_review*) printf 'GUARD_REVIEW=%s\\nGUARD_SECRET=%s\\nGUARD_BRANCH=main\\n' "$GUARD_TEST_ID" "$GUARD_TEST_SECRET" ;;
 *review_context*) printf 'A P0 in app/models.py:3.\\nGUARD_P0=%s\\nGUARD_URL=https://x.test/r\\n' "$GUARD_TEST_P0" ;;
 esac
@@ -139,9 +135,17 @@ class TestMcpServer(LocalCase):
 				"search_code",
 				"team_rules",
 				"explain_config",
+				"install_hook",
 				"request_review",
 			],
 		)
+
+	def test_review_my_pr_is_local_and_github_needs_the_words(self):
+		# A review on GitHub runs the model of Guard and takes credits, so the agent needs clear words.
+		self.assertIn('("review my PR"', tools.INSTRUCTIONS)
+		self.assertIn("do a local review", tools.INSTRUCTIONS)
+		for text in (tools.INSTRUCTIONS, tools.TOOLS["request_review"].description):
+			self.assertIn('"on GitHub" or "post it"', text)
 
 	def test_prompts_start_the_tasks(self):
 		result = self.rpc("initialize", {"protocolVersion": "2025-06-18"})["result"]
@@ -194,7 +198,7 @@ class TestMcpServer(LocalCase):
 		finally:
 			frappe.set_user("Administrator")
 		self.assertEqual(response.status_code, 401)
-		self.assertIn("OAuth", json.loads(response.get_data())["error"]["message"])
+		self.assertIn("/desk/guard-agent", json.loads(response.get_data())["error"]["message"])
 		self.assertEqual(http.serve(request(method="GET")).status_code, 405)
 
 	def test_a_review_from_start_to_submit(self):
@@ -253,44 +257,76 @@ class TestMcpServer(LocalCase):
 		)["structuredContent"]
 		self.assertIn("update_user_email", result["guide"])
 
-	def test_the_connect_page_gives_the_prompt_and_the_status(self):
+	def test_the_connect_page_gives_a_prompt_with_a_token_that_frappe_accepts(self):
+		from frappe.oauth import OAuthWebRequestValidator
+
 		connect = agent.connect()
-		self.assertIn(connect["endpoint"], connect["prompt"])
 		self.assertTrue(connect["endpoint"].endswith("/mcp"))
-		self.assertEqual(connect["oauth_off"], [])
+		before = {t["name"] for t in connect["tokens"]}
 		self.assertIsNone(connect["seen"])
+		prompt = agent.new_token()["prompt"]
+		self.assertIn(connect["endpoint"], prompt)
+		token = prompt.split("Authorization: Bearer ")[1].split("\n")[0]
+		self.assertIn(f'--header "Authorization=Bearer {token}"', prompt)
+		self.assertIn(f'"Authorization" = "Bearer {token}"', prompt)
+		# Frappe keeps only the hash, and its OAuth validator signs the agent in with the token.
+		self.assertFalse(frappe.db.exists("OAuth Bearer Token", {"access_token": token}))
+		request = cast(Any, frappe._dict())
+		self.assertTrue(OAuthWebRequestValidator().validate_bearer_token(token, ["all"], request))
+		self.assertEqual(request.user, "Administrator")
+
+		[listed] = [t for t in agent.connect()["tokens"] if t["name"] not in before]
+		agent.revoke_token(listed["name"])
+		self.assertFalse(
+			OAuthWebRequestValidator().validate_bearer_token(token, ["all"], cast(Any, frappe._dict()))
+		)
+		self.assertEqual({t["name"] for t in agent.connect()["tokens"]}, before)
 		self.rpc("tools/call", {"name": "list_repositories", "arguments": {}})
 		self.assertTrue(agent.connect()["seen"])
 
+	def test_a_token_is_only_for_its_user_and_the_count_is_capped(self):
+		agent.new_token()
+		listed = tokens.active("Administrator")[0]
+		with self.assertRaises(frappe.PermissionError):
+			tokens.revoke("someone@example.com", listed["name"])
+		with (
+			patch("guard.mcp.tokens.MAX_ACTIVE", len(tokens.active("Administrator"))),
+			self.assertRaises(frappe.ValidationError),
+		):
+			agent.new_token()
+
+	def test_an_agent_token_works_only_on_the_mcp_server(self):
+		token = agent.new_token()["prompt"].split("Authorization: Bearer ")[1].split("\n")[0]
+		previous = getattr(frappe.local, "request", None)
+		self.addCleanup(setattr, frappe.local, "request", previous)
+		for path, user in (("/mcp", "Administrator"), ("/api/v2/document/User", "Guest")):
+			frappe.local.request = request(path=path, headers={"Authorization": f"Bearer {token}"})
+			try:
+				tokens.only_mcp()
+				self.assertEqual(frappe.session.user, user, path)
+			finally:
+				frappe.set_user("Administrator")
+		# Another bearer token is not an agent token, and stays signed in.
+		frappe.local.request = request(path="/api/v2/document/User", headers={"Authorization": "Bearer x"})
+		tokens.only_mcp()
+		self.assertEqual(frappe.session.user, "Administrator")
+
 	def test_the_renderer_serves_only_its_paths(self):
-		for path in ("mcp", "mcp/upload/abc", "mcp/install.sh", "mcp/kit.tar.gz"):
+		for path in ("mcp", "mcp/upload/abc"):
 			self.assertTrue(http.Renderer(path).can_render(), path)
-		self.assertFalse(http.Renderer("mcpx").can_render())
-		self.assertFalse(http.Renderer("mcp/other").can_render())
+		for path in ("mcpx", "mcp/other", "mcp/install.sh"):
+			self.assertFalse(http.Renderer(path).can_render(), path)
 		self.assertEqual(len(tools.definitions()), len(tools.TOOLS))
 
-	def test_the_install_script_has_the_site_and_the_kit_has_the_skills(self):
-		script = kit.install_script()
-		self.assertNotIn(kit.SITE_MARK, script)
-		self.assertIn(f'SITE="{agent.public_url("")}"', script)
-		self.assertTrue(agent.connect()["install"].endswith("/mcp/install.sh | sh -s -- --all"))
-		self.assertIn("--all --hook --no-login", agent.connect()["install_hook"])
-		with tarfile.open(fileobj=io.BytesIO(kit.archive())) as tar:
-			members = {m.name: m for m in tar.getmembers()}
-			self.assertEqual(members["pre-push"].mode, kit.EXECUTABLE)
-			for skill in ("guard-review", "guard-fix", "guard-feedback", "guard-ask"):
-				self.assertIn(skill, script)
-				text = (tar.extractfile(f"skills/{skill}/SKILL.md") or io.BytesIO()).read().decode()
-				self.assertTrue(text.startswith(f"---\nname: {skill}\ndescription: "), skill)
-		self.assertEqual(kit.archive(), kit.archive())
-
-	def test_a_public_url_with_shell_characters_or_plain_http_gets_no_script(self):
+	def test_install_hook_gives_the_hook_with_the_site(self):
+		hook = self.call("install_hook")["structuredContent"]
+		self.assertIn(f'SITE="{agent.public_url("")}"', hook["content"])
+		self.assertNotIn(tools.HOOK_SITE_MARK, hook["content"])
+		self.assertIn(tools.HOOK_MARK, hook["content"])
+		self.assertIn("git-path hooks", hook["path"])
 		for url in ("https://x.test/$(id)", "http://guard.example.com"):
-			with patch("guard.mcp.kit.public_url", return_value=url):
-				with self.assertRaises(frappe.ValidationError):
-					kit.install_script()
-		with patch("guard.mcp.kit.public_url", return_value="http://guard.localhost:8000"):
-			self.assertIn('SITE="http://guard.localhost:8000"', kit.install_script())
+			with patch("guard.mcp.tools.public_url", return_value=url):
+				self.assertTrue(self.call("install_hook")["isError"], url)
 
 	def test_find_symbol_without_a_repository_looks_in_all(self):
 		found = self.call("find_symbol", name="update_user_email")["structuredContent"]
@@ -401,8 +437,8 @@ class TestPullRequestTools(LearningCase):
 		)
 
 
-class TestScripts(LocalCase):
-	"""The install script and the pre-push hook, with stub agents and a stub curl."""
+class TestHook(LocalCase):
+	"""The pre-push hook, with stub agents and a stub curl."""
 
 	def setUp(self):
 		super().setUp()
@@ -419,7 +455,6 @@ class TestScripts(LocalCase):
 		):
 			(self.bin / name).write_text(text)
 			(self.bin / name).chmod(0o755)
-		(self.tmp / "kit.tar.gz").write_bytes(kit.archive())
 		self.log = self.tmp / "log"
 		self.log.touch()
 
@@ -429,7 +464,6 @@ class TestScripts(LocalCase):
 			"PATH": f"{self.bin}:/usr/bin:/bin",
 			"HOME": str(self.home),
 			"GUARD_TEST_LOG": str(self.log),
-			"GUARD_TEST_KIT": str(self.tmp / "kit.tar.gz"),
 			"GUARD_TEST_BODY": str(self.tmp / "body"),
 			"GUARD_TEST_ID": REVIEW_ID,
 			"GUARD_TEST_SECRET": SECRET,
@@ -446,71 +480,13 @@ class TestScripts(LocalCase):
 			start_new_session=True,
 		)
 
-	def test_the_install_script_sets_up_each_agent_once(self):
-		script = kit.install_script()
-		dry = self.sh(script, "--all", "--dry-run", "--no-hook")
-		self.assertEqual(dry.returncode, 0, dry.stderr)
-		self.assertIn(
-			f"would run: claude mcp add --transport http --scope user guard {agent.public_url('/mcp')}",
-			dry.stdout,
-		)
-		self.assertIn("would run: pi mcp add guard", dry.stdout)
-		self.assertEqual(list(self.home.iterdir()), [])
-		no_choice = self.sh(script, "--dry-run", "--no-hook")
-		self.assertNotEqual(no_choice.returncode, 0)
-		self.assertIn("no terminal prompt is available", no_choice.stderr)
-
-		claude_only = self.sh(script, "--client", "claude", "--dry-run", "--no-hook")
-		self.assertEqual(claude_only.returncode, 0, claude_only.stderr)
-		self.assertIn("would run: claude mcp add", claude_only.stdout)
-		self.assertNotIn("Codex", claude_only.stdout)
-		self.assertNotIn("pi mcp add", claude_only.stdout)
-
-		all_agents = self.sh(script, "--all", "--dry-run", "--no-hook")
-		self.assertEqual(all_agents.returncode, 0, all_agents.stderr)
-		self.assertIn("would run: claude mcp add", all_agents.stdout)
-		self.assertIn("would add [mcp_servers.guard]", all_agents.stdout)
-		self.assertIn("would run: pi mcp add", all_agents.stdout)
-
-		(self.bin / "codex").unlink()
-		without_codex = self.sh(script, "--all", "--dry-run", "--no-hook")
-		self.assertEqual(without_codex.returncode, 0, without_codex.stderr)
-		self.assertNotIn("Codex", without_codex.stdout)
-		missing = self.sh(script, "--client", "codex", "--dry-run", "--no-hook")
-		self.assertIn("codex is not installed", missing.stderr)
-		(self.bin / "codex").write_text(STUB_AGENT)
-		(self.bin / "codex").chmod(0o755)
-
-		first = self.sh(script, "--all", "--hook")
-		self.assertEqual(first.returncode, 0, first.stderr)
-		for folder in (".claude/skills", ".agents/skills"):
-			self.assertTrue((self.home / folder / "guard-review" / "SKILL.md").is_file(), folder)
-		config = (self.home / ".codex/config.toml").read_text()
-		self.assertIn(f'url = "{agent.public_url("/mcp")}"', config)
-		hook = self.repo.path / ".git/hooks/pre-push"
-		self.assertIn(agent.public_url(""), hook.read_text())
-		self.assertTrue(os.access(hook, os.X_OK))
-		self.assertIn("codex mcp login guard", first.stdout)
-
-		again = self.sh(script, "--all", "--no-hook")
-		self.assertIn("MCP server guard: already set up", again.stdout)
-		self.assertEqual((self.home / ".codex/config.toml").read_text(), config)
-
-		removed = self.sh(script, "--uninstall")
-		self.assertEqual(removed.returncode, 0, removed.stderr)
-		self.assertFalse(hook.exists())
-		self.assertFalse((self.home / ".claude/skills/guard-review").exists())
-		self.assertIn("claude mcp remove guard --scope user", self.log.read_text())
-
 	def hook(self, **env: str) -> subprocess.CompletedProcess:
 		if not getattr(self, "head", None):
 			self.repo.git("update-ref", "refs/remotes/origin/main", self.base)
 			self.repo.branch_off("feature")
 			self.head = self.repo.commit({"app/models.py": NEW_SIGNATURE}, "add notify")
 		head = self.head
-		script = (
-			tarfile.open(fileobj=io.BytesIO(kit.archive())).extractfile("pre-push") or io.BytesIO()
-		).read()
+		script = tools.install_hook({})["content"].encode()
 		lines = f"refs/tags/v1 {head} refs/tags/v1 {'0' * 40}\nrefs/heads/feature {head} refs/heads/feature {'0' * 40}\n"
 		return self.sh(script.decode(), "origin", "https://github.com/acme/app.git", stdin=lines, **env)
 

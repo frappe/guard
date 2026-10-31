@@ -5,6 +5,7 @@
 # Skip the review once:  GUARD_SKIP=1 git push
 # Choose the agent:      git config guard.agent claude   (or codex, or pi)
 # Remove the hook:       rm "$(git rev-parse --git-path hooks)/pre-push"
+# Update it:             ask your agent to install the Guard pre-push hook again.
 #
 # The agent gets no shell: the hook sends the diff itself. The agent calls the Guard tools and reads
 # files only, because the review shows it text from the repository and from GitHub.
@@ -118,8 +119,7 @@ if ! curl -sS --fail-with-body -X POST -H 'Content-Type: application/octet-strea
 	exit 0
 fi
 
-ask_agent "$REVIEW_TIMEOUT" yes "Review the commits that I push, with Guard. Follow the guard-review \
-skill when you have it. The diff is sent: call the Guard tool review_context with review_id $review, \
+ask_agent "$REVIEW_TIMEOUT" yes "Review the commits that I push, with Guard. The diff is sent: call the Guard tool review_context with review_id $review, \
 review the change as its guide says, and call submit_review with review_id $review. Do not change files. \
 End your answer with these two lines, with the values from the answer of submit_review:
 GUARD_P0=<p0>

@@ -1,5 +1,7 @@
-// Connect Your Agent: one command that sets up Claude Code, Codex and pi, a prompt for other agents,
-// and a status line that turns green when the agent calls Guard for the first time.
+// Connect Your Agent: what Guard does for a coding agent, and the three steps to a first review. The
+// page is prose in a reading measure, with one action: the setup prompt with an agent token in it. The
+// developer pastes it into their agent, and the agent does the rest. A status line turns green when the
+// agent calls Guard.
 
 frappe.pages["guard-agent"].on_page_load = function (wrapper) {
 	const page = frappe.ui.make_app_page({
@@ -7,19 +9,40 @@ frappe.pages["guard-agent"].on_page_load = function (wrapper) {
 		title: __("Connect Your Agent"),
 		single_column: true,
 	});
-	const $body = $(
-		`<div style="padding: var(--padding-sm) var(--padding-md) var(--padding-lg); max-width: 54rem"></div>`
-	).appendTo(page.main);
+	const $body = $(`<div class="guard-connect"></div>`).appendTo(page.main);
+	$(`<style>
+		.guard-connect { max-width: 640px; padding: var(--padding-lg) var(--padding-md) var(--padding-xl); }
+		.guard-connect p { margin: 0; }
+		.guard-connect .gc-prose { font-size: var(--text-base); line-height: 1.6; color: var(--ink-gray-7); }
+		.guard-connect .gc-muted { font-size: var(--text-sm); line-height: 1.5; color: var(--ink-gray-5); }
+		.guard-connect section { margin-top: 2.5rem; }
+		.guard-connect h2 { font-size: var(--text-lg); font-weight: 600; color: var(--ink-gray-8); margin: 0; }
+		.guard-connect ol { list-style: none; padding: 0; margin: 1rem 0 0; display: flex; flex-direction: column; gap: 1rem; }
+		.guard-connect li.gc-step { display: flex; gap: 0.75rem; }
+		/* A fixed 24px circle: a step with two lines keeps its number on the first line. */
+		.guard-connect .gc-number { display: grid; place-items: center; flex-shrink: 0; width: 24px; height: 24px;
+			border-radius: 50%; background: var(--surface-gray-2); color: var(--ink-gray-7); font-size: var(--text-xs); font-weight: 500; }
+		.guard-connect .gc-title { font-size: var(--text-base); font-weight: 500; color: var(--ink-gray-8); }
+		.guard-connect .gc-asks { margin: 0.75rem 0 0; padding-left: 1.1rem; }
+		.guard-connect .gc-asks li { margin-top: 0.25rem; }
+		.guard-connect pre { white-space: pre-wrap; padding-right: 5rem; margin: 0; font-size: var(--text-sm); }
+		.guard-connect table { margin-top: 0.75rem; font-size: var(--text-sm); }
+	</style>`).appendTo(page.main);
 	const esc = (v) => frappe.utils.escape_html(v == null ? "" : String(v));
 	// Ask again until the agent connects. The server keeps the time of the last call of the agent.
 	const POLL_MS = 5000;
 	let timer = null;
 	let data = null;
+	// The prompt has the token, and the server keeps only its hash: keep it until the page reloads.
+	let prompt = null;
+	let promptToken = null;
+	// The last rendered answer: a poll with the same answer does not render again, so a selection in
+	// the prompt stays.
+	let shown = null;
 
-	const heading = (title) => `<h5 class="mt-5 mb-2">${esc(title)}</h5>`;
 	const block = (key, text) => `
-		<div style="position: relative">
-			<pre class="mb-2" style="white-space: pre-wrap; padding-right: 5rem">${esc(text)}</pre>
+		<div class="mt-4" style="position: relative">
+			<pre>${esc(text)}</pre>
 			<button class="btn btn-default btn-xs" data-copy="${key}"
 				style="position: absolute; top: var(--padding-sm); right: var(--padding-sm)">${__("Copy")}</button>
 		</div>`;
@@ -27,32 +50,43 @@ frappe.pages["guard-agent"].on_page_load = function (wrapper) {
 	const status = () => {
 		const seen = data.seen;
 		if (!seen) {
-			return `<div class="indicator-pill orange">${__("Not connected yet")}</div>
-				<span class="text-muted ml-2">${__("This page updates when your agent calls Guard.")}</span>`;
+			return `<span class="indicator-pill orange">${__("Not connected yet")}</span>
+				<span class="gc-muted ml-2">${__("This page updates when your agent calls Guard.")}</span>`;
 		}
 		const client = seen.client ? `${esc(seen.client)}, ` : "";
-		return `<div class="indicator-pill green">${__("Connected")}</div>
-			<span class="text-muted ml-2">${__("Last call: {0}{1}", [
+		return `<span class="indicator-pill green">${__("Connected")}</span>
+			<span class="gc-muted ml-2">${__("Last call: {0}{1}", [
 				client,
 				esc(frappe.datetime.prettyDate(seen.at)),
 			])}</span>`;
 	};
 
-	const oauth = () => {
-		if (!data.oauth_off.length) return "";
-		const fix = data.can_fix_oauth
-			? `<a href="/desk/oauth-settings">${__("Open OAuth Settings")}</a>`
-			: __("Ask an admin to turn them on in OAuth Settings.");
-		return `<div class="alert alert-warning mt-3">${__(
-			"Agents cannot sign in. These OAuth settings are off: {0}.",
-			[data.oauth_off.map(esc).join(", ")]
-		)} ${fix}</div>`;
+	const tokens = () => {
+		if (!data.tokens.length) return "";
+		const rows = data.tokens
+			.map(
+				(t) => `<tr>
+					<td>${esc(frappe.datetime.prettyDate(t.creation))}</td>
+					<td>${esc(frappe.datetime.str_to_user(t.expiration_time))}</td>
+					<td><button class="btn btn-default btn-xs" data-revoke="${esc(t.name)}">${__(
+					"Revoke"
+				)}</button></td>
+				</tr>`
+			)
+			.join("");
+		return `<section><h2>${__("Agent tokens")}</h2>
+			<p class="gc-muted mt-1">${__(
+				"Each one works for 90 days, and only on the MCP server. Revoke one when you stop using an agent."
+			)}</p>
+			<table class="table table-bordered table-sm"><thead><tr>
+				<th>${__("Created")}</th><th>${__("Ends")}</th><th></th>
+			</tr></thead><tbody>${rows}</tbody></table></section>`;
 	};
 
 	const reviews = () => {
 		if (!data.reviews.length) {
-			return `<p class="text-muted">${__(
-				"No local reviews yet. Ask your agent: “Review my change with Guard.”"
+			return `<p class="gc-muted mt-1">${__(
+				"None yet. Ask your agent: “Review my change with Guard.”"
 			)}</p>`;
 		}
 		const rows = data.reviews
@@ -92,86 +126,103 @@ frappe.pages["guard-agent"].on_page_load = function (wrapper) {
 		],
 	];
 
+	// The three steps, in the order a new user takes them.
+	const steps = [
+		[
+			__("Connect your agent"),
+			__(
+				"Get the setup prompt below and paste it into Claude Code, Codex, pi, Cursor or any agent with MCP. The prompt has your token in it, and the agent does the rest."
+			),
+		],
+		[
+			__("Ask it to review"),
+			__(
+				"Say “Review my change with Guard.” Your agent reviews with its own model and Guard's rules and graph. Guard keeps the result here and posts nothing to GitHub."
+			),
+		],
+		[
+			__("Stop pushes with P0 findings"),
+			__(
+				"Optional. In a repository, ask your agent to install the Guard pre-push hook. To skip it once: GUARD_SKIP=1 git push"
+			),
+		],
+	];
+
 	const render = () => {
+		const list = steps
+			.map(
+				([title, body], index) => `<li class="gc-step">
+					<span class="gc-number" aria-hidden="true">${index + 1}</span>
+					<div style="min-width: 0">
+						<p class="gc-title">${esc(title)}</p>
+						<p class="gc-muted mt-1">${esc(body)}</p>
+					</div>
+				</li>`
+			)
+			.join("");
 		const examples = asks
 			.map(
 				([say, what]) =>
-					`<li>“${esc(say)}” <span class="text-muted">— ${esc(what)}</span></li>`
+					`<li>“${esc(say)}” <span class="gc-muted">— ${esc(what)}</span></li>`
 			)
 			.join("");
+		// One action: the next step the reader can take.
+		const action = `<button class="btn btn-${prompt ? "default" : "primary"} btn-sm mt-4"
+			data-action="prompt">${prompt ? __("New setup prompt") : __("Get the setup prompt")}</button>`;
+		const setup = prompt
+			? `${block("prompt", prompt)}
+				<p class="gc-muted mt-2">${__(
+					"Guard shows this token only now. Your agent keeps it in its MCP config."
+				)}</p>${action}`
+			: action;
 		$body.html(`
-			<div class="mt-2">${status()}</div>
-			${oauth()}
-			${heading(__("1. Choose an agent to install"))}
-			<p class="text-muted">${__(
-				"Choose one or more agents, then copy the command. You can also pass --client NAME to the installer."
+			<p class="gc-prose">${__(
+				"Guard reviews your change before you push, with the agent you already use. There is nothing to install: your agent reads the team rules, the code graph of every repository and what earlier reviews found from Guard over MCP, and reviews with its own model."
 			)}</p>
-			${block("install", data.install_all)}
-			<div class="form-group mb-3">
-				<label class="control-label">${__("Agents")}</label>
-				<div class="guard-agent-choices">
-					${["claude", "codex", "pi"]
-						.map(
-							(client) => `<label class="checkbox-inline mr-3">
-								<input type="checkbox" data-agent="${client}"> ${__(client)}
-							</label>`
-						)
-						.join("")}
-				</div>
-				<button class="btn btn-default btn-xs mt-2" data-select="all">${__("Select all")}</button>
-				<button class="btn btn-default btn-xs mt-2" data-select="none">${__("Clear")}</button>
-			</div>
-			${heading(__("2. Ask your agent"))}
-			<ul class="mb-2">${examples}</ul>
-			<p class="text-muted">${__(
-				"Your agent reviews with its own model. Guard gives it the team rules, the code graph and the findings of its checks, and saves the result here. Nothing is posted to GitHub. In Claude Code, /mcp__guard__review does the same."
-			)}</p>
-			${heading(__("3. Stop pushes with P0 findings (optional)"))}
-			<p class="text-muted">${__(
-				"Run this in a repository. Before each push, your agent reviews the pushed commits with Guard, and a P0 finding stops the push. To skip it once: GUARD_SKIP=1 git push"
-			)}</p>
-			${block("install_hook", data.install_hook)}
-			${heading(__("Other agents"))}
-			<p class="text-muted">${__(
-				"Paste this prompt into Cursor, VS Code or another agent. It adds Guard and tells you how to sign in."
-			)}</p>
-			${block("prompt", data.prompt)}
-			<p class="text-muted mb-1">${__(
-				"Or add a streamable HTTP server with this URL and sign in with OAuth:"
-			)}</p>
-			${block("endpoint", data.endpoint)}
-			${heading(__("Your local reviews"))}
-			${reviews()}
+			<section>
+				<h2>${__("Start")}</h2>
+				<ol>${list}</ol>
+				${setup}
+				<div class="mt-4">${status()}</div>
+			</section>
+			<section>
+				<h2>${__("What to ask")}</h2>
+				<ul class="gc-asks gc-prose">${examples}</ul>
+			</section>
+			${tokens()}
+			<section>
+				<h2>${__("Your local reviews")}</h2>
+				${reviews()}
+			</section>
+			<section>
+				<h2>${__("Something is broken")}</h2>
+				<p class="gc-prose mt-1">${__(
+					"Ask a Guard admin. Name your agent and paste the error it printed. Never paste your token: revoke it above and get a new prompt instead."
+				)}</p>
+			</section>
 		`);
-		const $choices = $body.find("[data-agent]");
-		$choices.prop("checked", false);
-		const updateInstall = () => {
-			const selected = $choices
-				.filter(":checked")
-				.map((_, el) => $(el).data("agent"))
-				.get();
-			$body
-				.find('[data-copy="install"]')
-				.data(
-					"copy-value",
-					selected.length
-						? `${data.install} --client ${selected.join(" --client ")}`
-						: data.install_all
-				);
-		};
-		$choices.on("change", updateInstall);
-		$body.find("[data-select]").on("click", (e) => {
-			const all = $(e.currentTarget).data("select") === "all";
-			$choices.prop("checked", all);
-			updateInstall();
+		$body.find('[data-action="prompt"]').on("click", () => {
+			frappe.call({ method: "guard.api.agent.new_token", freeze: true }).then((r) => {
+				prompt = r.message.prompt;
+				promptToken = r.message.token;
+				load();
+			});
 		});
-		updateInstall();
-		$body.find("[data-copy]").on("click", (e) => {
-			const $button = $(e.currentTarget);
-			frappe.utils.copy_to_clipboard(
-				$button.data("copy-value") || data[$button.attr("data-copy")]
+		$body.find("[data-revoke]").on("click", (e) => {
+			const name = $(e.currentTarget).attr("data-revoke");
+			frappe.confirm(
+				__("Revoke this token? The agent that has it cannot call Guard any more."),
+				() =>
+					frappe
+						.call({ method: "guard.api.agent.revoke_token", args: { name } })
+						.then(() => {
+							// A revoked token makes the prompt on the page useless.
+							if (name === promptToken) prompt = promptToken = null;
+							load();
+						})
 			);
 		});
+		$body.find("[data-copy]").on("click", () => frappe.utils.copy_to_clipboard(prompt));
 	};
 
 	// Only the answer of the last request renders and arms the timer, so one loop runs at a time.
@@ -182,7 +233,9 @@ frappe.pages["guard-agent"].on_page_load = function (wrapper) {
 		frappe.call({ method: "guard.api.agent.connect", type: "GET" }).then((r) => {
 			if (id !== seq) return;
 			data = r.message;
-			render();
+			const key = JSON.stringify([data, prompt]);
+			if (key !== shown) render();
+			shown = key;
 			if (!data.seen) timer = setTimeout(poll, POLL_MS);
 		});
 	};

@@ -1,6 +1,6 @@
 """The prompts of the MCP server. Claude Code shows them as slash commands, such as /mcp__guard__review.
 
-A prompt only starts a task. The skills and the server instructions say how to do it.
+A prompt only starts a task. The server instructions say how to do it.
 """
 
 from dataclasses import dataclass, field
