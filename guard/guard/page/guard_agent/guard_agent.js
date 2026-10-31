@@ -56,7 +56,7 @@ frappe.pages["guard-agent"].on_page_load = function (wrapper) {
 		if (navigator.clipboard && window.isSecureContext) {
 			return navigator.clipboard.writeText(prompt).then(
 				() => done(true),
-				() => done(false),
+				() => done(false)
 			);
 		}
 		const input = $("<textarea>").appendTo("body").val(prompt);
@@ -88,14 +88,14 @@ frappe.pages["guard-agent"].on_page_load = function (wrapper) {
 					<td>${esc(frappe.datetime.prettyDate(t.creation))}</td>
 					<td>${esc(frappe.datetime.str_to_user(t.expiration_time))}</td>
 					<td><button class="btn btn-default btn-xs" data-revoke="${esc(t.name)}">${__(
-						"Revoke",
-					)}</button></td>
-				</tr>`,
+					"Revoke"
+				)}</button></td>
+				</tr>`
 			)
 			.join("");
 		return `<section><h2>${__("Agent tokens")}</h2>
 			<p class="gc-muted mt-1">${__(
-				"Each one works for 90 days, and only on the MCP server. Revoke one when you stop using an agent.",
+				"Each one works for 90 days, and only on the MCP server. Revoke one when you stop using an agent."
 			)}</p>
 			<table class="table table-bordered table-sm"><thead><tr>
 				<th>${__("Created")}</th><th>${__("Ends")}</th><th></th>
@@ -105,7 +105,7 @@ frappe.pages["guard-agent"].on_page_load = function (wrapper) {
 	const reviews = () => {
 		if (!data.reviews.length) {
 			return `<p class="gc-muted mt-1">${__(
-				"None yet. Ask your agent: “Review my change with Guard.”",
+				"None yet. Ask your agent: “Review my change with Guard.”"
 			)}</p>`;
 		}
 		const rows = data.reviews
@@ -116,7 +116,7 @@ frappe.pages["guard-agent"].on_page_load = function (wrapper) {
 					<td>${esc(r.branch)}</td>
 					<td>${esc(r.findings_count)}</td>
 					<td>${esc(frappe.datetime.prettyDate(r.creation))}</td>
-				</tr>`,
+				</tr>`
 			)
 			.join("");
 		return `<table class="table table-bordered table-sm"><thead><tr>
@@ -150,19 +150,19 @@ frappe.pages["guard-agent"].on_page_load = function (wrapper) {
 		[
 			__("Connect your agent"),
 			__(
-				"Get the setup prompt below and paste it into Claude Code, Codex, pi, Cursor or any agent with MCP. The prompt has your token in it, and the agent does the rest.",
+				"Get the setup prompt below and paste it into Claude Code, Codex, pi, Cursor or any agent with MCP. The prompt has your token in it, and the agent does the rest."
 			),
 		],
 		[
 			__("Ask it to review"),
 			__(
-				"Say “Review my change with Guard.” Your agent reviews with its own model and Guard's rules and graph. Guard keeps the result here and posts nothing to GitHub.",
+				"Say “Review my change with Guard.” Your agent reviews with its own model and Guard's rules and graph. Guard keeps the result here and posts nothing to GitHub."
 			),
 		],
 		[
 			__("Stop pushes with P0 findings"),
 			__(
-				"Optional. In a repository, ask your agent to install the Guard pre-push hook. To skip it once: GUARD_SKIP=1 git push",
+				"Optional. In a repository, ask your agent to install the Guard pre-push hook. To skip it once: GUARD_SKIP=1 git push"
 			),
 		],
 	];
@@ -176,13 +176,13 @@ frappe.pages["guard-agent"].on_page_load = function (wrapper) {
 						<p class="gc-title">${esc(title)}</p>
 						<p class="gc-muted mt-1">${esc(body)}</p>
 					</div>
-				</li>`,
+				</li>`
 			)
 			.join("");
 		const examples = asks
 			.map(
 				([say, what]) =>
-					`<li>“${esc(say)}” <span class="gc-muted">— ${esc(what)}</span></li>`,
+					`<li>“${esc(say)}” <span class="gc-muted">— ${esc(what)}</span></li>`
 			)
 			.join("");
 		// One action: the next step the reader can take. The prompt never goes into the DOM; the button
@@ -195,12 +195,12 @@ frappe.pages["guard-agent"].on_page_load = function (wrapper) {
 					${action}
 				</div>
 				<p class="gc-muted mt-2">${__(
-					"Paste the prompt into your agent. Guard never shows the token: it is in the prompt only, and your agent keeps it in its MCP config.",
+					"Paste the prompt into your agent. Guard never shows the token: it is in the prompt only, and your agent keeps it in its MCP config."
 				)}</p>`
 			: action;
 		$body.html(`
 			<p class="gc-prose">${__(
-				"Guard reviews your change before you push, with the agent you already use. There is nothing to install: your agent reads the team rules, the code graph of every repository and what earlier reviews found from Guard over MCP, and reviews with its own model.",
+				"Guard reviews your change before you push, with the agent you already use. There is nothing to install: your agent reads the team rules, the code graph of every repository and what earlier reviews found from Guard over MCP, and reviews with its own model."
 			)}</p>
 			<section>
 				<h2>${__("Start")}</h2>
@@ -220,7 +220,7 @@ frappe.pages["guard-agent"].on_page_load = function (wrapper) {
 			<section>
 				<h2>${__("Something is broken")}</h2>
 				<p class="gc-prose mt-1">${__(
-					"Ask a Guard admin. Name your agent and paste the error it printed. Never paste your token: revoke it above and get a new prompt instead.",
+					"Ask a Guard admin. Name your agent and paste the error it printed. Never paste your token: revoke it above and get a new prompt instead."
 				)}</p>
 			</section>
 		`);
@@ -244,7 +244,7 @@ frappe.pages["guard-agent"].on_page_load = function (wrapper) {
 							// A revoked token makes the prompt on the page useless.
 							if (name === promptToken) prompt = promptToken = null;
 							load();
-						}),
+						})
 			);
 		});
 		$body.find('[data-action="copy"]').on("click", () => copyPrompt());
