@@ -148,7 +148,12 @@ def rereview(pull_request: str, tier: str = "") -> str | None:
 	frappe.has_permission("Pull Request", "read", pull_request, throw=True)
 	frappe.only_for(["Guard Admin", "Guard Member", "System Manager"])
 	from guard.review.jobs import create_review
+	from guard.review.trigger import over_repository_limit
 
+	repository = str(db.value("Pull Request", pull_request, "repository") or "")
+	if over_repository_limit(repository, pull_request):
+		limit = guard_settings.repository_daily_reviews()
+		frappe.throw(_("The repository used its {0} reviews for today.").format(limit))
 	return create_review(pull_request, "manual", requested_tier=tier, user=frappe.session.user)
 
 

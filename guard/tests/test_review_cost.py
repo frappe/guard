@@ -200,6 +200,32 @@ class TestRepeatReviews(ReviewCostCase):
 		# A person can still ask.
 		self.assertTrue(self.online_review([SUBMIT], event="push", manual=True))
 
+	def test_a_repository_over_its_daily_reviews_gets_no_review(self):
+		from guard.api import ui
+
+		frappe.db.set_single_value("Guard Settings", "repository_daily_reviews", 2)
+		self.addCleanup(frappe.db.set_single_value, "Guard Settings", "repository_daily_reviews", 0)
+		# Not counted: replaced before it started, a local review, a review in an outage, and a queued
+		# review of this pull request, which the new review replaces.
+		self.insert_review(status="Cancelled")
+		self.insert_review(status="Completed", source="local", started_at=now_datetime())
+		self.insert_review(status="Completed", outage_fallback=1, started_at=now_datetime())
+		queued = self.insert_review(status="Queued")
+		self.insert_review(status="Completed", started_at=now_datetime())
+		self.assertFalse(trigger.over_repository_limit(self.repository, self.pr))
+		self.insert_review(status="Completed", started_at=now_datetime())
+		self.assertTrue(trigger.over_repository_limit(self.repository, self.pr))
+		# A queued review owns the check, and a skip would not replace it.
+		frappe.db.set_value("Code Review", queued, "status", "Cancelled")
+		with patch("guard.config.gate.event_allowed", return_value=True):
+			self.assertIsNone(trigger.consider(self.pr, "push"))
+			# A person cannot ask either.
+			self.assertIsNone(trigger.consider(self.pr, "open", manual=True, requested_by="ada"))
+		self.assertIn(trigger.OVER_REPOSITORY_LIMIT, self.adapter.checks[-1][2])
+		self.assertRaises(frappe.ValidationError, ui.rereview, self.pr)
+		frappe.db.set_single_value("Guard Settings", "repository_daily_reviews", 0)
+		self.assertFalse(trigger.over_repository_limit(self.repository, self.pr), "0 is no limit")
+
 	def test_a_rereview_of_a_small_push_gets_few_turns(self):
 		self.online_review([SUBMIT])
 		self.repo.commit({"app/extra.py": "VALUE = 1\n"}, "push")

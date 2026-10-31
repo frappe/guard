@@ -61,6 +61,7 @@ class GuardSettings(Document):
 		public_url: DF.Data | None
 		pull_request_daily_tokens: DF.Int
 		push_review_delay: DF.Int
+		repository_daily_reviews: DF.Int
 		request_timeout: DF.Int
 		reviews_per_worker: DF.Int
 		sandbox_enabled: DF.Check

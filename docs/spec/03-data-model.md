@@ -26,6 +26,7 @@ All DocTypes are in the module "Guard". Field lists show the main fields only. S
 | `outage_fallback_after` | Int | Seconds that a review waits for an AI provider that is down. Then it posts the checks that need no model, and a full review follows when the AI provider answers. Default 900. 0: reviews wait. |
 | `push_review_delay` | Int | Seconds that an automatic review of a push waits. Default 120. 0 turns the wait off. |
 | `pull_request_daily_tokens` | Int | Input tokens that the reviews of one pull request can use in 24 hours before a push gets no automatic review. Default 10,000,000. 0 means no limit. |
+| `repository_daily_reviews` | Int | Reviews of pull requests of one repository that can start in 24 hours, for all triggers. Local, CLI and API reviews do not count. Default 0: no limit. |
 | `auto_enable_new_repositories` | Check | |
 | `feature_tips` | Check | |
 | `learn_from_activity` | Check | Default on. |

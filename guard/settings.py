@@ -252,6 +252,11 @@ def pull_request_daily_tokens() -> int:
 	return DEFAULT_PULL_REQUEST_TOKENS if value in (None, "") else max(cint(value), 0)
 
 
+def repository_daily_reviews() -> int:
+	"""Reviews of pull requests of one repository that can start in 24 hours. 0 is no limit."""
+	return max(cint(_value("repository_daily_reviews")), 0)
+
+
 def trigger_handles() -> list[str]:
 	"""Configured handles, plus `@<slug>` of each GitHub App, which is what GitHub suggests."""
 	handles = _lines(settings().trigger_handles or "@guard")

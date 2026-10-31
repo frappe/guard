@@ -26,6 +26,7 @@ PUSH_EVENTS = ("push", "rebase")
 MAX_PUSH_DELAY = 900
 MAX_DOUBLINGS = 10
 OVER_BUDGET = "the pull request used its review tokens for today. Mention Guard to review it now"
+OVER_REPOSITORY_LIMIT = "the repository used its reviews for today"
 
 if TYPE_CHECKING:
 	from guard.guard.doctype.pull_request.pull_request import PullRequest
@@ -78,6 +79,8 @@ def consider(
 	result = gate.check(facts, config, event, manual, rules)
 	if result.allowed and not manual and event in PUSH_EVENTS and over_budget(pull_request):
 		result = gate.GateResult(False, OVER_BUDGET)
+	if result.allowed and over_repository_limit(repository, pull_request):
+		result = gate.GateResult(False, OVER_REPOSITORY_LIMIT)
 	if not result.allowed:
 		frappe.logger("guard").info(f"review skipped for {pull_request}: {result.reason}")
 		if adapter and config.settings.get("status_check", True) and not owns_check(pull_request, head):
@@ -133,6 +136,27 @@ def over_budget(pull_request: str) -> bool:
 		"SELECT IFNULL(SUM(input_tokens), 0) FROM `tabCode Review` WHERE pull_request = %s AND creation > %s"
 		" AND source != 'local'",
 		(pull_request, add_to_date(now_datetime(), hours=-24)),
+	)
+	return int(used or 0) >= limit
+
+
+def over_repository_limit(repository: str, pull_request: str = "") -> bool:
+	"""The pull request reviews of the repository reached `repository_daily_reviews` in the last 24 hours.
+
+	All triggers count: a person asked for the review, or a push started it. A review counts when it
+	started, or when it waits to start for another pull request. A queued review of this pull request
+	does not count: the new review replaces it. A review that was replaced before it started cost
+	nothing. A review in an outage ran without a model, and the full review that follows it counts.
+	Local, CLI and API reviews are not reviews of the pull request on the provider.
+	"""
+	limit = guard_settings.repository_daily_reviews()
+	if not limit:
+		return False
+	used = db.scalar(
+		"""SELECT COUNT(*) FROM `tabCode Review` WHERE repository = %s AND creation > %s
+		AND source = 'pull_request' AND outage_fallback = 0
+		AND (started_at IS NOT NULL OR (status = 'Queued' AND cancel_requested = 0 AND pull_request != %s))""",
+		(repository, add_to_date(now_datetime(), hours=-24), pull_request),
 	)
 	return int(used or 0) >= limit
 

@@ -63,6 +63,7 @@
   "reviews_per_worker",
   "push_review_delay",
   "pull_request_daily_tokens",
+  "repository_daily_reviews",
   "auto_enable_new_repositories",
   "org_col",
   "feature_tips",
@@ -427,6 +428,14 @@
    "fieldname": "pull_request_daily_tokens",
    "fieldtype": "Int",
    "label": "Daily Tokens per Pull Request",
+   "non_negative": 1
+  },
+  {
+   "default": "0",
+   "description": "Reviews of pull requests of one repository that can start in 24 hours. Automatic reviews, mentions and manual re-reviews all count. Local reviews do not count. After that, the check shows that the repository used its reviews for today. 0 means no limit.",
+   "fieldname": "repository_daily_reviews",
+   "fieldtype": "Int",
+   "label": "Daily Reviews per Repository",
    "non_negative": 1
   },
   {
