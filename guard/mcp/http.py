@@ -148,7 +148,7 @@ def upload(request: Request, review_id: str) -> Response:
 		return _text(422 if status == 417 else status, f"error: {message}\n")
 	finally:
 		# `receive` acts for the user who started the review. The session of this request stays Guest.
-		frappe.set_user("Guest")
+		frappe.set_user("Guest")  # nosemgrep: frappe-setuser -- drops rights, never adds them
 	return _text(
 		200,
 		f"Guard has the change: {answer['files']} files, {answer['findings']} findings of its checks.\n"

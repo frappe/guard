@@ -28,34 +28,32 @@ class Prompt:
 		}
 
 
-PROMPTS = {
-	prompt.name: prompt
-	for prompt in (
-		Prompt(
-			"review",
-			"Review my change",
-			"Review the local change with Guard before a push.",
-			"Review my local change with Guard before I push. Call the Guard tool start_review, run the "
-			"command of its answer, call review_context, review the change as the guide says, show me the "
-			"findings and call submit_review.{focus}",
-			({"name": "focus", "description": "What the review must look at.", "required": False},),
-		),
-		Prompt(
-			"fix",
-			"Fix the findings of my pull request",
-			"Fix what Guard found on the pull request of the current branch.",
-			"Call the Guard tool pr_findings for the current branch. Fix each finding that is correct, run "
-			"the tests, and tell me which findings you think are wrong, with the reason. Do not push.",
-		),
-		Prompt(
-			"ask",
-			"Ask about the code of the team",
-			"Ask Guard about code in all repositories and the team rules.",
-			"Answer with the Guard tools find_symbol, search_code, team_rules and explain_config: {question}",
-			({"name": "question", "description": "The question.", "required": True},),
-		),
-	)
-}
+_PROMPTS = (
+	Prompt(
+		"review",
+		"Review my change",
+		"Review the local change with Guard before a push.",
+		"Review my local change with Guard before I push. Call the Guard tool start_review, run the "
+		"command of its answer, call review_context, review the change as the guide says, show me the "
+		"findings and call submit_review.{focus}",
+		({"name": "focus", "description": "What the review must look at.", "required": False},),
+	),
+	Prompt(
+		"fix",
+		"Fix the findings of my pull request",
+		"Fix what Guard found on the pull request of the current branch.",
+		"Call the Guard tool pr_findings for the current branch. Fix each finding that is correct, run "
+		"the tests, and tell me which findings you think are wrong, with the reason. Do not push.",
+	),
+	Prompt(
+		"ask",
+		"Ask about the code of the team",
+		"Ask Guard about code in all repositories and the team rules.",
+		"Answer with the Guard tools find_symbol, search_code, team_rules and explain_config: {question}",
+		({"name": "question", "description": "The question.", "required": True},),
+	),
+)
+PROMPTS = {prompt.name: prompt for prompt in _PROMPTS}
 
 
 def definitions() -> list[dict[str, Any]]:

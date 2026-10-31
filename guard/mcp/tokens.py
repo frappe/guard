@@ -33,7 +33,7 @@ def only_mcp() -> None:
 		return
 	client = db.value("OAuth Bearer Token", {"access_token": get_oauth_token_hash(header[1])}, "client")
 	if client and client == _client(create=False):
-		frappe.set_user("Guest")
+		frappe.set_user("Guest")  # nosemgrep: frappe-setuser -- drops rights, never adds them
 
 
 def issue(user: str) -> str:

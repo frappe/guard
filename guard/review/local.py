@@ -154,6 +154,7 @@ def receive(
 		user = str(session["user"])
 		if not frappe.db.get_value("User", user, "enabled"):
 			frappe.throw(_("User {0} is disabled.").format(user), frappe.PermissionError)
+		# nosemgrep: frappe-setuser -- the one-time upload secret is checked above, and the user is enabled
 		frappe.set_user(user)
 		frappe.has_permission("Code Repository", "read", str(session["repository"]), throw=True)
 		_set_change(session, base, branch, head)
@@ -555,8 +556,8 @@ def _save_review(run: ReviewRun, session: dict[str, Any], review_id: str) -> Any
 	).insert(ignore_permissions=True)
 
 
-def _from_agent(args: dict[str, Any]) -> Finding:
-	finding = Finding.from_arguments(args)
+def _from_agent(arguments: dict[str, Any]) -> Finding:
+	finding = Finding.from_arguments(arguments)
 	finding.rule_id = str(finding.rule_id)[:140] if isinstance(finding.rule_id, str | int) else None
 	finding.body = finding.body[:MAX_BODY]
 	finding.suggestion = finding.suggestion[:MAX_SUGGESTION]
