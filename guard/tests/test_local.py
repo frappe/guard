@@ -24,6 +24,9 @@ NEW_SIGNATURE = MODELS.replace(
 KEY_LINE = 'BACKUP_KEY = "AKIAABCDEFGHIJKLMNOP"\n'
 
 
+SITE_URL = "http://guard-test.localhost:8000"
+
+
 class LocalCase(IntegrationTestCase):
 	"""A repository with an index, and a change in its working tree."""
 
@@ -37,6 +40,9 @@ class LocalCase(IntegrationTestCase):
 		# A local review runs no model and embeds nothing: the agent of the developer pays.
 		self.stack.enter_context(use_responder(self.no_model))
 		self.stack.enter_context(patch("guard.llm.embeddings.Embedder.embed", side_effect=self.no_model))
+		# The upload command and the hook need an https:// or a local address. The name of the test site
+		# (`test_site` in CI) must not decide it.
+		self.stack.enter_context(patch("guard.settings.get_url", return_value=SITE_URL))
 
 	def tearDown(self):
 		self.stack.close()
