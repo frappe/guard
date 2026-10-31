@@ -109,7 +109,7 @@ def _last_read(pull_request: str) -> dict[str, Any] | None:
 	rows = db.dict_rows(
 		"""SELECT head_sha, merge_base_sha, summary, confidence_score, risk_level,
 		important_files, diagram_type, diagram FROM `tabCode Review`
-		WHERE pull_request = %s AND status = 'Completed' AND agent_turns > 0
+		WHERE pull_request = %s AND status = 'Completed' AND agent_turns > 0 AND source != 'local'
 		ORDER BY creation DESC LIMIT 1""",
 		(pull_request,),
 	)

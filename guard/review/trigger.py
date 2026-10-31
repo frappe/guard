@@ -117,7 +117,7 @@ def push_delay(event: str, manual: bool, pull_request: str = "") -> int:
 		return delay
 	recent = db.scalar(
 		"""SELECT COUNT(*) FROM `tabCode Review` WHERE pull_request = %s
-		AND `trigger` IN ('push', 'rebase') AND started_at > %s""",
+		AND `trigger` IN ('push', 'rebase') AND started_at > %s AND source != 'local'""",
 		(pull_request, add_to_date(now_datetime(), hours=-1)),
 	)
 	return min(delay * 2 ** min(int(recent or 0), MAX_DOUBLINGS), max(MAX_PUSH_DELAY, delay))
@@ -130,7 +130,8 @@ def over_budget(pull_request: str) -> bool:
 	if not limit:
 		return False
 	used = db.scalar(
-		"SELECT IFNULL(SUM(input_tokens), 0) FROM `tabCode Review` WHERE pull_request = %s AND creation > %s",
+		"SELECT IFNULL(SUM(input_tokens), 0) FROM `tabCode Review` WHERE pull_request = %s AND creation > %s"
+		" AND source != 'local'",
 		(pull_request, add_to_date(now_datetime(), hours=-24)),
 	)
 	return int(used or 0) >= limit
@@ -146,7 +147,7 @@ def owns_check(pull_request: str, head: str) -> bool:
 		db.scalar(
 			"""SELECT COUNT(*) FROM `tabCode Review` WHERE pull_request = %s
 			AND ((head_sha = %s AND status IN ('Completed', 'Failed', 'Running'))
-				OR (status = 'Queued' AND cancel_requested = 0))""",
+				OR (status = 'Queued' AND cancel_requested = 0)) AND source != 'local'""",
 			(pull_request, head),
 		)
 	)

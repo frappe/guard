@@ -98,7 +98,8 @@ def _newer_review(review: "CodeReview", pull_request: str) -> bool:
 		return True
 	return bool(
 		db.scalar(
-			"SELECT COUNT(*) FROM `tabCode Review` WHERE pull_request = %s AND name != %s AND status IN %s",
+			"SELECT COUNT(*) FROM `tabCode Review` WHERE pull_request = %s AND name != %s AND status IN %s"
+			" AND source != 'local'",
 			(pull_request, str(review.name), state.ACTIVE),
 		)
 	)

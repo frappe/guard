@@ -145,7 +145,7 @@
    "fieldtype": "Select",
    "in_list_view": 1,
    "label": "Tier",
-   "options": "\nbase\nplus\napex"
+   "options": "\nbase\nplus\napex\nlocal"
   },
   {
    "fieldname": "strictness",

@@ -526,6 +526,25 @@ def _graph(run: ReviewRun) -> list[str]:
 	return parts
 
 
+def open_pull_request(repository: str, branch: str) -> str | None:
+	"""The open pull request of `branch` in the repository, or None. Not one from a fork."""
+	if not branch:
+		return None
+	full_name = str(db.value("Code Repository", repository, "full_name") or "").lower()
+	rows = frappe.get_list(
+		"Pull Request",
+		filters={"repository": repository, "head_branch": branch, "state": "open"},
+		fields=["name", "head_clone_url"],
+		order_by="modified desc",
+		limit=20,
+	)
+	# A branch of a fork can have the same name, such as `main` or `patch-1`.
+	for row in rows:
+		if not row.head_clone_url or f"/{full_name}" in str(row.head_clone_url).lower():
+			return str(row.name)
+	return None
+
+
 def _save_review(run: ReviewRun, session: dict[str, Any], review_id: str) -> Any:
 	started = session["started_at"]
 	return frappe.get_doc(
@@ -534,6 +553,10 @@ def _save_review(run: ReviewRun, session: dict[str, Any], review_id: str) -> Any
 			"repository": run.repository,
 			"source": "local",
 			"trigger": "local",
+			# Not a tier of Guard's model: the agent of the developer reviewed.
+			"tier": "local",
+			# For people who read it. GitHub reviews of the pull request do not count local reviews.
+			"pull_request": open_pull_request(str(run.repository), run.head_branch),
 			"status": "Completed",
 			"stage": "after",
 			"requested_by": frappe.session.user,

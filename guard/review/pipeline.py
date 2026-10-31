@@ -265,7 +265,7 @@ class ReviewPipeline:
 		return bool(
 			db.scalar(
 				"""SELECT COUNT(*) FROM `tabCode Review` WHERE pull_request = %s AND name != %s
-				AND status IN ('Queued', 'Running') AND creation < %s""",
+				AND status IN ('Queued', 'Running') AND creation < %s AND source != 'local'""",
 				(str(self.review.pull_request), str(self.review.name), self.review.creation),
 			)
 		)
@@ -945,7 +945,7 @@ class ReviewPipeline:
 			return pr.last_reviewed_sha or ""
 		rows = db.rows(
 			"""SELECT head_sha FROM `tabCode Review` WHERE pull_request = %s AND status = 'Completed'
-			AND outage_fallback = 0 ORDER BY completed_at DESC LIMIT 1""",
+			AND outage_fallback = 0 AND source != 'local' ORDER BY completed_at DESC LIMIT 1""",
 			(str(pr.name),),
 		)
 		return str(rows[0][0] or "") if rows else None
@@ -1014,7 +1014,8 @@ class ReviewPipeline:
 			return 1
 		return int(
 			db.scalar(
-				"SELECT COUNT(*) FROM `tabCode Review` WHERE pull_request = %s AND status IN ('Completed', 'Running')",
+				"SELECT COUNT(*) FROM `tabCode Review` WHERE pull_request = %s AND status IN ('Completed', 'Running')"
+				" AND source != 'local'",
 				(self.review.pull_request,),
 			)
 			or 1

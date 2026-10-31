@@ -228,7 +228,7 @@ def recount_check(adapter: ProviderAdapter, full_name: str, pull_request: str) -
 		return
 	completed = db.dict_rows(
 		"""SELECT name, confidence_score, check_run_id, config_snapshot FROM `tabCode Review`
-		WHERE pull_request = %s AND head_sha = %s AND status = 'Completed'
+		WHERE pull_request = %s AND head_sha = %s AND status = 'Completed' AND source != 'local'
 		ORDER BY creation DESC LIMIT 1""",
 		(pull_request, head),
 	)
@@ -334,7 +334,7 @@ def _reviews_of(pull_request: str, sha: str, status: str) -> list[dict[str, Any]
 	"""The newest review of the commit, of any status when `status` is blank."""
 	return db.dict_rows(
 		"""SELECT name, status, confidence_score, check_run_id FROM `tabCode Review`
-		WHERE pull_request = %s AND head_sha = %s AND (%s = '' OR status = %s)
+		WHERE pull_request = %s AND head_sha = %s AND (%s = '' OR status = %s) AND source != 'local'
 		ORDER BY creation DESC LIMIT 1""",
 		(pull_request, sha, status, status),
 	)
@@ -345,7 +345,7 @@ def check_of(pull_request: str, head_sha: str) -> str:
 	return str(
 		db.scalar(
 			"""SELECT check_run_id FROM `tabCode Review` WHERE pull_request = %s AND head_sha = %s
-			AND IFNULL(check_run_id, '') != '' ORDER BY creation DESC LIMIT 1""",
+			AND IFNULL(check_run_id, '') != '' AND source != 'local' ORDER BY creation DESC LIMIT 1""",
 			(pull_request, head_sha),
 		)
 		or ""
@@ -371,7 +371,7 @@ def other_review_runs(pull_request: str, head_sha: str, review: str) -> bool:
 	return bool(
 		db.scalar(
 			"""SELECT COUNT(*) FROM `tabCode Review` WHERE pull_request = %s AND head_sha = %s
-			AND name != %s AND status IN ('Queued', 'Running')""",
+			AND name != %s AND status IN ('Queued', 'Running') AND source != 'local'""",
 			(pull_request, head_sha, review),
 		)
 	)
@@ -382,7 +382,7 @@ def review_runs(pull_request: str, review: str) -> bool:
 	return bool(
 		db.scalar(
 			"""SELECT COUNT(*) FROM `tabCode Review` WHERE pull_request = %s AND name != %s
-			AND status IN ('Queued', 'Running')""",
+			AND status IN ('Queued', 'Running') AND source != 'local'""",
 			(pull_request, review),
 		)
 	)
@@ -393,7 +393,7 @@ def newer_review_of(pull_request: str, head_sha: str, creation: Any) -> bool:
 	return bool(
 		db.scalar(
 			"""SELECT COUNT(*) FROM `tabCode Review` WHERE pull_request = %s AND head_sha = %s
-			AND creation > %s""",
+			AND creation > %s AND source != 'local'""",
 			(pull_request, head_sha, creation),
 		)
 	)
@@ -404,7 +404,7 @@ def newer_review_runs(pull_request: str, review: str, creation: Any) -> bool:
 	return bool(
 		db.scalar(
 			"""SELECT COUNT(*) FROM `tabCode Review` WHERE pull_request = %s AND name != %s
-			AND creation > %s AND status IN ('Queued', 'Running')""",
+			AND creation > %s AND status IN ('Queued', 'Running') AND source != 'local'""",
 			(pull_request, review, creation),
 		)
 	)

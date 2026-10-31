@@ -65,7 +65,7 @@ class CodeReview(Document):
 		strictness: DF.Int
 		summary: DF.MarkdownEditor | None
 		suppressed_count: DF.Int
-		tier: DF.Literal["", "base", "plus", "apex"]
+		tier: DF.Literal["", "base", "plus", "apex", "local"]
 		trigger: DF.Literal["open", "push", "rebase", "mention", "retrigger", "manual", "cli", "api", "local"]
 		triggered_by_user: DF.Link | None
 		usage_detail: DF.JSON | None

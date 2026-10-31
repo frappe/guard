@@ -173,9 +173,11 @@ def cancel_review(review: str) -> str:
 
 @frappe.whitelist(methods=["POST"])
 def retry_review(review: str) -> str | None:
-	pull_request = db.value("Code Review", review, "pull_request")
-	if not pull_request:
+	row = db.values("Code Review", review, ("pull_request", "source")) or {}
+	# A local review links its pull request too, but only the agent of the developer can run it again.
+	if not row.get("pull_request") or row.get("source") == "local":
 		frappe.throw(_("Only pull request reviews can be retried here."))
+	pull_request = row["pull_request"]
 	return rereview(str(pull_request))
 
 

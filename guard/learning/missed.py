@@ -46,7 +46,11 @@ def is_candidate(pull_request: str, repository: str, comment: ProviderComment) -
 		and comment.path
 		and not comment.in_reply_to
 		and comment.author != pr.get("author")
-		and db.value("Code Review", {"pull_request": pull_request, "status": "Completed"}, "name")
+		and db.value(
+			"Code Review",
+			{"pull_request": pull_request, "status": "Completed", "source": ["!=", "local"]},
+			"name",
+		)
 		and permissions.allowed("teach", comment.author, repository)
 	)
 

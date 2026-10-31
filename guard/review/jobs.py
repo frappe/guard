@@ -422,6 +422,8 @@ def follow_up(review: str) -> str | None:
 			"head_sha": row["head_sha"],
 			"creation": [">", row["creation"]],
 			"status": ["in", ["Queued", "Running", "Completed"]],
+			# A local review of the commit does not take the place of the full review.
+			"source": ["!=", "local"],
 		},
 	):
 		return None

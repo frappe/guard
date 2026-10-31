@@ -131,13 +131,14 @@ class TestLocalReview(LocalCase):
 			db.values(
 				"Code Review",
 				result["review"],
-				("source", "status", "credits", "confidence_score", "findings_count", "pull_request"),
+				("source", "status", "credits", "confidence_score", "findings_count", "pull_request", "tier"),
 			)
 			or {}
 		)
 		self.assertEqual(review["source"], "local")
 		self.assertEqual(review["status"], "Completed")
 		self.assertEqual(review["credits"], 0)
+		self.assertEqual(review["tier"], "local")
 		self.assertFalse(review["pull_request"])
 		# The open P1 and the secret cap the score of the agent.
 		self.assertLess(review["confidence_score"], 5)
@@ -151,6 +152,73 @@ class TestLocalReview(LocalCase):
 		rows = frappe.get_all("Review Finding", filters={"code_review": result["review"]}, fields=["posted"])
 		self.assertEqual(len(rows), len(result["kept"]) + len(result["dropped"]))
 		self.assertFalse(any(r.posted for r in rows))
+
+	def test_a_review_links_the_open_pull_request_and_github_reviews_ignore_it(self):
+		from guard.api import ui
+		from guard.learning import missed
+		from guard.providers.base import ProviderComment
+		from guard.review import jobs, state, trigger
+
+		pull_request = self.pull_request("feature")
+		self.pull_request("feature", number=8, clone_url="https://github.com/someone/fork.git")
+		self.pull_request("feature", number=9, state="closed")
+		started = self.start()
+		name = local.submit(started["review_id"], [])["review"]
+		self.assertEqual(db.value("Code Review", name, "pull_request"), pull_request)
+		# The pull request has no review of Guard: the local one owns no check and is not the latest.
+		frappe.db.set_value("Code Review", name, "head_sha", "a" * 40)
+		self.assertFalse(trigger.owns_check(pull_request, "a" * 40))
+		self.assertFalse(state.newer_review_of(pull_request, "a" * 40, "2000-01-01"))
+		self.assertEqual(state._reviews_of(pull_request, "a" * 40, ""), [])
+		# Learning from missed bugs needs a review of Guard, and a local one does not count.
+		comment = ProviderComment("1", "inline", "reviewer", "This breaks.", path="app/models.py")
+		with (
+			patch("guard.learning.feedback.learning_on", return_value=True),
+			patch("guard.review.permissions.allowed", return_value=True),
+		):
+			self.assertFalse(missed.is_candidate(pull_request, self.repository, comment))
+		with self.assertRaises(frappe.ValidationError):
+			ui.retry_review(name)
+		# The local review of the commit does not stop the full review after an outage.
+		outage = frappe.get_doc(
+			{
+				"doctype": "Code Review",
+				"pull_request": pull_request,
+				"repository": self.repository,
+				"status": "Completed",
+				"head_sha": "a" * 40,
+				"outage_fallback": 1,
+			}
+		).insert(ignore_permissions=True)
+		db.set_values("Code Review", str(outage.name), {"creation": "2000-01-01"})
+		db.set_values("Pull Request", pull_request, {"head_sha": "a" * 40, "latest_review": outage.name})
+		with patch("guard.review.jobs.create_review", return_value="CR-FULL") as create:
+			self.assertEqual(jobs.follow_up(str(outage.name)), "CR-FULL")
+		create.assert_called_once()
+		# Another branch has no pull request.
+		other = local.start(self.full_name, self.base, self.working_tree_diff(), "other")
+		self.assertFalse(
+			db.value("Code Review", local.submit(other["review_id"], [])["review"], "pull_request")
+		)
+
+	def pull_request(
+		self, branch: str, number: int = 7, state: str = "open", clone_url: str | None = None
+	) -> str:
+		return str(
+			frappe.get_doc(
+				{
+					"doctype": "Pull Request",
+					"title": "Change",
+					"repository": self.repository,
+					"number": number,
+					"state": state,
+					"head_branch": branch,
+					"head_clone_url": clone_url or f"https://github.com/{self.full_name}.git",
+				}
+			)
+			.insert(ignore_permissions=True)
+			.name
+		)
 
 	def test_a_review_is_submitted_once_and_by_the_user_who_started_it(self):
 		started = self.start()

@@ -452,22 +452,14 @@ def _pull_request(repository: str, arguments: dict[str, Any]) -> str:
 	"""The pull request with `number`, or the open pull request of `branch`."""
 	number, branch = arguments.get("number"), _text(arguments, "branch")
 	filters: dict[str, Any] = {"repository": repository}
-	if isinstance(number, int) and not isinstance(number, bool) and number > 0:
-		filters["number"] = number
-	elif branch:
-		filters.update(head_branch=branch, state="open")
-	else:
+	valid_number = isinstance(number, int) and not isinstance(number, bool) and number > 0
+	if not branch and not valid_number:
 		frappe.throw(frappe._("Send branch (`git branch --show-current`) or number."))
-	full_name = str(db.value("Code Repository", repository, "full_name") or "").lower()
-	rows = frappe.get_list(
-		"Pull Request", filters=filters, fields=["name", "head_clone_url"], order_by="modified desc", limit=20
-	)
-	# A branch of a fork can have the same name, such as `main` or `patch-1`.
-	found = [
-		r.name
-		for r in rows
-		if "number" in filters or not r.head_clone_url or f"/{full_name}" in str(r.head_clone_url).lower()
-	]
+	if valid_number:
+		filters["number"] = number
+		found = frappe.get_list("Pull Request", filters=filters, pluck="name", limit=1)
+	else:
+		found = [name] if (name := local.open_pull_request(repository, branch)) else []
 	if not found:
 		frappe.throw(
 			frappe._(

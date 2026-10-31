@@ -12,6 +12,7 @@ guard.patches.merge_duplicate_pull_requests
 guard.patches.set_push_review_delay
 guard.patches.move_gateway_to_ai_provider
 guard.patches.remove_cli_login_page
+guard.patches.set_local_review_tier
 
 [post_fixture_sync]
 # Patches added in this section will be executed after fixtures and customizations
