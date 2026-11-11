@@ -2,7 +2,7 @@ import frappe
 
 from guard.utils import db
 
-ROLES = ("Guard Admin", "Guard Member", "Guard Viewer")
+ROLES = ("Guard Admin", "Guard Member", "Guard Viewer", "Guard Guest")
 
 # (doctype, index name, columns). Equality columns come first, then the range or sort column.
 # A composite index also serves its leading column, so that column gets no `search_index` of its own.

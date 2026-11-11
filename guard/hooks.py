@@ -69,6 +69,32 @@ has_permission = {
 	"Custom Context": "guard.permissions.custom_context",
 	"Review Settings": "guard.permissions.review_settings",
 	"Code Repository": "guard.permissions.code_repository",
+	"Repository Index": "guard.permissions.repository_content",
+	"Code Entity": "guard.permissions.repository_content",
+	"Code Edge": "guard.permissions.repository_content",
+	"Code Chunk": "guard.permissions.repository_content",
+	"Knowledge Base Document": "guard.permissions.repository_content",
+}
+
+# Guests list only the repositories that a User Permission gives them, and the rows of those. They
+# do not see other users.
+permission_query_conditions = {
+	**{
+		doctype: "guard.permissions.repository_query"
+		for doctype in (
+			"Code Repository",
+			"Repository Index",
+			"Code Entity",
+			"Code Edge",
+			"Code Chunk",
+			"Knowledge Base Document",
+		)
+	},
+	"User": "guard.permissions.user_query",
+}
+
+override_whitelisted_methods = {
+	"frappe.desk.search.get_names_for_mentions": "guard.permissions.names_for_mentions",
 }
 
 default_log_clearing_doctypes = {

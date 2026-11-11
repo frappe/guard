@@ -116,7 +116,7 @@
  ],
  "index_web_pages_for_search": 0,
  "links": [],
- "modified": "2026-10-25 17:06:56.000000",
+ "modified": "2026-11-11 12:00:00.000000",
  "modified_by": "Administrator",
  "module": "Guard",
  "name": "Knowledge Base Document",
@@ -159,6 +159,11 @@
    "report": 1,
    "role": "Guard Member",
    "write": 1
+  },
+  {
+   "read": 1,
+   "report": 1,
+   "role": "Guard Guest"
   }
  ],
  "sort_field": "creation",

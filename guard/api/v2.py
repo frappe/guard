@@ -69,6 +69,8 @@ def query(
 	stream: bool = False,
 	genius: bool = False,
 ) -> Any:
+	# The answer runs Guard's model, as the codebase chat does. Viewers and guests cannot chat.
+	frappe.has_permission("Chat Session", "create", throw=True)
 	names = [_from_ref(ref) for ref in repositories]
 	result = codebase.ask(names, messages, genius=bool(genius))
 	if session_id:

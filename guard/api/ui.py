@@ -314,6 +314,7 @@ def test_provider(provider: str) -> dict[str, Any]:
 
 @frappe.whitelist(methods=["GET", "POST"])
 def webhook_url(provider: str) -> str:
+	frappe.has_permission("Code Provider", "read", provider, throw=True)
 	from guard.webhooks.endpoint import webhook_url as url
 
 	return url(provider)
@@ -322,6 +323,8 @@ def webhook_url(provider: str) -> str:
 @frappe.whitelist(methods=["POST"])
 def improve_rule(text: str) -> str:
 	"""Rewrite a vague rule into a specific, checkable one."""
+	# It runs a model, so only for people who can write rules.
+	frappe.has_permission("Custom Context", "create", throw=True)
 	client = LLMClient.fast(purpose="improve_rule")
 	if not client.online:
 		if guard_settings.offline():

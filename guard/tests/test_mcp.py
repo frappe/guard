@@ -144,7 +144,7 @@ class TestMcpServer(LocalCase):
 		# A review on GitHub runs the model of Guard and takes credits, so the agent needs clear words.
 		self.assertIn('("review my PR"', tools.INSTRUCTIONS)
 		self.assertIn("do a local review", tools.INSTRUCTIONS)
-		for text in (tools.INSTRUCTIONS, tools.TOOLS["request_review"].description):
+		for text in (tools.instructions(), tools.TOOLS["request_review"].description):
 			self.assertIn('"on GitHub" or "post it"', text)
 
 	def test_prompts_start_the_tasks(self):
