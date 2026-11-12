@@ -2,24 +2,38 @@
 
 ## Roles
 
-| Action | Guard Admin | Guard Member | Guard Viewer |
-| - | - | - | - |
-| Read pull requests, reviews, findings, analytics, knowledge base | yes | yes | yes |
-| Read custom context and suggested rules | yes | yes | yes |
-| Chat with PR, codebase chat | yes | yes | no |
-| Chat actions on the provider | yes | yes (own token) | no |
-| Create and edit team custom context | yes | team admin only | no |
-| Create and edit organization custom context | yes | no | no |
-| Approve or ignore suggested rules | yes | team admin only | no |
-| Edit knowledge base documents | yes | yes | no |
-| Enable and disable repositories | yes | own teams | no |
-| Edit Review Settings of the organization | yes | no | no |
-| Edit Review Settings of a team | yes | team admin only | no |
-| Code providers, integrations, Guard Settings, people | yes | no | no |
+| Action | Guard Admin | Guard Member | Guard Viewer | Guard Guest |
+| - | - | - | - | - |
+| Read repositories, indexes, the code graph, knowledge base | yes | yes | yes | given repositories only |
+| Local reviews and the other MCP tools without pull requests | yes | yes | yes | given repositories only |
+| Read pull requests, reviews, findings, analytics | yes | yes | yes | own local reviews only |
+| Read custom context and suggested rules | yes | yes | yes | no |
+| Chat with PR, codebase chat | yes | yes | no | no |
+| Chat actions on the provider | yes | yes (own token) | no | no |
+| Create and edit team custom context | yes | team admin only | no | no |
+| Create and edit organization custom context | yes | no | no | no |
+| Approve or ignore suggested rules | yes | team admin only | no | no |
+| Edit knowledge base documents | yes | yes | no | no |
+| Enable and disable repositories | yes | own teams | no | no |
+| Edit Review Settings of the organization | yes | no | no | no |
+| Edit Review Settings of a team | yes | team admin only | no | no |
+| Code providers, integrations, Guard Settings, people | yes | no | no | no |
 
 Team admin is the Admin role on a Guard Team Member row. Guard checks it in `has_permission` hooks for team-scoped records.
 
 Editing `.guard/` or `guard.toml` needs write access to the repository. Guard roles do not control it.
+
+### Guard Guest
+
+A Guard Guest is an outside collaborator. They use the MCP server with their own agent, and see no company data that the work does not need. A user with Guard Guest and another Guard role is not a guest.
+
+- **Repositories.** A guest sees only the repositories that a User Permission on Code Repository gives them, and none without one. Frappe applies no User Permission to a user who has none, so `guard.permissions.repository_query` (a `permission_query_conditions` hook) and the `has_permission` hooks deny the other rows of Code Repository, Repository Index, Code Entity, Code Edge, Code Chunk and Knowledge Base Document. The graph tables are filtered through their `index` column, which has an index.
+- **Local reviews.** The guide shows the code of other repositories only when the user can read them. A local review of a user who cannot read pull requests links no pull request: the form would show its title. A guest reads only the Code Reviews and Review Findings that they own, that is, their local reviews.
+- **Team context.** The guide and `team_rules` give the rules, the learned memories and the knowledge base pages of the repository, as for members. They are text about the code, and the review needs them.
+- **Pull requests.** A guest has no permission on Pull Request, Pull Request Comment, Review Feedback, Sandbox Run, Chat Session or Chat Action, and gets no MCP tool for pull requests.
+- **People.** A guest has no permission on Guard User, Guard Team, Code Provider, Guard Integration, Guard Settings, Custom Context or Review Settings. Frappe lets every desk user search users in a Link field and in @mentions. For a guest, the `User` query condition finds only themselves, and the mention search (overridden by `guard.permissions.names_for_mentions`) finds nobody.
+- **Guard's model.** A guest runs no model of Guard: no codebase chat, no Query API `query`, no `improve_rule`, no `request_review`. Their agent pays for its own model.
+- **Desk.** A guest has Desk for the page Connect Your Agent and the forms that they can read. No report and no other Guard page is open to them.
 
 ## Who Guard answers
 

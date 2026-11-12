@@ -251,7 +251,7 @@ One site is one organization. Each connected GitHub organization or user is a te
 
 ### A2. Roles
 
-Guard Admin, Guard Member, Guard Viewer. Team admin and team member inside a team.
+Guard Admin, Guard Member, Guard Viewer, Guard Guest. Team admin and team member inside a team. A Guard Guest is an outside collaborator: they use the MCP server and the code graph of the repositories that an admin gives them, and see no pull requests and no other users.
 
 ### A3. Who Guard answers
 

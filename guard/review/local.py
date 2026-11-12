@@ -233,7 +233,18 @@ def _apply(review_id: str, session: dict[str, Any], diff: bytes) -> dict[str, An
 	overlay = PullRequestGraph(run.graph, run.head, run.base, run.files, run.frappe_app)
 	run.changed = overlay.build()
 	provider = db.value("Code Repository", repository, "code_provider")
-	others = crossrepo.linked(repository, str(provider or ""), run.cfg.repos)
+	# The guide shows code of the other repositories, so only of those that the user can read. One
+	# query: a team can have hundreds of repositories.
+	linked = crossrepo.linked(repository, str(provider or ""), run.cfg.repos)
+	readable = set(
+		frappe.get_list(
+			"Code Repository",
+			filters={"name": ["in", [o.repository for o in linked] or [""]]},
+			pluck="name",
+			limit=len(linked) or 1,
+		)
+	)
+	others = [other for other in linked if other.repository in readable]
 	crossrepo.attach(run.changed, others, index)
 	run.blast = overlay.blast_radius(run.changed)
 	if run.settings.get("include_rule_files", True):
@@ -555,8 +566,11 @@ def _save_review(run: ReviewRun, session: dict[str, Any], review_id: str) -> Any
 			"trigger": "local",
 			# Not a tier of Guard's model: the agent of the developer reviewed.
 			"tier": "local",
-			# For people who read it. GitHub reviews of the pull request do not count local reviews.
-			"pull_request": open_pull_request(str(run.repository), run.head_branch),
+			# For people who read it. GitHub reviews of the pull request do not count local reviews. A
+			# guest cannot read pull requests, so their review links none: the form shows the title of a link.
+			"pull_request": open_pull_request(str(run.repository), run.head_branch)
+			if frappe.has_permission("Pull Request", "read")
+			else None,
 			"status": "Completed",
 			"stage": "after",
 			"requested_by": frappe.session.user,

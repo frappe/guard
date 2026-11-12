@@ -68,6 +68,7 @@ Code Entity, Code Edge and Code Chunk connect only to Repository Index. Their ta
 | `guard-pr` | `/desk/guard-pr/<pull request>` | Review page: list, overview, tour, full diff, chat ([07-conversations.md](07-conversations.md)) |
 | `guard-chat` | `/desk/guard-chat` | Codebase chat |
 | `guard-health` | `/desk/guard-health` | The state of Guard and how reviews ran, for Guard Admin and System Manager |
+| `guard-agent` | `/desk/guard-agent` | Connect Your Agent: the MCP setup prompt, for every Guard role ([Terminal and coding agents](#terminal-and-coding-agents)) |
 
 ### Guard Health
 
@@ -141,6 +142,7 @@ A repository id is `<remote>:<branch>:<owner/repo>`, for example `github:main:ac
 - `stream: true` answers with server-sent events. Events: `source`, `delta`, `done`.
 - `genius: true` uses the plus model and more turns.
 - `session_id` keeps the conversation in a Chat Session of kind API.
+- Query runs Guard's model, as the codebase chat does, so it needs create on Chat Session: Guard Viewer and Guard Guest cannot use it. Search runs no model.
 
 ## Terminal and coding agents
 
@@ -189,7 +191,7 @@ Coding agents (Claude Code, Codex, pi, Cursor, VS Code, ...) connect to `https:/
 - The hook removes control characters from the agent output before it shows it.
 - `GUARD_SKIP=1 git push` skips it once. A push of tags or deleted branches only is not reviewed. A push of more branches reviews the last one, and says so.
 
-**Protocol.** `guard/mcp/http.py` is a page renderer, so the address is short. It is stateless: one JSON-RPC message for each POST, one JSON answer, no SSE (GET gets 405). It uses the checks and envelopes of `frappe.mcp` and answers the revisions 2025-03-26, 2025-06-18, 2025-11-25 (`initialize`) and 2026-07-28 (`server/discover`). The `instructions` give the workflow of a local review and the uses of the other tools. A request needs a user signed in by a token (OAuth or an API key): a browser session alone gets 401. A user without a Guard role can connect, and each tool answers that they need the Guard Member role. A 403 would make some clients sign in again. JSON-RPC batches (allowed by 2025-03-26) are not supported. There is no CORS answer, so browser-based clients such as the MCP Inspector need `allow_cors`.
+**Protocol.** `guard/mcp/http.py` is a page renderer, so the address is short. It is stateless: one JSON-RPC message for each POST, one JSON answer, no SSE (GET gets 405). It uses the checks and envelopes of `frappe.mcp` and answers the revisions 2025-03-26, 2025-06-18, 2025-11-25 (`initialize`) and 2026-07-28 (`server/discover`). The `instructions` give the workflow of a local review and the uses of the other tools. A request needs a user signed in by a token (OAuth or an API key): a browser session alone gets 401. A user without a Guard role can connect, and each tool answers that they need the Guard Member role. A user with a Guard role gets only the tools, the prompts and the uses in the `instructions` that their permissions allow: `pr_findings` and `request_review` need read on Pull Request, and `finding_feedback` needs write on Review Finding. So a Guard Guest has no tool for pull requests, and the `fix` prompt is not listed for them. When the user can read no repository, `list_repositories` says to ask a Guard admin for access. A 403 would make some clients sign in again. JSON-RPC batches (allowed by 2025-03-26) are not supported. There is no CORS answer, so browser-based clients such as the MCP Inspector need `allow_cors`.
 
 | Tool | Arguments | Answer |
 | - | - | - |

@@ -9,7 +9,7 @@ Build order. Each milestone ends with passing tests and one commit or more. Feat
 ## M1. Foundations
 
 - [x] Python dependencies in `pyproject.toml`: `tree-sitter`, `tree-sitter-language-pack`, `pathspec`.
-- [x] Roles: Guard Admin, Guard Member, Guard Viewer.
+- [x] Roles: Guard Admin, Guard Member, Guard Viewer, Guard Guest.
 - [x] DocTypes from [03-data-model.md](03-data-model.md), with controllers and type hints.
 - [x] `after_install` and `after_migrate`: Organization Review Settings, the `guard_vector` table, the FULLTEXT index.
 - [x] Development site `guard.localhost` with Guard installed.

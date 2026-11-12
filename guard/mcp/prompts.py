@@ -8,6 +8,8 @@ from typing import Any
 
 from frappe.mcp.protocol import INVALID_PARAMS, McpError
 
+from guard.mcp import tools
+
 MAX_ARGUMENT = 2000  # characters
 
 
@@ -18,6 +20,8 @@ class Prompt:
 	description: str
 	text: str
 	arguments: tuple[dict[str, Any], ...] = field(default_factory=tuple)
+	# The tool that the prompt starts with. A user without the tool does not get the prompt.
+	tool: str = "start_review"
 
 	def definition(self) -> dict[str, Any]:
 		return {
@@ -44,6 +48,7 @@ _PROMPTS = (
 		"Fix what Guard found on the pull request of the current branch.",
 		"Call the Guard tool pr_findings for the current branch. Fix each finding that is correct, run "
 		"the tests, and tell me which findings you think are wrong, with the reason. Do not push.",
+		tool="pr_findings",
 	),
 	Prompt(
 		"ask",
@@ -51,18 +56,24 @@ _PROMPTS = (
 		"Ask Guard about code in all repositories and the team rules.",
 		"Answer with the Guard tools find_symbol, search_code, team_rules and explain_config: {question}",
 		({"name": "question", "description": "The question.", "required": True},),
+		tool="search_code",
 	),
 )
 PROMPTS = {prompt.name: prompt for prompt in _PROMPTS}
 
 
 def definitions() -> list[dict[str, Any]]:
-	return [prompt.definition() for prompt in PROMPTS.values()]
+	return [prompt.definition() for prompt in available()]
+
+
+def available() -> list[Prompt]:
+	names = {tool.name for tool in tools.available()}
+	return [prompt for prompt in PROMPTS.values() if prompt.tool in names]
 
 
 def get(params: dict[str, Any]) -> dict[str, Any]:
 	prompt = PROMPTS.get(str(params.get("name")))
-	if prompt is None:
+	if prompt is None or prompt not in available():
 		raise McpError(INVALID_PARAMS, f"Unknown prompt: {params.get('name')}. Call prompts/list.")
 	arguments = params.get("arguments") or {}
 	if not isinstance(arguments, dict):
