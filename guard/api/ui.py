@@ -11,6 +11,7 @@ from guard.git.diff import parse_diff
 from guard.git.repository import store_for
 from guard.learning import memories
 from guard.llm.client import LLMClient
+from guard.permissions import REVIEWER_ROLES
 from guard.review import links
 from guard.utils import db
 
@@ -145,8 +146,8 @@ def diff_files(pull_request: str) -> list[dict[str, Any]]:
 
 @frappe.whitelist(methods=["POST"])
 def rereview(pull_request: str, tier: str = "") -> str | None:
+	frappe.only_for(list(REVIEWER_ROLES), message=True)
 	frappe.has_permission("Pull Request", "read", pull_request, throw=True)
-	frappe.only_for(["Guard Admin", "Guard Member", "System Manager"])
 	from guard.review.jobs import create_review
 	from guard.review.trigger import over_repository_limit
 

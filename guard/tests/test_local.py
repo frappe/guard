@@ -12,8 +12,9 @@ from guard.git.repository import store_for
 from guard.git.store import GitError
 from guard.indexing.jobs import ensure_fresh
 from guard.llm.client import use_responder
-from guard.review import local
-from guard.tests.cases import MODELS, SERVICE
+from guard.review import local, local_publish, trigger
+from guard.review.publish import open_finding_count
+from guard.tests.cases import MODELS, SERVICE, PullRequestCase
 from guard.tests.utils import TempRepo, make_repository
 from guard.utils import db
 
@@ -326,3 +327,112 @@ class TestLocalReview(LocalCase):
 		definitions = local.symbol(self.full_name, "update_user_email")["definitions"]
 		self.assertEqual(definitions[0]["path"], "app/models.py")
 		self.assertIn("app/service.py", [c["path"] for c in definitions[0]["callers"]])
+
+
+class TestPublishLocalReview(PullRequestCase):
+	"""A local review of the head of pull request #7, posted on it."""
+
+	def setUp(self):
+		super().setUp()
+		self.full_name = str(db.value("Code Repository", self.repository, "full_name"))
+		self.line = NEW_SIGNATURE.splitlines().index("def update_user_email(user, email, notify):") + 1
+
+	def submit(self, diff: str | None = None) -> str:
+		diff = diff or self.repo.git("diff", "--binary", self.base, self.head) + "\n"
+		started = local.start(self.full_name, self.base, diff, "feature", self.head)
+		finding = {
+			"path": "app/models.py",
+			"start_line": self.line,
+			"end_line": self.line,
+			"severity": "P1",
+			"comment_type": "logic",
+			"title": "change_email does not pass notify",
+			"body": "app/service.py calls update_user_email with two arguments.",
+		}
+		return local.submit(started["review_id"], [finding], summary="- Adds notify.", agent="claude-code")[
+			"review"
+		]
+
+	def test_publish_posts_the_summary_and_the_findings_with_a_local_footer(self):
+		frappe.db.set_value("Pull Request", self.pr, "summary_comment_id", "GUARD-SUMMARY")
+		review = self.submit()
+		result = local_publish.publish(review)
+		[summary] = self.adapter.named("post_comment")
+		self.assertIn("Local review by", summary)
+		self.assertIn("claude-code", summary)
+		comments = [c for call in self.adapter.named("create_review") for c in call]
+		self.assertIn(("app/models.py", self.line), [(c.path, c.line) for c in comments])
+		self.assertEqual(result["posted"], len(comments))
+		# Guard's own summary, status check and reactions stay as they are.
+		self.assertEqual(db.value("Pull Request", self.pr, "summary_comment_id"), "GUARD-SUMMARY")
+		for call in ("update_comment", "status", "react", "approve"):
+			self.assertEqual(self.adapter.named(call), [], call)
+		row = db.values("Code Review", review, ("posted_count", "head_sha", "pull_request")) or {}
+		self.assertEqual(row["posted_count"], len(comments))
+		self.assertEqual(row["head_sha"], self.head)
+		self.assertEqual(row["pull_request"], self.pr)
+
+	def test_published_findings_are_open_findings_of_the_pull_request(self):
+		review = self.submit()
+		self.assertEqual(open_finding_count(self.pr), 0)
+		local_publish.publish(review)
+		open_findings = frappe.db.count("Review Finding", {"code_review": review, "status": "Open"})
+		self.assertTrue(open_findings)
+		self.assertEqual(open_finding_count(self.pr), open_findings)
+		finding = (
+			db.values(
+				"Review Finding",
+				{"pull_request": self.pr, "title": "change_email does not pass notify"},
+				("posted", "status"),
+			)
+			or {}
+		)
+		self.assertEqual((finding["posted"], finding["status"]), (1, "Open"))
+
+	def test_publish_refuses_a_tree_that_is_not_the_head_of_the_pull_request(self):
+		(self.repo.path / "app/extra.py").write_text("EXTRA = 1\n")
+		self.repo.git("add", "-N", "app/extra.py")
+		review = self.submit(self.repo.git("diff", "--binary", self.base) + "\n")
+		with self.assertRaisesRegex(frappe.ValidationError, "not the code that you reviewed"):
+			local_publish.publish(review)
+		self.assertEqual(self.adapter.named("post_comment"), [])
+
+	def test_publish_refuses_a_second_post_and_the_review_of_another_user(self):
+		review = self.submit()
+		other = "local-publish-other@example.com"
+		if not frappe.db.exists("User", other):
+			frappe.get_doc(
+				{
+					"doctype": "User",
+					"email": other,
+					"first_name": "Other",
+					"send_welcome_email": 0,
+					"roles": [{"role": "Guard Member"}],
+				}
+			).insert(ignore_permissions=True)
+		frappe.set_user(other)
+		try:
+			with self.assertRaises(frappe.PermissionError):
+				local_publish.publish(review)
+		finally:
+			frappe.set_user("Administrator")
+		local_publish.publish(review)
+		with self.assertRaises(frappe.ValidationError):
+			local_publish.publish(review)
+
+	def test_publish_takes_no_daily_review_slot(self):
+		frappe.db.set_single_value("Guard Settings", "repository_daily_reviews", 1)
+		self.addCleanup(frappe.db.set_single_value, "Guard Settings", "repository_daily_reviews", 0)
+		frappe.get_doc(
+			{
+				"doctype": "Code Review",
+				"pull_request": self.pr,
+				"repository": self.repository,
+				"source": "pull_request",
+				"status": "Completed",
+				"started_at": frappe.utils.now_datetime(),
+			}
+		).insert(ignore_permissions=True)
+		self.assertTrue(trigger.over_repository_limit(self.repository))
+		local_publish.publish(self.submit())
+		self.assertTrue(self.adapter.named("create_review"))

@@ -173,6 +173,7 @@ A repository has one row for each pull request number: a unique index on `reposi
 | `requested_by` | Data | Provider login. |
 | `requested_tier`, `tier` | Select | |
 | `head_sha`, `base_sha`, `merge_base_sha`, `branch` | Data | |
+| `tree_sha`, `agent` | Data | A local review: the reviewed tree, which a post must match, and the client and model that the agent named |
 | `instructions` | Long Text | From the trigger comment. |
 | `strictness` | Int | |
 | `summary` | Markdown | |

@@ -137,6 +137,7 @@ class TestMcpServer(LocalCase):
 				"explain_config",
 				"install_hook",
 				"request_review",
+				"publish_review",
 			],
 		)
 
@@ -145,7 +146,10 @@ class TestMcpServer(LocalCase):
 		self.assertIn('("review my PR"', tools.INSTRUCTIONS)
 		self.assertIn("do a local review", tools.INSTRUCTIONS)
 		for text in (tools.instructions(), tools.TOOLS["request_review"].description):
-			self.assertIn('"on GitHub" or "post it"', text)
+			self.assertIn("a new review by Guard on GitHub", text)
+		# "Post it" after a local review posts that review: it runs no model of Guard.
+		self.assertIn('"post it" after a local review is publish_review', tools.instructions())
+		self.assertIn("use publish_review", tools.TOOLS["request_review"].description)
 
 	def test_prompts_start_the_tasks(self):
 		result = self.rpc("initialize", {"protocolVersion": "2025-06-18"})["result"]

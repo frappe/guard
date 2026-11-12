@@ -402,7 +402,7 @@ Severity marks: 🔴 P0, 🟠 P1, 🟡 P2.
 
 ## Local reviews
 
-A local review (`source = local`) reviews a change in a working tree before it is pushed. The coding agent of the developer (Claude Code, Codex, ...) is the reviewer and pays for the model. Guard runs no model and no embedding for it, takes no credits and no review slot, and posts nothing to the code provider. The agent calls the tools of the MCP server of Guard ([11-surfaces.md](11-surfaces.md#mcp-server)), which call `guard/review/local.py`.
+A local review (`source = local`) reviews a change in a working tree before it is pushed. The coding agent of the developer (Claude Code, Codex, ...) is the reviewer and pays for the model. Guard runs no model and no embedding for it, and takes no credits and no review slot. It posts nothing to the code provider unless the developer publishes the review (step 4). The agent calls the tools of the MCP server of Guard ([11-surfaces.md](11-surfaces.md#mcp-server)), which call `guard/review/local.py`.
 
 1. **Start** (`start_review`, then the upload). `begin` keeps a waiting session in Redis with a one-time secret, and answers with a shell command. The command sends the diff of the working tree against the merge base with the default branch to `/mcp/upload/<review_id>`, with the base, the head commit and the branch in headers. `receive` checks the secret and acts for the user who started the review. A small diff can come in `start_review` itself (`start`).
    - Guard fetches `base` into the mirror when it is not there, and applies the diff to it in a temporary index (`GitStore.apply`). The result is a tree with no ref. A diff that does not apply fails the upload, and the review keeps waiting, so the agent can send it again.
@@ -416,8 +416,13 @@ A local review (`source = local`) reviews a change in a working tree before it i
 2. **Review.** The agent reads the code in its working tree. `find_symbol` gives the definitions, callers and callees of a name on the default branch.
 3. **Submit** (`submit_review`). The agent sends its findings and verdict once. Only the user who started the review can submit it, and only once.
    - Guard adds the check findings, runs `FindingFilter`, drops findings on files that are not in the tree, runs `suppression.suppress` without embeddings, and caps the score with `score_cap`.
-   - Guard saves a completed Code Review (`trigger = local`, `credits = 0`, no pull request, `head_sha` only when the agent sent the commit) and a Review Finding for each finding, kept or not. Nothing is posted, so `posted` stays 0.
+   - Guard saves a completed Code Review (`trigger = local`, `credits = 0`, `head_sha` only when the agent sent the commit, `tree_sha` the reviewed tree, `agent` the client and the model that the agent named) and a Review Finding for each finding, kept or not, with no pull request. The Code Review links the open pull request of the branch, for people who read it. GitHub reviews of the pull request do not count it.
    - The answer has the link to the Code Review and the kept and dropped findings.
+4. **Publish** (`publish_review`, `guard/review/local_publish.py`). Only when the developer asks. Only the user who submitted the review can post it, only once, and only with the Guard Admin, Guard Member or System Manager role.
+   - Guard fetches the head of the open pull request of the branch. It posts only when the tree of that head is `tree_sha`, so each line is right. Else the developer pushes the change, or reviews the head again.
+   - Guard anchors the open findings again on the diff of the pull request, posts them as inline comments, then posts a new summary comment. The summary says "local review", and its footer names the user and the agent, also when `hide_footer` is on. The model in it is what the agent sent: Guard cannot check it.
+   - The findings become open findings of the pull request: Guard's status check of a later review counts them, `close_stale` checks them, replies in their threads get answers, and `pr_findings` lists them.
+   - The post takes no review slot and no credits: the developer paid for the model. It changes no status check, no reaction, no description, no summary comment of Guard and no approval. The author of the change chose the reviewer, so a post is never Guard's verdict.
 
 `start_review` is limited to 30 calls an hour for each user, and `find_symbol` to 300. Health, the metrics of the server, Guard Usage, the review counts of the analytics and of the workspace leave out local reviews. Analytics of findings count posted findings only, so local findings are left out too.
 

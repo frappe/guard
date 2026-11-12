@@ -26,7 +26,8 @@ from guard.api import ui
 from guard.conversation import codebase
 from guard.git.store import GitError
 from guard.learning import feedback, memories
-from guard.review import links, local
+from guard.permissions import REVIEWER_ROLES
+from guard.review import links, local, local_publish
 from guard.settings import public_url
 from guard.utils import db
 
@@ -76,8 +77,8 @@ and find the defects.
 4. Show the findings to the developer. Then call submit_review once, also when you found nothing, \
 and give the developer the link in its answer.
 
-You are the reviewer: Guard runs no model for this review. Guard posts nothing to GitHub. Do not \
-push for the developer.
+You are the reviewer: Guard runs no model for this review. Guard posts nothing to GitHub unless the \
+developer asks you to post this review. Do not push for the developer.
 
 Review rules: do not change files during the review unless the developer asks. Report only real \
 defects, with evidence, most severe first, as `path:line` with the fix. P0 means the change breaks \
@@ -103,10 +104,17 @@ developer agrees. Guard learns from it.""",
 		"To stop pushes with P0 findings in a repository, call install_hook when the developer asks for it.",
 	),
 	(
+		"publish_review",
+		"""When the developer asks to post a local review that you submitted ("post it", "post this \
+review"), call publish_review with its review. It takes no credits. Guard posts it only when the head of \
+the pull request is the code that you reviewed, so the change must be committed and pushed.""",
+	),
+	(
 		"request_review",
-		"""Call request_review only when the developer says "on GitHub" or "post it". It runs Guard's own \
-model on the pull request, posts on GitHub and takes credits of the team. "Review my PR" alone is a local \
-review. When you are not sure, ask the developer.""",
+		"""Call request_review only when the developer asks for a new review by Guard on GitHub. It runs \
+Guard's own model on the pull request, posts on GitHub and takes credits of the team. "Review my PR" \
+alone is a local review, and "post it" after a local review is publish_review. When you are not sure, \
+ask the developer.""",
 	),
 	(
 		"search_code",
@@ -178,8 +186,12 @@ class Tool:
 	# The permission that the tool needs. Guests cannot read pull requests, so they do not get those tools.
 	doctype: str = "Code Repository"
 	ptype: str = "read"
+	# The user needs one of these roles too. Empty: the permission is enough.
+	roles: tuple[str, ...] = ()
 
 	def allowed(self) -> bool:
+		if self.roles and not set(self.roles) & set(frappe.get_roles()):
+			return False
 		return bool(frappe.has_permission(self.doctype, self.ptype))
 
 	def definition(self) -> dict[str, Any]:
@@ -326,6 +338,7 @@ def submit_review(arguments: dict[str, Any]) -> dict[str, Any]:
 		_text(arguments, "confidence_reason"),
 		_text(arguments, "risk_level"),
 		_text(arguments, "risk_reason"),
+		_agent(_text(arguments, "model")),
 	)
 	# The pre-push hook stops a push with a P0 finding.
 	answer["p0"] = sum(1 for f in answer["kept"] if f.get("severity") == "P0")
@@ -494,6 +507,14 @@ def request_review(arguments: dict[str, Any]) -> dict[str, Any]:
 	}
 
 
+@rate_limit(limit=REVIEWS_PER_HOUR, seconds=60 * 60, user_based=True, ip_based=False)
+def publish_review(arguments: dict[str, Any]) -> dict[str, Any]:
+	review = _text(arguments, "review")
+	if not frappe.db.exists("Code Review", review):
+		frappe.throw(frappe._("Guard has no review {0}.").format(review))
+	return local_publish.publish(review)
+
+
 def _pr_finding(row: dict[str, Any]) -> dict[str, Any]:
 	name = str(row.pop("name"))
 	return {"finding": name, **row, "url": links.finding(name)}
@@ -527,6 +548,15 @@ def _explain(repository: str, path: str) -> dict[str, Any]:
 	except GitError:
 		frappe.throw(frappe._("Guard has not fetched this repository yet. Ask a Guard admin to index it."))
 		raise
+
+
+def _agent(model: str) -> str:
+	"""The client of the signed-in user, and the model that the agent named. Guard cannot check either."""
+	from guard.mcp.http import last_seen  # http imports this module
+
+	client = str((last_seen(str(frappe.session.user)) or {}).get("client") or "")
+	model = f"model {model} (reported)" if model else ""
+	return ", ".join(part for part in (client, model) if part)
 
 
 def _text(arguments: dict[str, Any], key: str) -> str:
@@ -604,7 +634,8 @@ _TOOLS = (
 		"submit_review",
 		"Submit the review",
 		"Send the findings of the review to Guard, once, also when there are none. Guard keeps them "
-		"with the findings of its checks and returns a link. Guard posts nothing to GitHub.",
+		"with the findings of its checks and returns a link. Guard posts nothing to GitHub: "
+		"publish_review posts it when the developer asks.",
 		submit_review,
 		{
 			"review_id": {"type": "string"},
@@ -619,6 +650,10 @@ _TOOLS = (
 			"confidence_reason": {"type": "string"},
 			"risk_level": {"type": "string", "enum": ["low", "medium", "high", "critical"]},
 			"risk_reason": {"type": "string"},
+			"model": {
+				"type": "string",
+				"description": "The model that you are, e.g. `claude-opus-5-5`. Guard names it on a post.",
+			},
 		},
 		("review_id", "findings", "summary"),
 		read_only=False,
@@ -708,8 +743,8 @@ _TOOLS = (
 		"request_review",
 		"Review a pull request again",
 		"Queue a new Guard review of the pull request at its head on GitHub. It takes credits of the "
-		'team. Call it only when the developer says "on GitHub" or "post it". "Review my PR" alone is a '
-		"local review: use start_review.",
+		'team. Call it only when the developer asks for a new review by Guard on GitHub. "Review my PR" '
+		"alone is a local review: use start_review. To post a submitted local review, use publish_review.",
 		request_review,
 		{
 			**PULL_REQUEST,
@@ -722,6 +757,20 @@ _TOOLS = (
 		("repository",),
 		read_only=False,
 		doctype="Pull Request",
+		roles=REVIEWER_ROLES,
+	),
+	Tool(
+		"publish_review",
+		"Post a local review",
+		"Post a local review that you submitted on the open pull request of its branch, as comments "
+		"with the name of the developer and the agent. It takes no credits. The head of the pull request "
+		"must be the code that you reviewed. Call it only when the developer asks to post the review.",
+		publish_review,
+		{"review": {"type": "string", "description": "The `review` in the answer of submit_review."}},
+		("review",),
+		read_only=False,
+		doctype="Pull Request",
+		roles=REVIEWER_ROLES,
 	),
 )
 TOOLS = {tool.name: tool for tool in _TOOLS}

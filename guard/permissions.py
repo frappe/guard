@@ -10,6 +10,8 @@ from guard.utils import db
 # Frappe treats any falsy result of a has_permission hook as a denial. Hooks only deny,
 # so they return True when they have no objection, never None.
 ADMIN_ROLES = {"Guard Admin", "System Manager", "Administrator"}
+# The roles that can put a review on a pull request.
+REVIEWER_ROLES = ("Guard Admin", "Guard Member", "System Manager")
 WRITE_TYPES = {"write", "create", "delete", "submit", "cancel", "amend"}
 GUEST_ROLE = "Guard Guest"
 # A user with one of these roles is not a guest, also when they have the Guard Guest role.
