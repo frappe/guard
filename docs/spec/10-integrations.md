@@ -105,6 +105,7 @@ Paths are normalized: parameters become `*`. A client path matches a route when 
 **Consumer side.** When a pull request adds a call to another repository:
 
 - A method path in the package of another repository must exist there. If not, Guard posts a P1 finding.
+  - A name that its module imports exists too. `from x import name` counts. `from x import *` counts when `x` is outside the other repository, because Guard cannot know its names (`frappe.query_builder` takes `Case` from `pypika` this way), and when `x` has the name, through at most 3 star imports. Guard reads the module at the commit of the index, or at the newer head of the default branch.
 - A route call that belongs to a route family of another repository must match one of its routes. If not, Guard posts a P1 finding with the close routes.
   - A call that matches a route of the repository itself is not checked. Those routes come from its index and from the files of the pull request, so a route that the pull request adds counts.
   - Calls in test files and under `e2e/` are not checked. Tests call their own app, and some ask for a wrong path on purpose.

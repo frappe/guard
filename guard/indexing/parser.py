@@ -13,7 +13,8 @@ import tree_sitter_language_pack as pack
 from guard.indexing import languages, routes
 from guard.indexing.languages import ImportRef
 
-PARSER_VERSION = 3
+# 4: Python imports without comments, and over lines in parentheses.
+PARSER_VERSION = 4
 KINDS = {
 	"class": "class",
 	"struct": "class",
