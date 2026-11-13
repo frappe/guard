@@ -85,9 +85,18 @@ ask_agent() { # seconds, read files (yes or no), prompt
 value() { sed -n "s/.*$1=\([^ \`]*\).*/\1/p" "$2" | tail -n 1; }
 
 say "$agent reviews the push of $branch. It takes some minutes. To skip it: GUARD_SKIP=1 git push"
-# The remote that Guard reviews is origin. Without one, it is the address of this push.
-origin=$(git remote get-url origin 2>/dev/null || printf '%s' "${2:-}")
-ask_agent "$START_TIMEOUT" no "Call the Guard tool start_review with repository $origin. Do not call \
+# The remote that Guard reviews is origin. A clone of a fork can have no origin: then it is upstream,
+# and without both, the remote of this push. Not upstream first: in a fork of a company, upstream is
+# another repository that Guard can also review.
+remote=${1:-origin}
+for candidate in origin upstream; do
+	if git remote get-url "$candidate" >/dev/null 2>&1; then
+		remote=$candidate
+		break
+	fi
+done
+repository=$(git remote get-url "$remote" 2>/dev/null || printf '%s' "${2:-}")
+ask_agent "$START_TIMEOUT" no "Call the Guard tool start_review with repository $repository. Do not call \
 other tools. Then print these three lines, with the values from its answer, and nothing else:
 GUARD_REVIEW=<review_id>
 GUARD_SECRET=<upload.secret>
@@ -105,9 +114,9 @@ if ! printf '%s' "$review" | grep -Eqx '[0-9a-f]{16}' ||
 	exit 0
 fi
 
-if ! base=$(git merge-base "$head" "origin/$base_branch" 2>/dev/null) ||
+if ! base=$(git merge-base "$head" "$remote/$base_branch" 2>/dev/null) ||
 	! git diff --binary "$base" "$head" >"$work/diff"; then
-	say "found no merge base with origin/$base_branch, so the push goes on. Run: git fetch origin"
+	say "found no merge base with $remote/$base_branch, so the push goes on. Run: git fetch $remote"
 	exit 0
 fi
 if ! curl -sS --fail-with-body -X POST -H 'Content-Type: application/octet-stream' \

@@ -183,8 +183,8 @@ Coding agents (Claude Code, Codex, pi, Cursor, VS Code, ...) connect to `https:/
 **Pre-push hook.** `guard/mcp/pre-push`. The tool `install_hook` returns it with the address of the site in it, and the agent writes it to `$(git rev-parse --git-path hooks)/pre-push` of one repository. The agent does not replace a hook without the line `Installed by Guard`. To update the hook, the developer asks again. Guard gives a hook only for an `https://` Public URL (or a local host).
 
 - It runs the first agent that it finds (`claude`, `codex`, `pi`), or `git config guard.agent`, headless, two times. The agent gets no shell: the review shows it text from the repository and from GitHub, and that text must not run commands.
-  1. With the Guard tools only, the agent calls `start_review` and prints `review_id` and `upload` (secret and default branch) of the answer. The hook takes only the shapes that Guard sends: 16 and 32 hex characters, and a safe branch name.
-  2. The hook sends the diff from the merge base to the last pushed branch commit to `<site>/mcp/upload/<review_id>`. The address of the site is in the hook, not in the output of the agent.
+  1. With the Guard tools only, the agent calls `start_review` with the URL of the remote `origin`, else `upstream` (a clone of a fork can have no `origin`), else the remote of the push, and prints `review_id` and `upload` (secret and default branch) of the answer. The hook takes only the shapes that Guard sends: 16 and 32 hex characters, and a safe branch name.
+  2. The hook sends the diff from the merge base with the default branch of the same remote to the last pushed branch commit to `<site>/mcp/upload/<review_id>`. The address of the site is in the hook, not in the output of the agent.
   3. With the Guard tools and the tools that read files, the agent calls `review_context`, reviews and calls `submit_review`. It ends its answer with `GUARD_P0=<n>` and `GUARD_URL=<url>`.
 - The tools: Claude Code `--allowedTools mcp__guard` (then also `Read,Grep,Glob`), with `--permission-mode dontAsk` and no Bash, edit or web tools. pi `--tools 'mcp__guard__*'` (then also `read,grep,find,ls`). Codex `--sandbox read-only`: its shell can read files, and cannot write or reach the network.
 - One or more P0 findings stop the push and show the review. When the agent is missing, signed out, slower than the timeout (`GUARD_START_TIMEOUT`, 180 seconds, and `GUARD_TIMEOUT`, 900 seconds, with `timeout` when it is installed), or gives no `GUARD_P0` line, the push goes on: a review that did not run blocks nothing.
@@ -196,7 +196,7 @@ Coding agents (Claude Code, Codex, pi, Cursor, VS Code, ...) connect to `https:/
 | Tool | Arguments | Answer |
 | - | - | - |
 | `list_repositories` | | The site, the user and the repositories that they can review. The setup prompt calls it to check the connection. |
-| `start_review` | `repository` (the `origin` URL or `owner/name`), `instructions`; without a shell also `diff` and `base` | `review_id`, `command`, the shell command that sends the diff, and `upload` (`url`, `secret`, `base_branch`) for the hook. With `diff`: the guide at once. |
+| `start_review` | `repository` (the URL of the remote of the repository, such as `origin` or `upstream` in a fork, or `owner/name`), `instructions`; without a shell also `diff` and `base` | `review_id`, `command`, the shell command that sends the diff, and `upload` (`url`, `secret`, `base_branch`) for the hook. With `diff`: the guide at once. |
 | `review_context` | `review_id` | The guide: rubric, rules, graph facts, check findings and how to submit |
 | `find_symbol` | `name`, `repository` | With `repository`: definitions on the default branch, with callers and callees. Without: definitions in all repositories that the user can read, and the code in all of them that imports, calls or names the symbol: 30 rows for each repository and 100 in all, with `truncated`. |
 | `submit_review` | `review_id`, `findings`, `summary`, `confidence_score`, `confidence_reason`, `risk_level`, `risk_reason`, `model` | `review`, `url`, `kept`, `dropped`, and `p0`, the count of kept P0 findings, for the hook. `model` and the MCP client name go in the footer of a post. |
@@ -218,16 +218,21 @@ Coding agents (Claude Code, Codex, pi, Cursor, VS Code, ...) connect to `https:/
 **The diff.** The model does not write out the diff. `command` sends it from the shell:
 
 ```bash
-(cd "$(git rev-parse --show-toplevel)" && head=$GUARD_HEAD && if [ -z "$head" ]; then head=HEAD; fi \
-&& base=$(git merge-base "$head" origin/develop) && t=$(mktemp -d) && trap 'rm -rf "$t"' EXIT \
-&& (cp "$(git rev-parse --git-path index)" "$t/index" 2>/dev/null || :) \
-&& if [ -n "$GUARD_HEAD" ]; then git diff --binary "$base" "$head"; \
-else GIT_INDEX_FILE="$t/index" git add -N . && GIT_INDEX_FILE="$t/index" git diff --binary "$base"; fi \
-> "$t/diff" && curl -sS --fail-with-body -X POST -H 'Content-Type: application/octet-stream' \
--H 'X-Guard-Upload: <secret>' -H "X-Guard-Base: $base" -H "X-Guard-Head: $(git rev-parse "$head")" \
+(cd "$(git rev-parse --show-toplevel)" && remote= \
+&& for r in $(git remote); do case "$(git remote get-url "$r" | tr '[:upper:]' '[:lower:]')" in \
+*[/:]acme/api | *[/:]acme/api/ | *[/:]acme/api.git | *[/:]acme/api.git/) remote=$r; break ;; esac; done \
+&& if [ -z "$remote" ]; then remote=origin; echo "guard: no remote is acme/api, so the base is from origin." >&2; fi \
+&& base=$(git merge-base HEAD "$remote/develop" \
+|| { echo "guard: found no merge base with $remote/develop. Run: git fetch $remote" >&2; false; }) \
+&& t=$(mktemp -d) && trap 'rm -rf "$t"' EXIT && cp "$(git rev-parse --git-path index)" "$t/index" \
+&& GIT_INDEX_FILE="$t/index" git add -N -- . ':(exclude)*.env' ... \
+&& GIT_INDEX_FILE="$t/index" git diff --binary "$base" > "$t/diff" \
+&& curl -sS --fail-with-body -X POST -H 'Content-Type: application/octet-stream' \
+-H 'X-Guard-Upload: <secret>' -H "X-Guard-Base: $base" -H "X-Guard-Head: $(git rev-parse HEAD)" \
 -H "X-Guard-Branch: $(git branch --show-current)" --data-binary @"$t/diff" '<site>/mcp/upload/<review_id>')
 ```
 
+- The merge base is with the default branch of the remote whose URL ends in the `owner/name` of the repository, in any case: a clone of a fork can call it `upstream` and have no `origin`. When no remote matches, it is `origin`, and the command says so. When the remote branch is missing, the command says to fetch it.
 - The command runs in a subshell, so a failure does not end the shell of the agent. It writes the diff to a file first, so a failed `git diff` sends nothing.
 - `git add -N .` on a copy of the index puts the new files that git does not ignore in the diff. The index of the developer does not change. New files with the usual names of secrets (`*.env`, `*.env.*`, `*.pem`, `*.key`, `*.p12`, SSH keys) stay out.
 - The upload has no session. The one-time secret of the review is the credential, and the upload acts for the user who started the review. The answer is plain text for the shell, and names the next tool call. An error is a 4xx with `error: <what to do>`.
