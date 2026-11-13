@@ -95,6 +95,16 @@ permission_query_conditions = {
 
 override_whitelisted_methods = {
 	"frappe.desk.search.get_names_for_mentions": "guard.permissions.names_for_mentions",
+	# A guest sees no other users in a form: not in its timeline, shares, emails or viewers.
+	"frappe.desk.form.load.getdoc": "guard.permissions.getdoc",
+	"frappe.desk.form.load.get_docinfo": "guard.permissions.get_docinfo",
+	"frappe.desk.form.save.savedocs": "guard.permissions.savedocs",
+	"frappe.desk.form.save.submit": "guard.permissions.savedocs",
+	"frappe.desk.form.save.cancel": "guard.permissions.cancel",
+	"frappe.desk.form.save.discard": "guard.permissions.discard",
+	"frappe.share.get_users": "guard.permissions.shared_with",
+	"frappe.desk.form.load.get_communications": "guard.permissions.communications",
+	"frappe.desk.form.load.get_user_info_for_viewers": "guard.permissions.user_info_for_viewers",
 }
 
 default_log_clearing_doctypes = {

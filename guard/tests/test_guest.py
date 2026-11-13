@@ -162,6 +162,47 @@ class TestGuardGuest(LocalCase):
 			)
 			self.assertEqual(frappe.get_list("Code Entity", pluck="name", limit=1), [])
 
+	def test_a_guest_sees_no_other_users_in_a_form(self):
+		share("Code Repository", self.repository, GUEST, read=1)
+		share("Code Repository", self.repository, MEMBER, read=1)
+		frappe.get_doc(
+			{
+				"doctype": "Comment",
+				"comment_type": "Comment",
+				"reference_doctype": "Code Repository",
+				"reference_name": self.repository,
+				"content": "ping",
+				"comment_email": MEMBER,
+			}
+		).insert(ignore_permissions=True)
+
+		def method(name: str):
+			return frappe.get_attr(frappe.override_whitelisted_method(name))
+
+		def docinfo(user: str) -> dict:
+			frappe.local.response = frappe._dict({"docs": []})
+			with self.as_user(user):
+				method("frappe.desk.form.load.getdoc")("Code Repository", self.repository)
+			return frappe.response["docinfo"]
+
+		theirs = docinfo(MEMBER)
+		self.assertTrue(theirs["shared"])
+		self.assertTrue(theirs["comments"])
+		mine = docinfo(GUEST)
+		for key in ("comments", "versions", "views", "assignments", "communications"):
+			self.assertEqual(mine[key], [], key)
+		# The form reads the share of the guest to give them read, so it stays, without who shared it.
+		self.assertEqual([s["user"] for s in mine["shared"]], [GUEST])
+		self.assertNotIn("owner", mine["shared"][0])
+		self.assertEqual(set(mine["user_info"]), {GUEST})
+		self.assertEqual(mine["name"], self.repository)
+		self.assertIsNone(frappe.response["docs"][0].get("_comments"))
+		with self.as_user():
+			shares = method("frappe.share.get_users")("Code Repository", self.repository)
+			self.assertEqual([s["user"] for s in shares], [GUEST])
+			viewers = method("frappe.desk.form.load.get_user_info_for_viewers")([GUEST, MEMBER])
+			self.assertEqual(set(viewers), {GUEST})
+
 	def test_a_guest_gets_no_write_from_a_share(self):
 		with self.assertRaises(frappe.ValidationError):
 			share("Code Repository", self.repository, GUEST, read=1, write=1)
