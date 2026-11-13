@@ -8,7 +8,7 @@ from guard.config.resolver import ConfigResolver
 from guard.conversation import acks, mentions
 from guard.conversation import answer as answerer
 from guard.git.diff import parse_diff
-from guard.git.repository import store_for
+from guard.git.repository import default_head, store_for
 from guard.graph.queries import CodeGraph
 from guard.learning import feedback, missed
 from guard.llm.types import GatewayBusy
@@ -37,6 +37,7 @@ def run_for(pull_request: str) -> ReviewRun:
 	merge_base = store.merge_base(base, head)
 	files = parse_diff(store.diff(merge_base, head))
 	index = db.value("Code Repository", repository, "default_index")
+	config_sha = default_head(repository, store)
 	return ReviewRun(
 		review=None,
 		repository=repository,
@@ -56,8 +57,8 @@ def run_for(pull_request: str) -> ReviewRun:
 		adapter=adapter,
 		all_files=files,
 		files=files,
-		config=ConfigResolver.from_store(repository, store, base).resolve_pr([f.path for f in files]),
-		config_sha=base,
+		config=ConfigResolver.from_store(repository, store, config_sha).resolve_pr([f.path for f in files]),
+		config_sha=config_sha,
 		graph=CodeGraph(str(index)) if index else None,
 	)
 

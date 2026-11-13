@@ -8,7 +8,7 @@ from frappe import _
 from guard import settings as guard_settings
 from guard.config.resolver import ConfigResolver
 from guard.git.diff import parse_diff
-from guard.git.repository import store_for
+from guard.git.repository import default_head, store_for
 from guard.learning import memories
 from guard.llm.client import LLMClient
 from guard.permissions import REVIEWER_ROLES
@@ -247,8 +247,7 @@ def explain_config(repository: str, path: str = "") -> dict[str, Any]:
 	"""The effective config for a path on the default branch, with the source of each value."""
 	frappe.has_permission("Code Repository", "read", repository, throw=True)
 	store = store_for(repository)
-	ref = store.rev_parse(f"refs/heads/{db.value('Code Repository', repository, 'default_branch')}")
-	return ConfigResolver.from_store(repository, store, ref).explain(path)
+	return ConfigResolver.from_store(repository, store, default_head(repository, store)).explain(path)
 
 
 @frappe.whitelist(methods=["GET", "POST"])

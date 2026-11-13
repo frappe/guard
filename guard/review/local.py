@@ -22,7 +22,7 @@ from frappe.utils import now_datetime, time_diff_in_seconds
 
 from guard.config.resolver import ConfigResolver
 from guard.git.diff import parse_diff
-from guard.git.repository import store_for
+from guard.git.repository import default_head, fetch_default, store_for
 from guard.git.store import GitError, GitStore
 from guard.graph.overlay import PullRequestGraph
 from guard.graph.queries import CodeGraph
@@ -192,7 +192,15 @@ def context_for(review_id: str) -> dict[str, Any]:
 
 
 def _set_change(session: dict[str, Any], base: str, branch: str, head: str) -> None:
-	session["base"] = _commit(store_for(str(session["repository"])), base)
+	repository = str(session["repository"])
+	store = store_for(repository)
+	session["base"] = _commit(store, base)
+	# The config comes from the default branch: read it as it is now, not as the mirror last saw it.
+	fetch_default(repository, store)
+	try:
+		default_head(repository, store)
+	except GitError as error:
+		frappe.throw(redact(str(error)))
 	session["branch"] = branch.strip()[:MAX_BRANCH]
 	session["head"] = head.strip().lower() if SHA.fullmatch(head.strip().lower()) else ""
 
@@ -249,9 +257,10 @@ def _apply(review_id: str, session: dict[str, Any], diff: bytes) -> dict[str, An
 	crossrepo.attach(run.changed, others, index)
 	run.blast = overlay.blast_radius(run.changed)
 	if run.settings.get("include_rule_files", True):
-		# From the base, as on a pull request: the change cannot change its own rules.
+		# From the default branch, as on a pull request: the change cannot change its own rules.
+		sha = run.config_sha
 		run.rule_files = rule_files.collect(
-			run.paths, lambda path: store.show(base, path), lambda path: store.list_dir(base, path)
+			run.paths, lambda path: store.show(sha, path), lambda path: store.list_dir(sha, path)
 		)
 	found = deterministic_findings(run, others, index)
 	FindingFilter(run.files, run.settings).run(found)
@@ -494,8 +503,9 @@ def change_run(
 ) -> ReviewRun:
 	"""The run of a change from `base` to `tree`. `tree` can also be a commit."""
 	files = parse_diff(diff_text)
-	# Config from the base, as on a pull request.
-	config = ConfigResolver.from_store(repository, store, base).resolve_pr([f.path for f in files])
+	# Config from the default branch, as on a pull request. The base can be old, or any commit.
+	config_sha = default_head(repository, store)
+	config = ConfigResolver.from_store(repository, store, config_sha).resolve_pr([f.path for f in files])
 	reviewed = set(config.reviewed_paths())
 	run = ReviewRun(
 		review=None,
@@ -506,7 +516,7 @@ def change_run(
 		list_dir=lambda path: store.list_dir(tree, path),
 		head_sha=tree,
 		base_sha=base,
-		config_sha=base,
+		config_sha=config_sha,
 		title=f"Local change on {branch}" if branch else "Local change",
 		author=str(frappe.session.user),
 		head_branch=branch,

@@ -1411,6 +1411,18 @@ class TestPipeline(PullRequestCase):
 			settings.set("auto_review", before)
 			settings.save(ignore_permissions=True)
 
+	def test_a_pull_request_to_another_branch_gets_the_config_of_the_default_branch(self):
+		# The release branch has its own config. Guard reads only the config of the default branch.
+		self.repo.git("checkout", "-q", "-b", "version-15", self.base)
+		self.repo.commit({".guard/config.toml": "strictness = 3\n"}, "config on the release branch")
+		self.repo.git("checkout", "-q", "main")
+		self.repo.commit({".guard/config.toml": "strictness = 1\n"}, "config on main")
+		self.repo.git("checkout", "-q", "feature")
+		frappe.db.set_value("Pull Request", self.pr, "base_branch", "version-15")
+		name = self.review([[("submit_review", {"summary": "s", "confidence_score": 5})]])
+		self.assertEqual(self.row(name)["status"], "Completed")
+		self.assertEqual(db.value("Code Review", str(name), "strictness"), 1)
+
 	def test_auto_approve_clean_low_risk(self):
 		self.commit_on_main({".guard/config.toml": AUTO_APPROVE})
 		name = self.review(

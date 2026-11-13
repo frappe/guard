@@ -108,7 +108,7 @@ class ReviewRun:
 	list_dir: Lister
 	head_sha: str
 	base_sha: str
-	# The head of the base branch. Config and rule files come from it, so a pull request cannot change them.
+	# The head of the default branch. Config and rule files come from it, so a pull request cannot change them.
 	config_sha: str = ""
 	grep: Grepper | None = None
 	title: str = ""

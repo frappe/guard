@@ -99,7 +99,7 @@ On a new review Guard edits the same summary comment. It does not post a second 
 - Guard approves a pull request only after a review with score 5/5, no findings, and a risk level at or below the risk ceiling.
 - Filters exclude pull requests by path, author, branch, label, keyword and repository.
 - Draft, closed and merged pull requests, new commits after the review started, and the labels `do-not-merge` and `manual-review` block approval.
-- Guard reads the policy from the base branch, so a pull request cannot loosen its own policy.
+- Guard reads the policy from the default branch, so a pull request cannot loosen its own policy.
 - New commits dismiss an earlier approval.
 - Admins write natural-language risk definitions in the dashboard. Config files cannot set them.
 
@@ -122,7 +122,7 @@ Organization-level review settings that every team inherits. A team can override
 - If `.guard/` and `guard.toml` are in the same directory, `.guard/` wins.
 - Settings cascade from the root to the file. The closest value wins. Rules, files and instructions add up.
 - A child config can turn off an inherited rule with `disabled_rules`.
-- Guard reads all config from the head of the base branch, not from the source branch. A config change applies after it is merged.
+- Guard reads all config from the head of the default branch, not from the source branch or the target branch. A config change applies after it is merged into the default branch.
 
 ### C3. Filters
 
@@ -142,7 +142,7 @@ Label, author, branch, keyword and path filters, with globs. Matching is case-in
 
 ### C6. Project rule files
 
-Guard reads `CLAUDE.md`, `AGENTS.md`, `.cursorrules`, `.cursor/rules/*` and `.github/copilot-instructions.md` from the head of the base branch as review context when they exist. Every list item that starts with a word is a rule, and so is a line that says always, must, never, do not, mandatory or required. A rule has the id `project:<path>:<line>`. `CLAUDE.md` and `AGENTS.md` rules cover their own directory. Other rule files cover the repository. The reviewer gets the rules that cover the changed files as a checklist and reports each break. A break is a P2: fix it before merging, so it caps the confidence score at 4. It is P1 or P0 only when it is also a bug. A P2 rule break is posted at strictness 2 whatever its confidence, and of any comment type; strictness 3 drops it. Each comment links to the rule. Guard measures three kinds of rule in code, without the model, when a rule asks for them: the cyclomatic complexity of the Python functions that the change touches, the length of the files that it changes, and the prefixes of new boolean-returning Python functions. It takes the limit or the prefixes from the rule, and reports only what the change made worse. When a rule asks to add, update or write tests, and the pull request changes code under it but adds or updates no test under it, Guard reports a P2 finding without the model.
+Guard reads `CLAUDE.md`, `AGENTS.md`, `.cursorrules`, `.cursor/rules/*` and `.github/copilot-instructions.md` from the head of the default branch as review context when they exist. Every list item that starts with a word is a rule, and so is a line that says always, must, never, do not, mandatory or required. A rule has the id `project:<path>:<line>`. `CLAUDE.md` and `AGENTS.md` rules cover their own directory. Other rule files cover the repository. The reviewer gets the rules that cover the changed files as a checklist and reports each break. A break is a P2: fix it before merging, so it caps the confidence score at 4. It is P1 or P0 only when it is also a bug. A P2 rule break is posted at strictness 2 whatever its confidence, and of any comment type; strictness 3 drops it. Each comment links to the rule. Guard measures three kinds of rule in code, without the model, when a rule asks for them: the cyclomatic complexity of the Python functions that the change touches, the length of the files that it changes, and the prefixes of new boolean-returning Python functions. It takes the limit or the prefixes from the rule, and reports only what the change made worse. When a rule asks to add, update or write tests, and the pull request changes code under it but adds or updates no test under it, Guard reports a P2 finding without the model.
 
 ### C7. Model and turn settings
 
