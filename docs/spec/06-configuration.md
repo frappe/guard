@@ -19,7 +19,7 @@ If `.guard/` and `guard.toml` are in the same directory, Guard reads `.guard/` a
 
 ## Which branch Guard reads
 
-- All config comes from the head of the base branch: settings, rules, files, notes, instructions, ignore patterns and `auto_approve`. A pull request cannot turn on reviews, lift a skip, add instructions or loosen approval for itself.
+- All config comes from the head of the default branch: settings, rules, files, notes, instructions, ignore patterns and `auto_approve`. A pull request cannot turn on reviews, lift a skip, add instructions or loosen approval for itself. A pull request to another branch, for example a release branch, and a local review from an old base also get the config of the default branch. When the mirror does not have the default branch, auto-approve is off.
 - A branch made before a config change gets the current config.
 - A config change in a pull request applies after it is merged.
 - A payload review (`source = cli`, used by evals) has no base branch to trust. It reads the config files in its payload.

@@ -12,7 +12,7 @@ from guard import settings as guard_settings
 from guard.config import gate
 from guard.config.resolver import ConfigResolver
 from guard.git.diff import FileDiff, parse_diff
-from guard.git.repository import store_for
+from guard.git.repository import default_head, store_for
 from guard.git.store import GitStore
 from guard.graph.overlay import ChangedEntity, PullRequestGraph
 from guard.graph.queries import CodeGraph
@@ -429,7 +429,7 @@ class ReviewPipeline:
 			return None
 
 	def rule_files(self, run: ReviewRun) -> list[tuple[str, str]]:
-		"""CLAUDE.md and similar from the base branch. A payload review has no base branch: they come from its head."""
+		"""CLAUDE.md and similar from the default branch. A payload review has no mirror: they come from its head."""
 		if not run.config_sha or not run.repository:
 			return rule_files.collect(run.paths, run.head, run.list_dir)
 		store, sha = store_for(run.repository), run.config_sha
@@ -472,8 +472,9 @@ class ReviewPipeline:
 		base = store.rev_parse(f"refs/heads/{pr.base_branch}")
 		merge_base = store.merge_base(base, head)
 		files = parse_diff(store.diff(merge_base, head))
-		# Config from the base branch, so a pull request cannot change how Guard reviews it.
-		resolver = ConfigResolver.from_store(repository, store, base)
+		# Config from the default branch, so a pull request cannot change how Guard reviews it.
+		config_sha = default_head(repository, store)
+		resolver = ConfigResolver.from_store(repository, store, config_sha)
 		all_paths = [f.path for f in files]
 		config = resolver.resolve_pr(all_paths)
 		reviewed = set(config.reviewed_paths())
@@ -486,7 +487,7 @@ class ReviewPipeline:
 			list_dir=lambda path: store.list_dir(head, path),
 			head_sha=head,
 			base_sha=merge_base,
-			config_sha=base,
+			config_sha=config_sha,
 			grep=lambda pattern, glob: store.grep(head, pattern, glob),
 			title=pr.title or "",
 			description=pr.description or "",

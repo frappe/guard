@@ -14,6 +14,7 @@ from guard.indexing.jobs import ensure_fresh
 from guard.llm.client import use_responder
 from guard.llm.embeddings import Embedder
 from guard.review import local, local_publish, trigger
+from guard.review.prompts import STRICTNESS
 from guard.review.publish import open_finding_count
 from guard.tests.cases import MODELS, SERVICE, PullRequestCase
 from guard.tests.utils import TempRepo, make_repository
@@ -143,6 +144,19 @@ class TestLocalReview(LocalCase):
 		# The test of the change calls update_user_email. No test calls legacy.
 		self.assertIn("Changed public functions with no test path: app.models.legacy\n", guide)
 		self.assertIn(f"The code graph is of commit {newer[:12]}", guide)
+
+	def test_the_config_comes_from_the_default_branch_and_not_from_the_base(self):
+		# The default branch got a config after the branch point. The review gets it, not the old one.
+		self.repo.commit({".guard/config.toml": "strictness = 3\n"}, "config on main")
+		self.repo.git("checkout", "-q", "-b", "feature", self.base)
+		guide = self.start()["guide"]
+		self.assertIn(STRICTNESS[3], guide)
+
+	def test_a_default_branch_that_the_mirror_does_not_have_stops_the_review(self):
+		# No other commit is a safe source of config, so Guard says what is wrong.
+		frappe.db.set_value("Code Repository", self.repository, "default_branch", "master")
+		with self.assertRaisesRegex(frappe.ValidationError, "default branch `master`"):
+			self.start()
 
 	def test_submit_saves_a_local_review_and_posts_nothing(self):
 		started = self.start()

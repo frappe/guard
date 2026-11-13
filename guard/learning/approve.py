@@ -6,7 +6,7 @@ import frappe
 
 from guard.config import gate
 from guard.config.resolver import ConfigResolver
-from guard.git.repository import store_for
+from guard.git.repository import default_head, store_for
 from guard.git.store import GitError
 from guard.providers import adapter_for_repository
 from guard.providers.base import ProviderError
@@ -121,14 +121,14 @@ def check(review: "CodeReview", pr: "PullRequest") -> tuple[bool, str]:
 		return False, STILL_OPEN
 	store = store_for(str(pr.repository))
 	paths = [c["path"] for c in frappe.parse_json(review.changed_files or "[]") or []]
-	# Config from the head of the base branch, so a pull request cannot loosen the policy for itself, and a
-	# branch made before the policy changed gets the current policy.
+	# Config from the head of the default branch, so a pull request cannot loosen the policy for itself,
+	# and a branch made before the policy changed gets the current policy.
 	try:
-		base = store.rev_parse(f"refs/heads/{pr.base_branch}")
+		config_sha = default_head(str(pr.repository), store)
 	except GitError:
-		# The base branch is gone from the mirror. The merge base is on it too.
-		base = str(review.merge_base_sha)
-	resolver = ConfigResolver.from_store(str(pr.repository), store, base)
+		# No other commit has the policy of the team. Do not approve without it.
+		return False, POLICY_OFF
+	resolver = ConfigResolver.from_store(str(pr.repository), store, config_sha)
 	policy = resolver.auto_approve_policy(paths)
 	if not policy.get("enabled"):
 		return False, POLICY_OFF

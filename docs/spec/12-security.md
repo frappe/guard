@@ -60,7 +60,7 @@ Four settings, each `Everyone`, `Organization members` or `Guard users`:
 ## Local reviews
 
 - A local review needs read permission on the Code Repository. Only the user who started it can submit it, and only once.
-- Config and rule files come from the base commit, not from the diff, so a change cannot weaken its own review.
+- Config and rule files come from the head of the default branch, not from the diff or the target branch, so a change cannot weaken its own review.
 - Guard applies the diff in a temporary index and a scratch object directory. No ref, branch, working tree or mirror object changes, and Guard runs no code from it.
 - A diff can be 5 MB at most.
 - The MCP server takes only a user signed in by a token in the `Authorization` header (OAuth or an API key). Frappe sets the session id to the user for a token and to a hash for a browser session, so a browser session alone gets 401 and a page that the browser opens cannot call the tools. `frappe.mcp` checks the `Origin` header.
