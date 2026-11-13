@@ -56,6 +56,7 @@ MAX_BRANCH = 140  # the length of a Data field
 MAX_INSTRUCTIONS = 4000
 MAX_BODY = 4000  # a finding body is at most 3 sentences; this only stops abuse
 MAX_SUGGESTION = 20_000
+MAX_AGENT = 140  # the length of a Data field
 SHA = re.compile(r"[0-9a-f]{7,64}")
 REVIEW_ID = re.compile(r"[0-9a-f]{16}")
 
@@ -225,7 +226,7 @@ def _apply(review_id: str, session: dict[str, Any], diff: bytes) -> dict[str, An
 		raise
 	# The diff of the mirror, not the one sent: it has the same form as on a pull request.
 	diff_text = store.diff(base, tree)
-	run = _run(repository, store, base, tree, diff_text, session["branch"])
+	run = change_run(repository, store, base, tree, diff_text, session["branch"])
 	if not run.files:
 		frappe.throw(_("The diff has no files to review: they are ignored, binary or empty."))
 	index = _index(run)
@@ -315,8 +316,10 @@ def submit(
 	confidence_reason: str = "",
 	risk_level: str = "",
 	risk_reason: str = "",
+	agent: str = "",
 ) -> dict[str, Any]:
-	"""Filter the findings of the agent with those of the checks, and save them as a Code Review."""
+	"""Filter the findings of the agent with those of the checks, and save them as a Code Review.
+	`agent` names the coding agent and the model that it reported, for the footer of a post."""
 	with cache.exclusive(f"guard:local-submit:{review_id}", 120) as acquired:
 		if not acquired:
 			frappe.throw(_("Review {0} is being submitted now. Wait for that call.").format(review_id))
@@ -331,11 +334,13 @@ def submit(
 		try:
 			# The tree stays in the scratch objects, so the session does not need to hold the diff.
 			diff_text = store.diff(session["base"], session["tree"])
-			run = _run(repository, store, session["base"], session["tree"], diff_text, session["branch"])
+			run = change_run(
+				repository, store, session["base"], session["tree"], diff_text, session["branch"]
+			)
 		except GitError:
 			frappe.throw(_("Guard lost the change of review {0}. Start the review again.").format(review_id))
 			raise
-		run.review = _save_review(run, session, review_id)
+		run.review = _save_review(run, session, review_id, agent)
 		run.findings = [Finding(**f) for f in session["checks"]]
 		run.findings += [_from_agent(f) for f in findings[:MAX_FINDINGS] if isinstance(f, dict)]
 		FindingFilter(run.files, run.settings).run(run.findings)
@@ -484,7 +489,10 @@ def _commit(store: GitStore, base: str) -> str:
 		raise
 
 
-def _run(repository: str, store: GitStore, base: str, tree: str, diff_text: str, branch: str) -> ReviewRun:
+def change_run(
+	repository: str, store: GitStore, base: str, tree: str, diff_text: str, branch: str
+) -> ReviewRun:
+	"""The run of a change from `base` to `tree`. `tree` can also be a commit."""
 	files = parse_diff(diff_text)
 	# Config from the base, as on a pull request.
 	config = ConfigResolver.from_store(repository, store, base).resolve_pr([f.path for f in files])
@@ -556,7 +564,7 @@ def open_pull_request(repository: str, branch: str) -> str | None:
 	return None
 
 
-def _save_review(run: ReviewRun, session: dict[str, Any], review_id: str) -> Any:
+def _save_review(run: ReviewRun, session: dict[str, Any], review_id: str, agent: str) -> Any:
 	started = session["started_at"]
 	return frappe.get_doc(
 		{
@@ -576,8 +584,11 @@ def _save_review(run: ReviewRun, session: dict[str, Any], review_id: str) -> Any
 			"requested_by": frappe.session.user,
 			"triggered_by_user": frappe.session.user,
 			"strictness": run.settings.get("strictness"),
-			# A commit, when the agent sent one. The reviewed tree is not a commit, so it is not kept.
+			# A commit, when the agent sent one. The reviewed tree is not a commit: it goes in tree_sha.
 			"head_sha": session["head"],
+			# `local_publish` posts the review only on a pull request head with this tree.
+			"tree_sha": session["tree"],
+			"agent": agent[:MAX_AGENT],
 			"base_sha": run.base_sha,
 			"merge_base_sha": run.base_sha,
 			"branch": run.head_branch,

@@ -40,6 +40,7 @@ PATCHED = (
 	"guard.conversation.acks",
 	"guard.learning.addressed",
 	"guard.review.permissions",
+	"guard.review.local_publish",
 )
 
 

@@ -34,6 +34,7 @@ from guard.review import (
 	frappe_pack,
 	links,
 	prompts,
+	pull_requests,
 	rule_checks,
 	rule_files,
 	sandbox,
@@ -467,11 +468,7 @@ class ReviewPipeline:
 		full_name = str(db.value("Code Repository", repository, "full_name"))
 		adapter = adapter_for_repository(repository)
 		store = store_for(repository)
-		store.fetch_branches(pr.base_branch or "")
-		if adapter and adapter.pull_ref(number):
-			head = store.fetch_pull(adapter.pull_ref(number), number)
-		else:
-			head = store.fetch_branch(pr.head_branch or "", number, pr.head_clone_url or None)
+		head = pull_requests.fetch_head(store, adapter, pr)
 		base = store.rev_parse(f"refs/heads/{pr.base_branch}")
 		merge_base = store.merge_base(base, head)
 		files = parse_diff(store.diff(merge_base, head))

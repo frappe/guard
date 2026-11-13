@@ -10,7 +10,9 @@ from guard.utils import db
 from guard.utils.timeutil import parse_iso
 
 if TYPE_CHECKING:
+	from guard.git.store import GitStore
 	from guard.guard.doctype.pull_request.pull_request import PullRequest
+	from guard.providers.base import ProviderAdapter
 
 
 def find(repository: str, number: int, for_update: bool = False) -> str | None:
@@ -19,6 +21,15 @@ def find(repository: str, number: int, for_update: bool = False) -> str | None:
 		"Pull Request", {"repository": repository, "number": number}, ("name",), for_update=for_update
 	)
 	return str(row["name"]) if row else None
+
+
+def fetch_head(store: "GitStore", adapter: "ProviderAdapter | None", pr: "PullRequest") -> str:
+	"""Fetch the base branch and the head of the pull request into the mirror. Return the head sha."""
+	number = int(pr.number)
+	store.fetch_branches(pr.base_branch or "")
+	if adapter and adapter.pull_ref(number):
+		return store.fetch_pull(adapter.pull_ref(number), number)
+	return store.fetch_branch(pr.head_branch or "", number, pr.head_clone_url or None)
 
 
 def upsert(repository: str, info: PullRequestInfo) -> "PullRequest":

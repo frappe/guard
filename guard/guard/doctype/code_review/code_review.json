@@ -23,6 +23,8 @@
   "base_sha",
   "merge_base_sha",
   "branch",
+  "tree_sha",
+  "agent",
   "instructions_section",
   "instructions",
   "verdict_section",
@@ -177,6 +179,20 @@
    "fieldname": "branch",
    "fieldtype": "Data",
    "label": "Branch"
+  },
+  {
+   "description": "The tree that a local review reviewed. It is posted only on a pull request head with the same tree.",
+   "fieldname": "tree_sha",
+   "fieldtype": "Data",
+   "label": "Tree Sha",
+   "read_only": 1
+  },
+  {
+   "description": "The coding agent of a local review, and the model that it reported.",
+   "fieldname": "agent",
+   "fieldtype": "Data",
+   "label": "Agent",
+   "read_only": 1
   },
   {
    "fieldname": "instructions_section",
@@ -462,7 +478,7 @@
    "link_fieldname": "code_review"
   }
  ],
- "modified": "2026-11-11 12:00:00.000000",
+ "modified": "2026-11-13 12:00:00.000000",
  "modified_by": "Administrator",
  "module": "Guard",
  "name": "Code Review",

@@ -19,7 +19,7 @@ MEMBER = "guard-guest-member@example.com"
 VIEWER = "guard-guest-viewer@example.com"
 # Guard Guest with a team role is not a guest.
 BOTH = "guard-guest-both@example.com"
-PULL_REQUEST_TOOLS = {"pr_findings", "finding_feedback", "request_review"}
+PULL_REQUEST_TOOLS = {"pr_findings", "finding_feedback", "request_review", "publish_review"}
 
 
 class TestGuardGuest(LocalCase):
@@ -171,6 +171,13 @@ class TestGuardGuest(LocalCase):
 			names = {t["name"] for t in tools.definitions()}
 			self.assertIn("pr_findings", names)
 			self.assertNotIn("finding_feedback", names)
+			# A review on a pull request is for reviewer roles only.
+			self.assertFalse({"request_review", "publish_review"} & names)
+			answer = tools.call({"name": "request_review", "arguments": {"repository": self.full_name}})
+			self.assertIn("cannot use request_review", answer["content"][0]["text"])
+			with self.assertRaises(frappe.PermissionError) as raised:
+				ui.rereview("any")
+			self.assertIn("Guard Member", str(raised.exception))
 
 	def test_a_guest_without_repositories_is_told_to_ask(self):
 		with self.as_user():

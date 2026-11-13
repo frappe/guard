@@ -118,6 +118,10 @@ class GitStore:
 	def rev_parse(self, ref: str) -> str:
 		return self._git("rev-parse", "--verify", f"{ref}^{{commit}}").strip()
 
+	def tree_of(self, ref: str) -> str:
+		"""The sha of the tree of a commit."""
+		return self._git("rev-parse", "--verify", f"{ref}^{{tree}}").strip()
+
 	def merge_base(self, a: str, b: str) -> str:
 		return self._git("merge-base", a, b).strip()
 

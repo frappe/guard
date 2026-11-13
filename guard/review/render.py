@@ -2,6 +2,8 @@
 
 import re
 
+from frappe.utils import get_fullname
+
 from guard.graph.overlay import impact_diagram
 from guard.review import links, tips
 from guard.review.findings import MARKS, Finding
@@ -14,6 +16,7 @@ ALLOWED_TAGS = {"details", "summary", "sub", "h3", "table", "thead", "tbody", "t
 DIAGRAM_KEYWORDS = ("sequenceDiagram", "erDiagram", "classDiagram", "flowchart", "graph")
 DIAGRAM_MAX_LINES = 80
 EARLIER = "_(earlier review)_"
+AGENT_UNSAFE = re.compile(r"[^A-Za-z0-9 ._:,/()+-]")
 
 
 def summary(run: ReviewRun, posted: list[Finding], review_number: int, finding_urls: dict[int, str]) -> str:
@@ -69,7 +72,10 @@ def summary(run: ReviewRun, posted: list[Finding], review_number: int, finding_u
 	tip = tips.in_summary(review_number)
 	if tip:
 		parts.append(tip)
-	if not run.settings.get("hide_footer"):
+	if _is_local(run):
+		# Always shown: it tells readers that the agent of a developer wrote these findings.
+		parts.append(_local_footer(run))
+	elif not run.settings.get("hide_footer"):
 		parts.append(_footer(run, review_number))
 	return "\n\n".join(p for p in parts if p)
 
@@ -177,7 +183,8 @@ def _section(config: dict | None, title: str, body: str) -> str:
 
 def _headline(run: ReviewRun, posted: list[Finding]) -> str:
 	"""The only line that is always visible: score, risk, findings and blast radius."""
-	parts = [f"**Guard** · Confidence **{run.verdict.confidence_score}/5**{_tier(run)}"]
+	label = "**Guard** local review" if _is_local(run) else "**Guard**"
+	parts = [f"{label} · Confidence **{run.verdict.confidence_score}/5**{_tier(run)}"]
 	if run.verdict.risk_level:
 		parts.append(f"risk **{run.verdict.risk_level}**")
 	parts.append(_finding_counts(posted, run.earlier_open))
@@ -251,15 +258,7 @@ def _outside(finding: Finding, note: str = "") -> str:
 
 
 def _footer(run: ReviewRun, review_number: int) -> str:
-	commit = run.commits[-1] if run.commits else None
-	message = (commit.subject[:72] if commit else run.head_sha[:7]).replace("[", "(").replace("]", ")")
-	commit_url = run.adapter.commit_url(run.full_name, run.head_sha) if run.adapter else ""
-	parts = [
-		f"Reviews ({review_number})",
-		f"Last reviewed commit: [{message}]({commit_url})"
-		if commit_url
-		else f"Last reviewed commit: {message}",
-	]
+	parts = [f"Reviews ({review_number})", _last_commit(run)]
 	# Only when the agents took turns: a review with the graph alone had no model.
 	if run.model and run.turns:
 		parts.append(f"Reviewed by `{run.model.replace('`', '')}`")
@@ -267,3 +266,30 @@ def _footer(run: ReviewRun, review_number: int) -> str:
 		parts.append(f"[Re-trigger]({links.retrigger(str(run.pr.name))})")
 		parts.append(f"[Fix all]({links.fix_all(str(run.pr.name))})")
 	return "<sub>" + " · ".join(parts) + "</sub>"
+
+
+def _local_footer(run: ReviewRun) -> str:
+	user = get_fullname(str(run.review.requested_by)) or ""
+	# The client names itself, so keep only plain characters: no markdown, tags or links.
+	agent = AGENT_UNSAFE.sub("", str(run.review.agent or "")).strip() or "a coding agent"
+	parts = [
+		f"Local review by {sanitize(user)} with {agent}",
+		"Guard ran its checks and code graph. The findings come from the agent of the developer",
+		_last_commit(run),
+	]
+	return "<sub>" + " · ".join(parts) + "</sub>"
+
+
+def _last_commit(run: ReviewRun) -> str:
+	commit = run.commits[-1] if run.commits else None
+	message = (commit.subject[:72] if commit else run.head_sha[:7]).replace("[", "(").replace("]", ")")
+	commit_url = run.adapter.commit_url(run.full_name, run.head_sha) if run.adapter else ""
+	return (
+		f"Last reviewed commit: [{message}]({commit_url})"
+		if commit_url
+		else f"Last reviewed commit: {message}"
+	)
+
+
+def _is_local(run: ReviewRun) -> bool:
+	return bool(run.review is not None and run.review.get("source") == "local")
