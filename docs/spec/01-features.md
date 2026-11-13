@@ -93,6 +93,7 @@ On a new review Guard edits the same summary comment. It does not post a second 
 
 - A developer gets a review of a change before they push it. Their coding agent reviews it with its own model, so the review costs the site no tokens and no credits.
 - Guard gives the agent the team rules, the code graph and the findings of its checks, and keeps the result as a Code Review. Nothing is posted to the code provider.
+- A P0 finding stops a push by the agent. This is not optional. The developer can also install a pre-push hook that stops their own pushes.
 
 ### R11. Auto-approve
 

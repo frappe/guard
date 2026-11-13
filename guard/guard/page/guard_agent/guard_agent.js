@@ -156,7 +156,7 @@ frappe.pages["guard-agent"].on_page_load = function (wrapper) {
 		[
 			__("Ask it to review"),
 			__(
-				"Say “Review my change with Guard.” Your agent reviews with its own model and Guard's rules and graph. Guard keeps the result here and posts nothing to GitHub."
+				"Say “Review my change with Guard.” Your agent reviews with its own model and Guard's rules and graph. Guard keeps the result here and posts nothing to GitHub. Your agent does not push a change with a P0 finding."
 			),
 		],
 		[

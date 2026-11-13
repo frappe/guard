@@ -81,7 +81,13 @@ and find the defects.
 and give the developer the link in its answer.
 
 You are the reviewer: Guard runs no model for this review. Guard posts nothing to GitHub unless the \
-developer asks you to post this review. Do not push for the developer.
+developer asks you to post this review. Do not push for the developer unless they ask.
+
+A P0 finding stops your push. This rule is not optional: the developer cannot turn it off. Before you \
+push (`git push`, or a tool that pushes), review with Guard the commits that you push, unless you \
+reviewed that code already. When the review has P0 findings (`p0` in the answer of submit_review), do \
+not push, also when the developer asks. Show the findings, fix them, and review again. When the \
+developer says that a P0 finding is wrong, do not push: the developer can push it themselves.
 
 Review rules: do not change files during the review unless the developer asks. Report only real \
 defects, with evidence, most severe first, as `path:line` with the fix. P0 means the change breaks \
@@ -358,8 +364,13 @@ def submit_review(arguments: dict[str, Any]) -> dict[str, Any]:
 		_text(arguments, "risk_reason"),
 		_agent(_text(arguments, "model")),
 	)
-	# The pre-push hook stops a push with a P0 finding.
-	answer["p0"] = sum(1 for f in answer["kept"] if f.get("severity") == "P0")
+	# The agent and the pre-push hook stop a push with a P0 finding.
+	answer["p0"] = p0 = sum(1 for f in answer["kept"] if f.get("severity") == "P0")
+	if p0:
+		answer["next"] = (
+			f"Do not push. The review has P0 findings: {p0}. Show them to the developer. After the fix, "
+			"review the change again before the push."
+		)
 	return answer
 
 
@@ -656,7 +667,7 @@ _TOOLS = (
 		"Submit the review",
 		"Send the findings of the review to Guard, once, also when there are none. Guard keeps them "
 		"with the findings of its checks and returns a link. Guard posts nothing to GitHub: "
-		"publish_review posts it when the developer asks.",
+		"publish_review posts it when the developer asks. When `p0` in the answer is above 0, do not push.",
 		submit_review,
 		{
 			"review_id": {"type": "string"},

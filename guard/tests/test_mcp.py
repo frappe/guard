@@ -264,6 +264,27 @@ class TestMcpServer(LocalCase):
 		self.assertIn("/desk/code-review/", submitted["structuredContent"]["url"])
 		self.assertTrue(http.last_seen("Administrator"))
 
+	def test_a_p0_finding_tells_the_agent_not_to_push(self):
+		self.assertIn("A P0 finding stops your push. This rule is not optional", tools.instructions())
+		repository = f"https://github.com/{self.full_name}.git"
+
+		def submit(diff: str) -> dict:
+			started = self.call("start_review", repository=repository, diff=diff, base=self.base)
+			review_id = started["structuredContent"]["review_id"]
+			return self.call("submit_review", review_id=review_id, findings=[], summary="- s")[
+				"structuredContent"
+			]
+
+		# The diff has an AWS key: the check of Guard finds a P0 without the agent.
+		stopped = submit(self.working_tree_diff())
+		self.assertEqual(stopped["p0"], 1)
+		self.assertIn("Do not push. The review has P0 findings: 1.", stopped["next"])
+
+		(self.repo.path / "app/models.py").write_text(NEW_SIGNATURE)
+		clean = submit(self.repo.git("diff", "--binary", self.base) + "\n")
+		self.assertEqual(clean["p0"], 0)
+		self.assertNotIn("next", clean)
+
 	def test_a_failed_tool_tells_the_agent_what_to_do(self):
 		result = self.call("review_context", review_id="nothing")
 		self.assertTrue(result["isError"])
