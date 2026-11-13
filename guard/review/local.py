@@ -478,7 +478,7 @@ def _commit(store: GitStore, base: str) -> str:
 	"""`base` as a full sha. Fetch it when the mirror does not have it yet."""
 	base = base.strip().lower()
 	if not SHA.fullmatch(base):
-		frappe.throw(_("The base must be a commit sha: `git merge-base HEAD origin/<default branch>`."))
+		frappe.throw(_("The base must be a commit sha: `git merge-base HEAD <remote>/<default branch>`."))
 	try:
 		store.fetch_sha(base)
 		return store.rev_parse(base)

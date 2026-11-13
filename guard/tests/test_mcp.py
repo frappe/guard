@@ -170,22 +170,9 @@ class TestMcpServer(LocalCase):
 		(self.repo.path / "app/.env.local").write_text("TOKEN=x\n")
 		started = self.call("start_review", repository=self.full_name)["structuredContent"]
 		self.assertEqual(started["upload"]["secret"], started["command"].split("X-Guard-Upload: ")[1][:32])
-		with tempfile.TemporaryDirectory() as bin_dir:
-			curl = Path(bin_dir) / "curl"
-			curl.write_text(FAKE_CURL)
-			curl.chmod(0o755)
-			body = Path(bin_dir) / "body"
-			env = {**os.environ, "PATH": f"{bin_dir}:{os.environ['PATH']}", "GUARD_TEST_BODY": str(body)}
-			result = subprocess.run(
-				["sh", "-c", started["command"]],
-				cwd=self.repo.path / "app",
-				env=env,
-				capture_output=True,
-				text=True,
-			)
-			self.assertEqual(result.returncode, 0, result.stderr)
-			self.assertIn(f"X-Guard-Base: {self.base}", result.stdout)
-			diff = body.read_text()
+		result, diff = self.run_upload(started["command"])
+		self.assertEqual(result.returncode, 0, result.stderr)
+		self.assertIn(f"X-Guard-Base: {self.base}", result.stdout)
 		self.assertIn("+++ b/app/notes.py", diff)
 		self.assertNotIn(".env.local", diff)
 		self.assertIn("notify", diff)
@@ -193,6 +180,56 @@ class TestMcpServer(LocalCase):
 		self.assertEqual(self.repo.git("status", "--porcelain", "app/notes.py"), "?? app/notes.py")
 		response = self.upload(started["command"], started["review_id"], diff)
 		self.assertEqual(response.status_code, 200, response.get_data(as_text=True))
+
+	def test_the_upload_command_finds_the_remote_of_the_repository_in_a_fork(self):
+		# A clone of a fork: origin is the fork, and upstream is the repository, in other case.
+		owner, name = self.full_name.split("/")
+		self.repo.git("remote", "add", "origin", f"git@github.com:someone/{name}.git")
+		self.repo.git("remote", "add", "upstream", f"git@github.com:{owner.upper()}/{name}.git")
+		self.repo.git("update-ref", "refs/remotes/upstream/main", self.base)
+		self.repo.branch_off("feature")
+		# origin/main is another commit, so a merge base with it is not the base.
+		self.repo.commit({"app/notes.py": "NOTE = 1\n"}, "a commit of the fork")
+		self.repo.git("update-ref", "refs/remotes/origin/main", "HEAD")
+		(self.repo.path / "app/models.py").write_text(NEW_SIGNATURE)
+		command = self.call("start_review", repository=self.full_name)["structuredContent"]["command"]
+		result, diff = self.run_upload(command)
+		self.assertEqual(result.returncode, 0, result.stderr)
+		self.assertIn(f"X-Guard-Base: {self.base}", result.stdout)
+		self.assertIn("+++ b/app/notes.py", diff)
+
+	def test_the_upload_command_says_what_to_fetch_when_the_remote_branch_is_missing(self):
+		self.repo.git("remote", "add", "upstream", f"https://github.com/{self.full_name}")
+		command = self.call("start_review", repository=self.full_name)["structuredContent"]["command"]
+		result, _diff = self.run_upload(command)
+		self.assertNotEqual(result.returncode, 0)
+		self.assertIn("Run: git fetch upstream", result.stderr)
+		# A remote URL with `.git/` also matches.
+		self.repo.git("remote", "set-url", "upstream", f"https://github.com/{self.full_name}.git/")
+		self.assertIn("Run: git fetch upstream", self.run_upload(command)[0].stderr)
+
+	def test_the_upload_command_says_when_no_remote_is_the_repository(self):
+		self.repo.git("remote", "add", "origin", "https://github.com/someone/else.git")
+		self.repo.git("update-ref", "refs/remotes/origin/main", self.base)
+		(self.repo.path / "app/models.py").write_text(NEW_SIGNATURE)
+		command = self.call("start_review", repository=self.full_name)["structuredContent"]["command"]
+		result, _diff = self.run_upload(command)
+		self.assertEqual(result.returncode, 0, result.stderr)
+		self.assertIn("so the base is from origin", result.stderr)
+		self.assertIn(f"X-Guard-Base: {self.base}", result.stdout)
+
+	def run_upload(self, command: str) -> tuple[subprocess.CompletedProcess, str]:
+		"""Run the upload command in a subfolder of the repository, with a curl that keeps the body."""
+		with tempfile.TemporaryDirectory() as bin_dir:
+			curl = Path(bin_dir) / "curl"
+			curl.write_text(FAKE_CURL)
+			curl.chmod(0o755)
+			body = Path(bin_dir) / "body"
+			env = {**os.environ, "PATH": f"{bin_dir}:{os.environ['PATH']}", "GUARD_TEST_BODY": str(body)}
+			result = subprocess.run(
+				["sh", "-c", command], cwd=self.repo.path / "app", env=env, capture_output=True, text=True
+			)
+			return result, body.read_text() if body.exists() else ""
 
 	def test_a_request_without_a_token_or_with_get_fails_as_json(self):
 		# Frappe found no token, so the user is Guest.
@@ -211,7 +248,8 @@ class TestMcpServer(LocalCase):
 		review_id = started["structuredContent"]["review_id"]
 		command = started["structuredContent"]["command"]
 		self.assertIn(f"/mcp/upload/{review_id}", command)
-		self.assertIn("git merge-base HEAD origin/main", command)
+		self.assertIn('git merge-base HEAD "$remote/main"', command)
+		self.assertIn(f"*[/:]{self.full_name.lower()}.git", command)
 
 		self.assertEqual(self.upload(command, review_id, self.working_tree_diff(), "wrong").status_code, 403)
 		response = self.upload(command, review_id, self.working_tree_diff())
@@ -561,6 +599,22 @@ class TestHook(LocalCase):
 		# Without an origin remote, the repository is the address of the push.
 		self.assertIn("start_review with repository https://github.com/acme/app.git.", calls[0])
 		# The hook sends the pushed commits, not the working tree.
+		self.assertIn("+def update_user_email(user, email, notify):", (self.tmp / "body").read_text())
+
+	def test_the_hook_reviews_against_upstream_in_a_clone_of_a_fork_without_origin(self):
+		# guard#14: the remotes are `upstream` (the repository) and `me` (the fork).
+		self.repo.git("remote", "add", "me", "https://github.com/someone/app.git")
+		self.repo.git("remote", "add", "upstream", "https://github.com/acme/app.git")
+		self.repo.git("update-ref", "refs/remotes/upstream/main", self.base)
+		self.repo.branch_off("feature")
+		self.head = self.repo.commit({"app/models.py": NEW_SIGNATURE}, "add notify")
+		# me/main is the head, so a merge base with it gives an empty diff.
+		self.repo.git("update-ref", "refs/remotes/me/main", self.head)
+		script = tools.install_hook({})["content"]
+		lines = f"refs/heads/feature {self.head} refs/heads/feature {'0' * 40}\n"
+		result = self.sh(script, "me", "https://github.com/someone/app.git", stdin=lines, GUARD_TEST_P0="0")
+		self.assertEqual(result.returncode, 0, result.stderr)
+		self.assertIn("start_review with repository https://github.com/acme/app.git.", self.log.read_text())
 		self.assertIn("+def update_user_email(user, email, notify):", (self.tmp / "body").read_text())
 
 	def test_the_hook_lets_the_push_go_when_the_review_does_not_finish(self):
