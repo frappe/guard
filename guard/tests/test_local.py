@@ -12,6 +12,7 @@ from guard.git.repository import store_for
 from guard.git.store import GitError
 from guard.indexing.jobs import ensure_fresh
 from guard.llm.client import use_responder
+from guard.llm.embeddings import Embedder
 from guard.review import local, local_publish, trigger
 from guard.review.publish import open_finding_count
 from guard.tests.cases import MODELS, SERVICE, PullRequestCase
@@ -21,11 +22,34 @@ from guard.utils import db
 NEW_SIGNATURE = MODELS.replace(
 	"def update_user_email(user, email):", "def update_user_email(user, email, notify):"
 )
+# LocalCase stops embeddings. An index embeds its chunks offline.
+EMBED = Embedder.embed
 # An AWS key, which the secret check finds.
 KEY_LINE = 'BACKUP_KEY = "AKIAABCDEFGHIJKLMNOP"\n'
 
 
 SITE_URL = "http://guard-test.localhost:8000"
+TESTS = """from app.models import get_user, update_user_email
+
+
+def test_get_user():
+    assert get_user(1)
+"""
+LEGACY = """
+
+def legacy():
+    return 1
+"""
+NEWER_TEST = """
+
+def test_newer():
+    assert get_user(2)
+"""
+CHANGE_TEST = """
+
+def test_update_user_email():
+    assert update_user_email({}, "a@example.com", notify=False)
+"""
 
 
 class LocalCase(IntegrationTestCase):
@@ -93,6 +117,32 @@ class TestLocalReview(LocalCase):
 		self.assertIn("submit_review", guide)
 		# Nothing is saved before the agent submits.
 		self.assertFalse(frappe.db.exists("Code Review", {"repository": self.repository}))
+
+	def test_the_graph_facts_are_of_the_merge_base_and_count_the_tests_of_the_change(self):
+		base = self.repo.commit({"app/tests/test_models.py": TESTS, "app/models.py": MODELS + LEGACY}, "add")
+		# The default branch moves on after the branch point, and the index follows it: a new test, and
+		# no `legacy`.
+		newer = self.repo.commit(
+			{"app/tests/test_models.py": TESTS + NEWER_TEST, "app/models.py": MODELS}, "add a newer test"
+		)
+		with patch.object(Embedder, "embed", EMBED):
+			ensure_fresh(self.repository, sha=newer)
+		self.repo.git("checkout", "-q", "-b", "feature", base)
+		(self.repo.path / "app/models.py").write_text(NEW_SIGNATURE + LEGACY.replace("1", "2"))
+		(self.repo.path / "app/tests/test_models.py").write_text(TESTS + CHANGE_TEST)
+		diff = self.repo.git("diff", "--binary", base) + "\n"
+
+		guide = local.start(f"git@github.com:{self.full_name}.git", base, diff, "feature")["guide"]
+		self.assertIn("update_user_email [modified, contract changed]", guide)
+		self.assertIn("test_update_user_email [added]", guide)
+		# The base has `legacy`, and the index does not: the change modifies it.
+		self.assertIn("legacy [modified]", guide)
+		# The test of the newer default branch is not at the base, so the change does not delete it.
+		self.assertNotIn("test_newer", guide)
+		self.assertIn("Affects 1 caller", guide)
+		# The test of the change calls update_user_email. No test calls legacy.
+		self.assertIn("Changed public functions with no test path: app.models.legacy\n", guide)
+		self.assertIn(f"The code graph is of commit {newer[:12]}", guide)
 
 	def test_submit_saves_a_local_review_and_posts_nothing(self):
 		started = self.start()

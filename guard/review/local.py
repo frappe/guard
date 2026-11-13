@@ -523,10 +523,18 @@ def change_run(
 def _index(run: ReviewRun) -> str | None:
 	"""The last complete index. A local review does not wait for indexing."""
 	try:
-		return ensure_fresh(str(run.repository), refresh=False)
+		index = ensure_fresh(str(run.repository), refresh=False)
 	except IndexFailed:
 		run.notes.append("Guard has no code graph of this repository yet. Find the callers with grep.")
 		return None
+	sha = str(db.value("Repository Index", index, "sha") or "")
+	if sha and sha != run.base_sha:
+		# The overlay reads the changed files at the base. Callers and their lines are of the index.
+		run.notes.append(
+			f"The code graph is of commit {sha[:12]} of the default branch, not of the base "
+			f"{run.base_sha[:12]}. Callers and their lines come from that commit: check them in the code."
+		)
+	return index
 
 
 def _graph(run: ReviewRun) -> list[str]:
