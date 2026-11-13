@@ -280,7 +280,8 @@ def list_repositories(arguments: dict[str, Any]) -> dict[str, Any]:
 	answer = {"site": public_url(""), "user": frappe.session.user, "repositories": local.repositories()}
 	if not answer["repositories"]:
 		answer["next"] = (
-			"You can read no repository in Guard. Ask a Guard admin for access to the repository."
+			"You can read no repository in Guard. Ask a Guard admin to share the repository with you: "
+			"Share on the form of the Code Repository in Guard, with Can Read."
 		)
 	return answer
 

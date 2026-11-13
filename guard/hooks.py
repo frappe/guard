@@ -76,8 +76,8 @@ has_permission = {
 	"Knowledge Base Document": "guard.permissions.repository_content",
 }
 
-# Guests list only the repositories that a User Permission gives them, and the rows of those. They
-# do not see other users.
+# Guests list only the repositories that a share or a User Permission gives them, and the rows of
+# those. They do not see other users.
 permission_query_conditions = {
 	**{
 		doctype: "guard.permissions.repository_query"

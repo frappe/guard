@@ -318,4 +318,4 @@ Single-column indexes (`search_index`) cover the other lookups and the link fiel
 | Guard Admin | Everything. |
 | Guard Member | Read all. Write custom context, chat sessions, own Guard User. Enable repositories of own teams. |
 | Guard Viewer | Read analytics, repositories, pull requests, custom context. |
-| Guard Guest | Read the repositories that a User Permission gives, with their indexes, code graph and knowledge base. Read own local reviews and their findings. |
+| Guard Guest | Read the repositories that a share or a User Permission gives, with their indexes, code graph and knowledge base. Read own local reviews and their findings. |

@@ -3,6 +3,8 @@ from unittest.mock import patch
 
 import frappe
 from frappe.mcp.protocol import McpError
+from frappe.share import add as share
+from frappe.share import remove as unshare
 
 from guard import permissions
 from guard.api import ui, v2
@@ -51,6 +53,7 @@ class TestGuardGuest(LocalCase):
 				).insert(ignore_permissions=True)
 		# The tests of a class share one transaction, and the cache of User Permissions outlives it.
 		frappe.db.delete("User Permission", {"user": GUEST})
+		frappe.db.delete("DocShare", {"user": GUEST})
 		frappe.clear_cache(user=GUEST)
 		self.addCleanup(frappe.clear_cache, user=GUEST)
 
@@ -120,6 +123,63 @@ class TestGuardGuest(LocalCase):
 				self.assertTrue(frappe.has_permission("Code Repository", "read", self.other))
 				self.assertIn(self.other, frappe.get_list("Code Repository", pluck="name", limit=1000))
 
+	def test_a_share_gives_a_guest_the_repository_and_its_graph(self):
+		# Only Guard Admin and System Manager can share a repository. A Guard Admin cannot add User
+		# Permissions, so a share is how they give a repository.
+		share("Code Repository", self.repository, GUEST, read=1)
+		own_index = str(db.value("Code Repository", self.repository, "default_index"))
+		with self.as_user():
+			self.assertEqual(permissions.guest_repositories(), [self.repository])
+			self.assertEqual(
+				tools.call({"name": "list_repositories", "arguments": {}})["structuredContent"][
+					"repositories"
+				],
+				[self.full_name],
+			)
+			self.assertTrue(frappe.has_permission("Code Repository", "read", self.repository))
+			self.assertFalse(frappe.has_permission("Code Repository", "read", self.other))
+			# A guest cannot share the repository on, also not with everyone.
+			with self.assertRaises(frappe.PermissionError):
+				share("Code Repository", self.repository, everyone=1, flags={"ignore_share_permission": 1})
+			self.assertEqual(set(frappe.get_list("Code Entity", pluck="index", limit=1000)), {own_index})
+			self.assertTrue(frappe.has_permission("Repository Index", "read", own_index))
+			found = tools.call({"name": "find_symbol", "arguments": {"name": "update_user_email"}})
+			self.assertEqual(
+				{d["repository"] for d in found["structuredContent"]["definitions"]}, {self.full_name}
+			)
+		# A User Permission and a share give the repository once.
+		self.grant(self.repository)
+		self.assertEqual(permissions.guest_repositories(GUEST), [self.repository])
+		frappe.db.delete("User Permission", {"user": GUEST})
+		frappe.clear_cache(user=GUEST)
+		unshare("Code Repository", self.repository, GUEST, flags={"ignore_share_permission": 1})
+		with self.as_user():
+			self.assertEqual(
+				tools.call({"name": "list_repositories", "arguments": {}})["structuredContent"][
+					"repositories"
+				],
+				[],
+			)
+			self.assertEqual(frappe.get_list("Code Entity", pluck="name", limit=1), [])
+
+	def test_a_guest_gets_no_write_from_a_share(self):
+		with self.assertRaises(frappe.ValidationError):
+			share("Code Repository", self.repository, GUEST, read=1, write=1)
+		# A write share from before this check, or with everyone, gives write in Frappe. The controller
+		# still refuses the save.
+		name = str(share("Code Repository", self.repository, GUEST, read=1).name)
+		db.set_values("DocShare", name, {"write": 1})
+		with self.as_user():
+			self.assertTrue(frappe.has_permission("Code Repository", "write", self.repository))
+			doc = frappe.get_doc("Code Repository", self.repository)
+			doc.set("default_branch", "evil")
+			with self.assertRaises(frappe.PermissionError):
+				doc.save()
+		# Others save as before.
+		doc = frappe.get_doc("Code Repository", self.repository)
+		doc.set("default_branch", doc.get("default_branch"))
+		doc.save()
+
 	def test_a_guest_sees_no_pull_requests_and_no_people(self):
 		self.grant(self.repository)
 		with self.as_user():
@@ -183,7 +243,7 @@ class TestGuardGuest(LocalCase):
 		with self.as_user():
 			answer = tools.call({"name": "list_repositories", "arguments": {}})["structuredContent"]
 		self.assertEqual(answer["repositories"], [])
-		self.assertIn("Ask a Guard admin", answer["next"])
+		self.assertIn("Ask a Guard admin to share the repository", answer["next"])
 
 	def test_a_guest_reviews_locally_and_reads_only_their_own_reviews(self):
 		self.grant(self.repository)

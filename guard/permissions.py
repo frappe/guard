@@ -4,6 +4,7 @@ from typing import Any
 
 import frappe
 from frappe.core.doctype.user_permission.user_permission import get_user_permissions
+from frappe.share import get_shared
 
 from guard.utils import db
 
@@ -31,19 +32,23 @@ def is_guest(user: str | None = None) -> bool:
 
 
 def guest_repositories(user: str | None = None) -> list[str]:
-	"""The repositories that a User Permission gives to the user. A guest sees only these. Frappe applies
-	a User Permission with `applicable_for` only to that DocType, so it gives no repository."""
-	granted = get_user_permissions(user or frappe.session.user).get("Code Repository") or []
-	return [
+	"""The repositories that a share or a User Permission gives to the user. A guest sees only these.
+	Frappe lists a shared document also when the query conditions deny it, so a share must also give
+	the graph. Frappe applies a User Permission with `applicable_for` only to that DocType, so it gives
+	no repository."""
+	user = user or frappe.session.user
+	granted = get_user_permissions(user).get("Code Repository") or []
+	names = [
 		str(permission.doc)
 		for permission in granted
 		if permission.get("applicable_for") in (None, "", "Code Repository")
 	]
+	return list(dict.fromkeys(names + [str(name) for name in get_shared("Code Repository", user)]))
 
 
 def repository_query(user: str | None = None, doctype: str | None = None) -> str:
-	"""Guests list only the rows of the repositories that they have, and nothing without a User
-	Permission: Frappe applies no User Permission when a user has none."""
+	"""Guests list only the rows of the repositories that they have, and nothing without a share or a
+	User Permission: Frappe applies no User Permission when a user has none."""
 	if not is_guest(user):
 		return ""
 	names = guest_repositories(user)
