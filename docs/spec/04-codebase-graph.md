@@ -148,14 +148,16 @@ The base index describes the base branch. A pull request changes some files, so 
 
 1. Parse each changed file at the head commit in memory. Do not write rows.
 2. Map each diff hunk to the head entities whose line range overlaps it. These are the **changed entities**.
-3. Find the base entity with the same `qualified_name`. If none, the entity is new.
+3. Parse each changed file at the merge base too. The base entity has the same `qualified_name`: in the same file, or, after a move, in the file where the base index has it, when the merge base has it there too. If none, the entity is new. An entity of the file at the merge base that the head does not have is deleted.
+   - The lines and the signature of a base entity come from the merge base, not from the index: the index can be of a later commit of the base branch, with entities that the change never saw. The row of the index with the same `qualified_name` gives the callers. A base entity that the index does not have gets no callers.
 4. Compare signatures. A difference marks a **contract change**.
 5. For each changed entity, read its callers from the base index. A caller "may break" when all of these are true:
    - The pull request does not change the line of the call.
    - The entity was deleted, or its signature changed.
    - The call does not fit the new signature. For Python, Guard compares the arguments of the call with the parameters: required parameters, defaults, keyword-only parameters, `*args` and `**kwargs`. When Guard cannot parse the call or the signature, the caller may break.
 6. For each contract change, collect the call sites of callers that may break: the call line with three lines around it.
-7. Resolve the new calls in head code against the base symbol table and the overlay.
+7. The tests of a changed entity are the test files that reach it in two levels of callers in the base index, and the test files of the change that call it by name. A changed public function with no test is listed as "no test path".
+8. Resolve the new calls in head code against the base symbol table and the overlay.
 
 The review context ([05-review-engine.md](05-review-engine.md)) gets, for each changed entity: the base and head bodies, callers, callees, siblings, similar code and the call sites at risk.
 

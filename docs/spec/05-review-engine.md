@@ -409,7 +409,7 @@ A local review (`source = local`) reviews a change in a working tree before it i
    - The new objects go to `private/guard/local/<review_id>` (`GitStore.scratch`), with the mirror as an alternate, and not into the mirror: its repack would keep them forever. `submit` deletes the directory. An hourly job deletes those older than 6 hours.
    - The diff of the mirror between `base` and that tree is the diff of the review, so lines and paths are as on a pull request.
    - Config and rule files come from `base`, as on a pull request: the change cannot change its own rules.
-   - Guard reads the last complete index of the default branch and does not index. Without one, the review has no graph.
+   - Guard reads the last complete index of the default branch and does not index. Without one, the review has no graph. When the index is of another commit than the base, the guide says so: the overlay reads the changed files at the base, but callers and their lines come from the index.
    - Guard builds the graph overlay (changed entities, call sites at risk, blast radius, cross-repo users) and runs the deterministic checks of stage 5 (`deterministic_findings`). `FindingFilter` anchors their findings.
    - Guard keeps the session in Redis for 6 hours: the user, the base, the tree sha, the check findings and the guide. Nothing is in the database yet.
    - `review_context` answers with the guide: the rubric (`prompts.LOCAL`, with the severities and the strictness of the config), team instructions, team and project rules, the Frappe rules, team memories, knowledge base pages, the graph facts, the files that use the changed code, the comment types that the team rarely acts on, and how to submit.

@@ -2,8 +2,11 @@
 
 The base index describes the base branch. The overlay parses changed files at the
 head in memory, finds the changed entities, and reads their callers from the base.
+The index can be of a later commit than the merge base, so the base side of the
+changed files comes from the merge base, not from the index.
 """
 
+import dataclasses
 import re
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -123,6 +126,9 @@ class PullRequestGraph:
 		self.by_old_path = {f.old_path: f for f in self.files}
 		self.frappe_app = frappe_app
 		self._base_sources: dict[str, list[str]] = {}
+		self._base_entities: dict[str, list[Entity]] = {}
+		# Test files of the head that the change adds or changes. The index does not have them yet.
+		self._head_tests: list[ParsedFile] = []
 
 	def build(self) -> list[ChangedEntity]:
 		changed: list[ChangedEntity] = []
@@ -133,9 +139,9 @@ class PullRequestGraph:
 			source = self.head(diff.path)
 			if source is None:
 				continue
-			parsed = parse_file(diff.path, source)
-			if self.frappe_app:
-				frappe_plugin.augment(parsed, source)
+			parsed = self._parse(diff.path, source)
+			if TEST_PATH.search(diff.path):
+				self._head_tests.append(parsed)
 			changed += self._changed_in_file(diff, parsed, source.splitlines())
 		for entity in changed:
 			self._enrich(entity)
@@ -188,40 +194,21 @@ class PullRequestGraph:
 		return list(results.values())
 
 	def _removed(self, diff: FileDiff, parsed: ParsedFile) -> list[ChangedEntity]:
-		"""Base entities of a modified file that the head no longer has."""
+		"""Entities of a modified file at the merge base that the head no longer has."""
 		if not self.graph:
 			return []
 		head_names = {e.qualified_name for e in parsed.entities}
-		base_path = diff.old_path or diff.path
-		removed = []
-		for entity in self.graph.outline(base_path):
-			if (
-				entity.kind in CHANGE_KINDS
-				and entity.qualified_name not in head_names
-				and _renamed(entity.qualified_name, diff, parsed) not in head_names
-			):
-				removed.append(
-					ChangedEntity(
-						base_path,
-						entity.kind,
-						entity.entity_name,
-						entity.qualified_name,
-						"deleted",
-						base=entity,
-					)
-				)
-		return removed
+		return [
+			_deleted(entity)
+			for entity in self._at_base(diff.old_path or diff.path)
+			if entity.qualified_name not in head_names
+			and _renamed(entity.qualified_name, diff, parsed) not in head_names
+		]
 
 	def _deleted_file(self, diff: FileDiff) -> list[ChangedEntity]:
 		if not self.graph:
 			return []
-		return [
-			ChangedEntity(
-				diff.old_path or diff.path, e.kind, e.entity_name, e.qualified_name, "deleted", base=e
-			)
-			for e in self.graph.outline(diff.old_path or diff.path)
-			if e.kind in CHANGE_KINDS
-		]
+		return [_deleted(entity) for entity in self._at_base(diff.old_path or diff.path)]
 
 	# ------------------------------------------------------------- enrich
 
@@ -229,22 +216,20 @@ class PullRequestGraph:
 		if not self.graph:
 			return
 		if entity.base is None:
-			matches = [
-				d
-				for d in self.graph.definitions(entity.qualified_name)
-				if d.qualified_name == entity.qualified_name
-			]
-			entity.base = matches[0] if matches else None
+			entity.base = self._find_base(entity)
 			if entity.base is None:
 				entity.status = "added"
 		if entity.base:
 			entity.base_body = self._base_lines(
 				entity.base.path, entity.base.start_line, entity.base.end_line
 			)
+		# An entity of the merge base that the index does not have has no rows to query.
+		if entity.base and entity.base.name:
 			entity.callers = self.graph.callers(entity.base)
 			entity.callees = [link.name for link in self.graph.callees(entity.base)][:40]
 			entity.siblings = self.graph.siblings(entity.base, limit=4)
 			entity.tests = sorted({link.path for link in _test_links(self.graph, entity.base)})
+		entity.tests = sorted({*entity.tests, *self._tests_in_change(entity)})
 		verdicts = {id(link): self._fit(entity, link) for link in entity.callers if not self._updated(link)}
 		entity.not_updated = [link for link in entity.callers if verdicts.get(id(link), True) is not True]
 		entity.broken = [link for link in entity.callers if verdicts.get(id(link)) is False]
@@ -258,6 +243,75 @@ class PullRequestGraph:
 				)
 				for link in entity.not_updated[:12]
 			]
+
+	def _find_base(self, entity: ChangedEntity) -> Entity | None:
+		"""The entity at the merge base: in its own file, else where the index has it, as after a move."""
+		diff = self.by_path.get(entity.path)
+		paths = [(diff.old_path if diff else None) or entity.path]
+		if self.graph and not self._base_match(paths[0], entity.qualified_name):
+			paths += [
+				d.path
+				for d in self.graph.definitions(entity.qualified_name)
+				if d.qualified_name == entity.qualified_name
+			]
+		for path in dict.fromkeys(paths):
+			if found := self._base_match(path, entity.qualified_name):
+				return found
+		return None
+
+	def _base_match(self, path: str, qualified_name: str) -> Entity | None:
+		return next((e for e in self._at_base(path) if e.qualified_name == qualified_name), None)
+
+	def _at_base(self, path: str) -> list[Entity]:
+		"""The entities of a file at the merge base, with the rows of the index that have their names.
+
+		The lines and the signature are those of the merge base. A row of the index gives the name, so
+		that the callers can be found. An entity that the index does not have gets no name.
+		"""
+		if path not in self._base_entities:
+			self._base_entities[path] = self._parse_base(path)
+		return self._base_entities[path]
+
+	def _parse_base(self, path: str) -> list[Entity]:
+		source = self.base(path)
+		if source is None:
+			return []
+		self._base_sources[path] = source.splitlines()
+		parsed = self._parse(path, source)
+		rows: dict[str, Entity] = {}
+		for row in self.graph.outline(path) if self.graph else []:
+			rows.setdefault(row.qualified_name, row)
+		# One entity for each name: a property setter or an overload has the name of the getter.
+		first: dict[tuple[str, str], ParsedEntity] = {}
+		for entity in parsed.entities[1:]:
+			if entity.kind in CHANGE_KINDS:
+				first.setdefault((entity.kind, entity.qualified_name), entity)
+		return [_base_entity(path, parsed.language, e, rows.get(e.qualified_name)) for e in first.values()]
+
+	def _tests_in_change(self, entity: ChangedEntity) -> set[str]:
+		"""Test files of the change that import the module of the entity and call its name.
+
+		Only the name is sure: a call `doc.save()` can be of any `save`. The import keeps a test of
+		another module from counting.
+		"""
+		if entity.status == "deleted":
+			return set()
+		return {
+			parsed.path
+			for parsed in self._head_tests
+			if parsed.path != entity.path
+			and _imports(parsed, entity.qualified_name)
+			and any(
+				edge.kind == "calls" and edge.target_name.rsplit(".", 1)[-1] == entity.name
+				for edge in parsed.edges
+			)
+		}
+
+	def _parse(self, path: str, source: str) -> ParsedFile:
+		parsed = parse_file(path, source)
+		if self.frappe_app:
+			frappe_plugin.augment(parsed, source)
+		return parsed
 
 	def _fit(self, entity: ChangedEntity, link: Link) -> bool | None:
 		"""Does an unchanged call fit the head? True fits, False breaks, None cannot tell."""
@@ -292,6 +346,32 @@ class PullRequestGraph:
 		if number:
 			return "\n".join(f"{start + i:>5}  {text}" for i, text in enumerate(chosen))
 		return "\n".join(chosen)
+
+
+def _deleted(entity: Entity) -> ChangedEntity:
+	return ChangedEntity(
+		entity.path, entity.kind, entity.entity_name, entity.qualified_name, "deleted", base=entity
+	)
+
+
+def _imports(parsed: ParsedFile, qualified_name: str) -> bool:
+	"""The file imports the entity, its module, or a package of it. A relative import can be any."""
+	for ref in parsed.imports:
+		if ref.relative:
+			return True
+		for name in (ref.module, *(f"{ref.module}.{original}" for original in ref.names.values())):
+			if qualified_name == name or qualified_name.startswith(f"{name}."):
+				return True
+	return False
+
+
+def _base_entity(path: str, language: str | None, parsed: ParsedEntity, row: Entity | None) -> Entity:
+	at_base = {"start_line": parsed.start_line, "end_line": parsed.end_line, "signature": parsed.signature}
+	if row:
+		return dataclasses.replace(row, **at_base)
+	return Entity(
+		"", parsed.kind, parsed.name, parsed.qualified_name, path, None, language=language, **at_base
+	)
 
 
 def _test_links(graph: CodeGraph, entity: Entity) -> list[Link]:
