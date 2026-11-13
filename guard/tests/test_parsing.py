@@ -81,6 +81,15 @@ class TestLanguages(UnitTestCase):
 		self.assertEqual(refs[1].alias, "z")
 		self.assertTrue(refs[2].relative)
 
+	def test_python_imports_with_comments_parentheses_and_a_star(self):
+		source = (
+			"from a import *  # noqa: F403\nfrom b import (  # names\n    C,  # one\n    D as E,\n)\nx = 1\n"
+		)
+		star, names = languages.imports("python", source)
+		self.assertTrue(star.star)
+		self.assertEqual(star.names, {})
+		self.assertEqual((names.module, names.line, names.names), ("b", 2, {"C": "C", "E": "D"}))
+
 	def test_js_imports(self):
 		refs = languages.imports(
 			"typescript", 'import Def, { a, b as c } from "./m";\nconst r = require("../r");'

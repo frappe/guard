@@ -2,12 +2,13 @@ from contextlib import ExitStack
 from unittest.mock import patch
 
 import frappe
-from frappe.tests import IntegrationTestCase
+from frappe.tests import IntegrationTestCase, UnitTestCase
 
+from guard.indexing import languages
 from guard.indexing.jobs import ensure_fresh
 from guard.llm.client import use_responder
 from guard.providers.base import PullRequestInfo
-from guard.review import pull_requests, trigger
+from guard.review import crossrepo, pull_requests, trigger
 from guard.tests.fakes import FakeAdapter, scripted
 from guard.tests.utils import TempRepo, make_repository
 
@@ -157,6 +158,30 @@ class TestCrossRepository(IntegrationTestCase):
 		adapter = self.open_pull_request(self.consumer_repo, self.consumer, {"pilot/client.py": client}, 3)
 		self.assertFalse(self.bodies(adapter, "does not exist"))
 
+	def test_names_that_a_module_imports_exist(self):
+		# guard#13: `frappe/query_builder/__init__.py` has `from pypika import *`, so
+		# `frappe.query_builder.Case` exists, but the index has no entity for it.
+		head = self.provider_repo.commit(
+			{
+				"central/query/__init__.py": "from pypika import *\nfrom central.api.pilot import status as up\n",
+				# A cycle of star imports ends.
+				"central/utils/__init__.py": "from .data import *\nfrom central.utils.more import *\n",
+				"central/utils/more.py": "from central.utils import *  # noqa: F403\n",
+				"central/utils/data.py": "def cint(value):\n    return int(value)\n",
+			},
+			"add modules that re-export",
+		)
+		ensure_fresh(self.provider, sha=head)
+		client = (
+			"from central.query import Case, up  # noqa\nfrom central.utils import cint\n"
+			"from central.utils import nothing\n"
+		)
+		adapter = self.open_pull_request(self.consumer_repo, self.consumer, {"pilot/query.py": client}, 6)
+		# The star import of central.utils comes from central, which has no `nothing`.
+		found = [c.body for c in adapter.named("create_review")[0] if "does not exist" in c.body]
+		self.assertEqual(len(found), 1, found)
+		self.assertIn("`central.utils.nothing` does not exist", found[0])
+
 	def test_strings_that_only_look_like_methods(self):
 		# suite#881: a contract names `admin.invites.get`, and the other repository has an `admin`
 		# package but no `admin.invites`. A JSON file holds no calls either.
@@ -200,3 +225,25 @@ class TestCrossRepository(IntegrationTestCase):
 	def bodies(self, adapter: FakeAdapter, text: str) -> list[str]:
 		posted = [c.body for review in adapter.named("create_review") for c in review]
 		return [body for body in posted + adapter.named("post_comment") if text in body]
+
+
+class TestReexports(UnitTestCase):
+	def test_a_star_import_is_recorded(self):
+		(ref,) = languages.imports("python", "from pypika import *\n")
+		self.assertTrue(ref.star)
+		self.assertEqual(ref.names, {})
+
+	def test_the_sources_of_a_name(self):
+		text = "from pypika import *\nfrom .data import *\nfrom x import y as Case\n"
+		sources = crossrepo._reexport_sources(text, "frappe.utils", "frappe/utils/__init__.py", "Case")
+		self.assertEqual(sources, [None, "pypika", "frappe.utils.data"])
+		self.assertEqual(crossrepo._reexport_sources(text, "a", "a.py", "Other"), ["pypika", "data"])
+
+	def test_relative_imports_are_absolute(self):
+		self.assertEqual(crossrepo._absolute(".data", "app.utils", True), "app.utils.data")
+		self.assertEqual(crossrepo._absolute(".data", "app.utils.x", False), "app.utils.data")
+		self.assertEqual(crossrepo._absolute("..data", "app.utils.x", False), "app.data")
+		self.assertEqual(crossrepo._absolute(".", "app.utils.x", False), "app.utils")
+		self.assertEqual(crossrepo._absolute("pypika", "frappe.utils", True), "pypika")
+		# Invalid Python: more dots than packages. Do not wrap around.
+		self.assertEqual(crossrepo._absolute("....x", "a.b.c", False), "x")

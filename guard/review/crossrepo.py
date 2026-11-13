@@ -37,6 +37,8 @@ CALLER_LANGUAGES = {"python", "javascript", "typescript", "tsx", "vue"}
 NO_ROUTE_CHECK = re.compile(rf"{TEST_PATH.pattern}|(^|/)e2e/")
 # `/api/method/<name>` is a Frappe method URL, which the method check covers, not a route.
 METHOD_SEGMENTS = ("method",)
+# Modules that re-export with `from x import *` from modules that re-export again. Real chains are short.
+MAX_REEXPORT_DEPTH = 3
 
 
 @dataclass
@@ -81,6 +83,54 @@ class OtherRepository:
 			)
 		)
 
+	def reexports(self, qualified_name: str, seen: frozenset[str] = frozenset()) -> bool:
+		"""The module of a Python path imports the name, so the path exists.
+
+		`frappe/query_builder/__init__.py` has `from pypika import *`, so `frappe.query_builder.Case`
+		exists, but the index has no entity for it. A star import from a module of this repository
+		counts when that module has the name. A star import from outside the repository counts
+		always: Guard cannot know the names of that module.
+		"""
+		module, _, attr = qualified_name.rpartition(".")
+		path = self.module_path(module)
+		text = self.source(path) if path else None
+		if not path or text is None:
+			return False
+		seen = seen | {qualified_name}
+		for source in _reexport_sources(text, module, path, attr):
+			if self.outside(source):
+				return True
+			name = f"{source}.{attr}"
+			if name in seen:
+				continue
+			if self.defines(name) or (len(seen) <= MAX_REEXPORT_DEPTH and self.reexports(name, seen)):
+				return True
+		return False
+
+	def outside(self, source: str | None) -> bool:
+		"""The name comes from `from x import name`, or from a star import of a module that is not here."""
+		return source is None or source.split(".", 1)[0] not in self.packages
+
+	def module_path(self, module: str) -> str | None:
+		return db.scalar(
+			"""SELECT path FROM `tabCode Entity` WHERE `index` = %s AND kind = 'file'
+			AND qualified_name = %s AND language = 'python' LIMIT 1""",
+			(self.index, module),
+		)
+
+	def source(self, path: str) -> str | None:
+		"""A file at the commit of the index."""
+		if path not in self._sources:
+			from guard.git.repository import store_for
+
+			sha = str(db.value("Repository Index", self.index, "sha") or "")
+			self._sources[path] = store_for(self.repository).show(sha, path) if sha else None
+		return self._sources[path]
+
+	@cached_property
+	def _sources(self) -> dict[str, str | None]:
+		return {}
+
 	@cached_property
 	def newer_head(self) -> str | None:
 		"""The head of the default branch when it moved past the index, else None.
@@ -123,7 +173,13 @@ class OtherRepository:
 				text = store.show(head, path)
 				if text is None:
 					continue
-				return not rest or bool(_definition(rest[0]).search(text))
+				if not rest or _definition(rest[0]).search(text):
+					return True
+				module = ".".join(parts[:cut])
+				return any(
+					self.outside(source) or self.defines(f"{source}.{rest[0]}")
+					for source in _reexport_sources(text, module, path, rest[0])
+				)
 		return False
 
 
@@ -418,7 +474,7 @@ def _missing_methods(
 		# `admin.invites`: the string names something else.
 		if not owner.has_module(".".join(name.split(".")[:2])):
 			continue
-		if owner.defines_at_head(name):
+		if owner.reexports(name) or owner.defines_at_head(name):
 			continue
 		findings.append(
 			Finding(
@@ -493,6 +549,31 @@ def _missing_route(
 			)
 		]
 	return []
+
+
+def _reexport_sources(text: str, module: str, path: str, attr: str) -> list[str | None]:
+	"""The modules that the Python source of `module` can take `attr` from by an import.
+
+	None is a module that imports the name itself, `from x import attr`: the name exists, and an
+	error in `x` is for the review of that repository.
+	"""
+	sources: list[str | None] = []
+	for ref in languages.imports("python", text):
+		if attr in ref.names:
+			sources.insert(0, None)
+		elif ref.star:
+			sources.append(_absolute(ref.module, module, path.endswith("/__init__.py")))
+	return sources
+
+
+def _absolute(imported: str, module: str, is_package: bool) -> str:
+	"""The absolute name of an import in `module`: `.data` in `frappe.utils` is `frappe.utils.data`."""
+	dots = len(imported) - len(imported.lstrip("."))
+	if not dots:
+		return imported
+	package = module.split(".") if is_package else module.split(".")[:-1]
+	base = package[: max(len(package) - (dots - 1), 0)]
+	return ".".join([*base, imported[dots:]] if imported[dots:] else base)
 
 
 def _definition(name: str) -> re.Pattern[str]:

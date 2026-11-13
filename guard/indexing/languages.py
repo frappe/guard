@@ -67,6 +67,7 @@ class ImportRef:
 	names: dict[str, str] = field(default_factory=dict)  # local alias -> imported name
 	alias: str | None = None  # alias for the whole module
 	relative: bool = False
+	star: bool = False  # `from module import *`
 
 
 def detect(path: str) -> str | None:
@@ -111,11 +112,13 @@ def _python(lines: list[str]) -> list[ImportRef]:
 	out = []
 	for number, line in enumerate(lines, 1):
 		if match := PY_FROM.match(line):
-			module, names = match.group(1), match.group(2).strip().strip("()")
+			module, names = match.group(1), _python_names(match.group(2), lines[number:])
 			ref = ImportRef(module=module, line=number, relative=module.startswith("."))
 			for part in names.split(","):
 				name, _, alias = part.strip().partition(" as ")
-				if name and name != "*":
+				if name.strip() == "*":
+					ref.star = True
+				elif name:
 					ref.names[(alias or name).strip()] = name.strip()
 			out.append(ref)
 		elif match := PY_IMPORT.match(line):
@@ -123,6 +126,17 @@ def _python(lines: list[str]) -> list[ImportRef]:
 				module, _, alias = part.strip().partition(" as ")
 				out.append(ImportRef(module=module.strip(), line=number, alias=(alias or module).strip()))
 	return out
+
+
+def _python_names(names: str, rest: list[str]) -> str:
+	"""The names of `from x import ...`, without comments, also when they span lines in parentheses."""
+	names = names.split("#", 1)[0].strip()
+	if names.startswith("(") and ")" not in names:
+		for line in rest:
+			names += " " + line.split("#", 1)[0].strip()
+			if ")" in line:
+				break
+	return names.strip("()").strip()
 
 
 def _javascript(lines: list[str]) -> list[ImportRef]:
