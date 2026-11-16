@@ -453,6 +453,22 @@ class TestPublishLocalReview(PullRequestCase):
 		)
 		self.assertEqual((finding["posted"], finding["status"]), (1, "Open"))
 
+	def test_publish_posts_on_a_pull_request_from_a_fork_with_the_reviewed_head(self):
+		frappe.db.set_value("Pull Request", self.pr, "head_clone_url", "https://github.com/someone/fork.git")
+		review = self.submit()
+		self.assertEqual(db.value("Code Review", review, "pull_request"), self.pr)
+		self.assertTrue(local_publish.publish(review)["posted"])
+
+	def test_publish_ignores_a_fork_branch_of_the_same_name_at_another_head(self):
+		db.set_values(
+			"Pull Request",
+			self.pr,
+			{"head_clone_url": "https://github.com/someone/fork.git", "head_sha": "b" * 40},
+		)
+		review = self.submit()
+		with self.assertRaisesRegex(frappe.ValidationError, "no open pull request"):
+			local_publish.publish(review)
+
 	def test_publish_refuses_a_tree_that_is_not_the_head_of_the_pull_request(self):
 		(self.repo.path / "app/extra.py").write_text("EXTRA = 1\n")
 		self.repo.git("add", "-N", "app/extra.py")
