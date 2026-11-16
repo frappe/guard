@@ -87,7 +87,9 @@ class LocalPost:
 		}
 
 	def _pull_request(self) -> "PullRequest":
-		name = local.open_pull_request(self.repository, str(self.review.branch or ""))
+		name = local.open_pull_request(
+			self.repository, str(self.review.branch or ""), str(self.review.head_sha or "")
+		)
 		if not name:
 			frappe.throw(
 				_("Guard has no open pull request for branch {0}. Push it and open the pull request.").format(

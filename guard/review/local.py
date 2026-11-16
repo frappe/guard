@@ -563,19 +563,24 @@ def _graph(run: ReviewRun) -> list[str]:
 	return parts
 
 
-def open_pull_request(repository: str, branch: str) -> str | None:
-	"""The open pull request of `branch` in the repository, or None. Not one from a fork."""
+def open_pull_request(repository: str, branch: str, head_sha: str = "") -> str | None:
+	"""The open pull request of `branch` in the repository, or None. One from a fork matches only by
+	`head_sha`: a fork can have a branch of the same name, such as `main` or `patch-1`, but not the same
+	head commit."""
 	if not branch:
 		return None
-	full_name = str(db.value("Code Repository", repository, "full_name") or "").lower()
 	rows = frappe.get_list(
 		"Pull Request",
 		filters={"repository": repository, "head_branch": branch, "state": "open"},
-		fields=["name", "head_clone_url"],
+		fields=["name", "head_clone_url", "head_sha"],
 		order_by="modified desc",
 		limit=20,
 	)
-	# A branch of a fork can have the same name, such as `main` or `patch-1`.
+	if head_sha:
+		for row in rows:
+			if row.head_sha == head_sha:
+				return str(row.name)
+	full_name = str(db.value("Code Repository", repository, "full_name") or "").lower()
 	for row in rows:
 		if not row.head_clone_url or f"/{full_name}" in str(row.head_clone_url).lower():
 			return str(row.name)
@@ -594,7 +599,7 @@ def _save_review(run: ReviewRun, session: dict[str, Any], review_id: str, agent:
 			"tier": "local",
 			# For people who read it. GitHub reviews of the pull request do not count local reviews. A
 			# guest cannot read pull requests, so their review links none: the form shows the title of a link.
-			"pull_request": open_pull_request(str(run.repository), run.head_branch)
+			"pull_request": open_pull_request(str(run.repository), run.head_branch, session["head"] or "")
 			if frappe.has_permission("Pull Request", "read")
 			else None,
 			"status": "Completed",
