@@ -39,9 +39,6 @@ class Original:
 	number: int
 	summary: str
 	files: list[FileDiff] = field(default_factory=list)
-	important_files: list[dict[str, str]] = field(default_factory=list)
-	diagram_type: str = ""
-	diagram: str = ""
 
 
 def numbers(run: ReviewRun, number: int) -> list[int]:
@@ -88,15 +85,11 @@ def originals(
 		files = _diff(store, adapter, number, str(row["merge_base_sha"] or ""), str(row["head_sha"] or ""))
 		if not files:
 			continue
-		shown = frappe.parse_json(row.get("important_files") or "[]")
 		result.append(
 			Original(
 				number,
 				str(row.get("summary") or ""),
 				files,
-				[f for f in shown or [] if isinstance(f, dict) and f.get("path")],
-				str(row.get("diagram_type") or ""),
-				str(row.get("diagram") or ""),
 			)
 		)
 	return result
@@ -104,8 +97,7 @@ def originals(
 
 def _last_read(pull_request: str) -> dict[str, Any] | None:
 	rows = db.dict_rows(
-		"""SELECT head_sha, merge_base_sha, summary, important_files, diagram_type, diagram
-		FROM `tabCode Review`
+		"""SELECT head_sha, merge_base_sha, summary FROM `tabCode Review`
 		WHERE pull_request = %s AND status = 'Completed' AND agent_turns > 0 AND source != 'local'
 		ORDER BY creation DESC LIMIT 1""",
 		(pull_request,),
@@ -175,16 +167,13 @@ def delta(run: ReviewRun, found: list[Original]) -> Delta | None:
 	if not same:
 		return None
 	paths = {f.path for f in same}
-	diagrams = [(o.diagram_type, o.diagram) for o in found if o.diagram_type and o.diagram]
-	diagram_type, diagram = diagrams[0] if len(found) == 1 and diagrams else ("", "")
+	# Only the summaries go into the task, as context. The diagram and the important files of the
+	# originals show the default branch, so the agent of the backport sends its own.
 	return Delta(
 		since="",
 		files=[f for f in run.files if f.path not in paths],
 		summary="\n\n".join(f"#{o.number}: {o.summary[:SUMMARY_LIMIT]}" for o in found if o.summary),
 		rest=[f"{f.path} (+{f.additions} -{f.deletions})" for f in same],
-		important_files=[f for o in found for f in o.important_files if f.get("path") in paths],
-		diagram_type=diagram_type,
-		diagram=diagram,
 		originals=[o.number for o in found],
 		covered=same,
 	)

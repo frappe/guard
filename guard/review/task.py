@@ -194,7 +194,9 @@ def _delta(run: ReviewRun) -> str:
 	if run.delta.summary:
 		title = "Summaries of the reviews of the originals" if backport else "Summary of the last review"
 		parts.append(f"{title}:\n" + data("last summary", run.delta.summary[:SUMMARY_LIMIT]))
-	if run.delta.diagram_type and run.delta.diagram and len(run.delta.diagram) <= DIAGRAM_LIMIT:
+	# A backport gets no diagram of the originals: it shows the default branch, not the target branch.
+	diagram = not backport and run.delta.diagram_type and run.delta.diagram
+	if diagram and len(run.delta.diagram) <= DIAGRAM_LIMIT:
 		parts.append(
 			DELTA_DIAGRAM.format(kind=run.delta.diagram_type) + "\n" + data("last diagram", run.delta.diagram)
 		)
@@ -207,15 +209,17 @@ def _delta(run: ReviewRun) -> str:
 
 def _backport(run: ReviewRun) -> list[str]:
 	"""The task of a backport: check the covered files against the target branch, and review the
-	other files in full. The graph is of the default branch, so the agent confirms with the files."""
-	names = {"originals": _numbers(run.delta.originals if run.delta else []), "branch": run.base_branch}
-	parts = [BACKPORT.format(**names)]
+	other files in full. The graph is of the default branch, so the agent confirms with the files.
+	The branch name comes from the pull request, so it is data, and only its block names it."""
+	originals = _numbers(run.delta.originals if run.delta else [])
+	parts = [
+		BACKPORT.format(originals=originals),
+		"Target branch:\n" + data("target branch", run.base_branch),
+	]
 	if run.delta and run.delta.files:
-		parts.append(BACKPORT_FILES.format(**names))
-	tools = BACKPORT_TOOLS.format(**names)
-	if run.graph:
-		tools += " " + BACKPORT_GRAPH.format(**names)
-	return [*parts, tools, BACKPORT_SUBMIT.format(**names)]
+		parts.append(BACKPORT_FILES.format(originals=originals))
+	tools = BACKPORT_TOOLS + (" " + BACKPORT_GRAPH if run.graph else "")
+	return [*parts, tools, BACKPORT_SUBMIT.format(originals=originals)]
 
 
 def changed_entities(run: ReviewRun) -> str:

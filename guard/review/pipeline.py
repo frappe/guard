@@ -673,9 +673,13 @@ class ReviewPipeline:
 		cap = delta_turns(run.delta.files) if run.delta else turns
 		turns = min(turns, cap)
 		deadline = self.deadline(run.tier)
-		single = run.tier != "apex" or len(run.files) <= AREA_FILES
+		# Only the files under full review split an apex review into parts. The covered files of a
+		# backport get a short check of fit, in the pass across the parts.
+		reviewed = {f.path for f in (run.delta.files if run.delta else run.files)}
+		single = run.tier != "apex" or len(reviewed) <= AREA_FILES
 		ranked = [] if single else by_risk(run)
-		areas = [ranked[i : i + AREA_FILES] for i in range(0, len(ranked), AREA_FILES)][:MAX_AREAS]
+		split = [f for f in ranked if f.path in reviewed]
+		areas = [split[i : i + AREA_FILES] for i in range(0, len(split), AREA_FILES)][:MAX_AREAS]
 		saved = self.open_checkpoint(run, system, [[f.path for f in files] for files in areas])
 		phase = saved["phase"] if saved else ""
 		if saved and phase == "done":
@@ -715,9 +719,11 @@ class ReviewPipeline:
 			)
 			extra = prompts.CROSS_CUTTING + "\n\nVerdicts of the parts:\n" + (verdicts or "- none")
 			extra += "\n\nAlready reported:\n" + (reported or "- none")
-			if rest:
+			# The covered files of a backport are in the diff too. The task asks only for a check of fit there.
+			unreviewed = [f for f in rest if f.path in reviewed]
+			if unreviewed:
 				extra += "\n\nNo part reviewed these files. Review them here:\n" + "\n".join(
-					f"- {f.path}" for f in rest[:MAX_REST_NAMES]
+					f"- {f.path}" for f in unreviewed[:MAX_REST_NAMES]
 				)
 		# The files that no part reviewed come first, so the diff limit cuts the reviewed ones.
 		run.files = rest + [f for f in ranked if f.path in in_areas]

@@ -84,7 +84,10 @@ class Delta:
 
 	def carry_over(self, verdict: Verdict) -> None:
 		"""Keep what the last review showed of the files that the agent did not see: their important
-		files after the new ones, and the diagram when the agent sent none."""
+		files after the new ones, and the diagram when the agent sent none. Not on a backport: the
+		originals show the default branch, not the target branch."""
+		if self.originals:
+			return
 		paths = {f["path"] for f in verdict.important_files}
 		earlier = [f for f in self.important_files if f.get("path") not in paths]
 		verdict.important_files = (verdict.important_files + earlier)[:MAX_IMPORTANT_FILES]
