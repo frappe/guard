@@ -110,7 +110,7 @@ base_branch=$(value GUARD_BRANCH "$work/start")
 # The pre-push review applies only to repositories that Guard can read. Take the last GUARD_REVIEW
 # line: an agent that prints the prompt too prints <review_id> after none, and its answer comes last.
 if [ "$review" = none ]; then
-	say "Guard cannot read this repository, so the push goes on without a review."
+	say "the agent reports that Guard has no such repository, so the push goes on without a review."
 	exit 0
 fi
 # The values go into a URL and git commands: take only the shapes that Guard sends.
