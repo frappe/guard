@@ -209,7 +209,9 @@ Guard decides to review in this order. The first "no" stops it.
    3. The event is in the merged `auto_review`.
    4. The config filters pass: labels, authors, branches, keywords.
    5. The dashboard filter rules pass (below).
-5. For manual triggers: only `exclude_branches` applies. `exclude_authors` applies only when a bot asks for the review, or when the provider does not tell who asked (a GitHub check re-run without a sender). A person can ask for a review of a skipped author, for example a bot backport. A bot is an account with `type` `Bot`, or a login that ends with `[bot]`. A Desk request and the signed re-review link come from a person.
+5. For manual triggers (a mention, a GitHub check re-run, the signed re-review link): only `exclude_branches` applies. `exclude_authors` applies only when a bot asks for the review, or when the provider does not tell who asked (a check re-run without a sender). A person can ask for a review of a skipped author, for example a bot backport. A bot is an account with `type` `Bot`, or a login that ends with `[bot]`. A machine account of type `User` whose login does not end with `[bot]` counts as a person: the `trigger_by_tagging` check (step 2) limits such accounts. The signed re-review link counts as a person, because a person clicks its button.
+
+A review requested in Desk (`guard.api.ui.rereview`) skips this gate. Guard reviews the pull request for any author and target branch. Only the daily review limit of the repository applies.
 
 ### Dashboard filter rules
 

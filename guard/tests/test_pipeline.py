@@ -1613,6 +1613,32 @@ class TestPipeline(PullRequestCase):
 		threads.handle(self.pr, ProviderComment("c4", "issue", "ada", "@guard review", number=7))
 		self.assertEqual(self.on_comment("c4"), ["eyes", "removed"])
 
+	def test_mention_reviews_a_skipped_author_only_for_a_person(self):
+		from guard.conversation import threads
+
+		settings = frappe.get_doc("Review Settings", "Organization")
+		settings.set("exclude_authors", "ad*")
+		settings.save(ignore_permissions=True)
+		try:
+			# A bot as the provider tells, and a bot by its login.
+			for comment_id, login, is_bot in (("b1", "ci-runner", True), ("b2", "mergify[bot]", False)):
+				comment = ProviderComment(
+					comment_id, "issue", login, "@guard review", is_bot=is_bot, number=7
+				)
+				threads.handle(self.pr, comment)
+				self.assertEqual(self.on_comment(comment_id), ["eyes", "removed"])
+				self.assertEqual(self.adapter.checks[-1][2], "Guard skipped this review: author is excluded")
+			self.assertFalse(frappe.db.exists("Code Review", {"pull_request": self.pr}))
+			comment = ProviderComment("p1", "issue", "bob", "@guard review", number=7)
+			with use_responder(scripted([[("submit_review", {"summary": "s", "confidence_score": 4})]])):
+				threads.handle(self.pr, comment)
+			self.assertEqual(self.on_comment("p1"), ["eyes", "removed", "+1"])
+			review = db.value("Code Review", {"pull_request": self.pr, "trigger": "mention"}, "status")
+			self.assertEqual(review, "Completed")
+		finally:
+			settings.set("exclude_authors", "")
+			settings.save(ignore_permissions=True)
+
 	def mention_replaced_by_push(self, comment_id):
 		"""A mention asks for a review, and a push replaces that review while the model runs."""
 		from guard.conversation import threads

@@ -98,7 +98,7 @@ After the first review, Guard posts only new P0 and P1 findings. A push that fix
 
 ### Which pull requests Guard reviews
 
-These filters apply to automatic reviews. A review that someone asks for skips them, except `exclude_branches`. A person can ask for a review of an author in `exclude_authors`, for example a backport that a bot opened. A bot cannot.
+These filters apply to automatic reviews. A review that someone asks for on GitHub, with a mention, a check re-run or the re-review link, skips them, except `exclude_branches`. A person can ask for a review of an author in `exclude_authors`, for example a backport that a bot opened. A bot cannot. A review that someone asks for in Desk skips all of these filters.
 
 | Key | Meaning |
 | - | - |
