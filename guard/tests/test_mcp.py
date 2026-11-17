@@ -42,6 +42,7 @@ case "$*" in
 esac
 """
 REVIEW_ID, SECRET = "0123456789abcdef", "0123456789abcdef" * 2
+ZEROS = "0" * 40
 
 ACCEPT = "application/json, text/event-stream"
 
@@ -725,21 +726,88 @@ class TestHook(LocalCase):
 		self.assertIn("+def update_user_email(user, email, notify):", body)
 		self.assertNotIn("app/hotfix.py", body)
 
-	def test_a_push_to_the_default_branch_reviews_the_pushed_commits(self):
-		# The branch of the push is the default branch, so its old commit is the base, and not the older
-		# release branch.
-		self.repo.git("update-ref", "refs/remotes/origin/version-1", self.base)
-		landed = self.repo.commit({"app/notes.py": "NOTE = 1\n"}, "on main")
-		self.repo.git("update-ref", "refs/remotes/origin/main", landed)
-		head = self.repo.commit({"app/models.py": NEW_SIGNATURE}, "add notify")
+	def push(self, ref: str, head: str, target: str = "", old: str = ZEROS) -> subprocess.CompletedProcess:
+		"""Run the hook for a push of `head` from branch `ref` to `target` on origin, which had `old`."""
 		script = tools.install_hook({})["content"]
-		lines = f"refs/heads/main {head} refs/heads/main {landed}\n"
+		lines = f"refs/heads/{ref} {head} refs/heads/{target or ref} {old}\n"
 		result = self.sh(script, "origin", "https://github.com/acme/app.git", stdin=lines, GUARD_TEST_P0="0")
 		self.assertEqual(result.returncode, 0, result.stderr)
-		self.assertIn("X-Guard-Base-Branch: main", self.log.read_text())
+		return result
+
+	def base_branches(self) -> list[str]:
+		return [line.split(": ")[1] for line in self.log.read_text().splitlines() if "Base-Branch" in line]
+
+	def test_a_push_to_the_default_branch_reviews_the_pushed_commits(self):
+		# A release branch with more commits than main merged into main. Its tip is nearer to the pushed
+		# commit than main, but the old commit of main is the base: the release commits are new on main.
+		landed = self.repo.commit({"app/notes.py": "NOTE = 1\n"}, "on main")
+		self.repo.git("update-ref", "refs/remotes/origin/main", landed)
+		self.repo.git("checkout", "-q", "-b", "release", self.base)
+		for number in range(3):
+			self.repo.commit({f"app/release_{number}.py": f"R = {number}\n"}, f"release {number}")
+		self.repo.git("update-ref", "refs/remotes/origin/release", self.repo.head())
+		self.repo.git("checkout", "-q", "main")
+		self.repo.git("merge", "-q", "--no-ff", "-m", "merge release", "release")
+		result = self.push("main", self.repo.head(), old=landed)
+		self.assertIn("the base is the commit of main on the remote", result.stderr)
+		self.assertEqual(self.base_branches(), ["main"])
+		body = (self.tmp / "body").read_text()
+		self.assertIn("app/release_2.py", body)
+		self.assertNotIn("app/notes.py", body)
+
+	def test_a_push_to_a_release_branch_reviews_the_pushed_commits(self):
+		# version-15 is on the remote. Its commits are not on main, but they are not new in this push.
+		self.repo.git("update-ref", "refs/remotes/origin/main", self.base)
+		self.repo.branch_off("version-15")
+		release = self.repo.commit({"app/v15.py": "V = 15\n"}, "on version-15")
+		self.repo.git("update-ref", "refs/remotes/origin/version-15", release)
+		head = self.repo.commit({"app/models.py": NEW_SIGNATURE}, "add notify")
+		self.push("version-15", head, old=release)
+		self.assertEqual(self.base_branches(), ["version-15"])
 		body = (self.tmp / "body").read_text()
 		self.assertIn("+def update_user_email(user, email, notify):", body)
-		self.assertNotIn("app/notes.py", body)
+		self.assertNotIn("app/v15.py", body)
+
+	def test_a_new_branch_at_the_tip_of_a_release_branch_is_not_an_empty_diff(self):
+		self.repo.git("update-ref", "refs/remotes/origin/main", self.base)
+		self.repo.branch_off("feature")
+		tip = self.repo.commit({"app/v1.py": "V = 1\n"}, "a fix on version-1")
+		self.repo.git("update-ref", "refs/remotes/origin/version-1", tip)
+		# version-1 has the pushed commit, so it is not the base. The default branch is.
+		self.push("feature", tip)
+		self.assertIn("app/v1.py", (self.tmp / "body").read_text())
+		# `git push origin feature:feature-v2` after a push of feature: origin/feature has the commit too.
+		self.repo.git("update-ref", "refs/remotes/origin/feature", tip)
+		(self.tmp / "body").unlink()
+		self.push("feature", tip, target="feature-v2")
+		self.assertIn("app/v1.py", (self.tmp / "body").read_text())
+		self.assertEqual(self.base_branches(), ["main", "main"])
+		# A new branch at the commit of main has nothing to review, and sends nothing.
+		(self.tmp / "body").unlink()
+		result = self.push("other", self.base)
+		self.assertIn("nothing new to review in other", result.stderr)
+		self.assertFalse((self.tmp / "body").exists())
+		# A push that adds nothing to the branch of the remote does not start the agent.
+		calls = self.log.read_text().count("start_review")
+		result = self.push("feature", tip, old=tip)
+		self.assertIn("nothing new to review in feature", result.stderr)
+		self.assertEqual(self.log.read_text().count("start_review"), calls)
+
+	def test_a_force_push_takes_the_base_from_the_nearest_branch(self):
+		self.repo.git("update-ref", "refs/remotes/origin/main", self.base)
+		self.repo.branch_off("feature")
+		shared = self.repo.commit({"app/shared.py": "S = 1\n"}, "shared")
+		old = self.repo.commit({"app/old.py": "O = 1\n"}, "dropped by a rebase")
+		self.repo.git("update-ref", "refs/remotes/origin/feature", old)
+		self.repo.git("reset", "-q", "--hard", shared)
+		head = self.repo.commit({"app/models.py": NEW_SIGNATURE}, "add notify")
+		# The old commit is not an ancestor, and origin/feature is the branch of the push: main is the base.
+		result = self.push("feature", head, old=old)
+		self.assertNotIn("the base is", result.stderr)
+		self.assertEqual(self.base_branches(), ["main"])
+		body = (self.tmp / "body").read_text()
+		self.assertIn("app/shared.py", body)
+		self.assertIn("+def update_user_email(user, email, notify):", body)
 
 	def test_the_hook_prefers_the_default_branch_on_a_tie(self):
 		# A release branch at the commit of the default branch is as near as the default branch.

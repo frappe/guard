@@ -25,6 +25,8 @@ NEW_SIGNATURE = MODELS.replace(
 )
 # LocalCase stops embeddings. An index embeds its chunks offline.
 EMBED = Embedder.embed
+# Tests wrap it to see the run of a review.
+CHANGE_RUN = local.change_run
 # An AWS key, which the secret check finds.
 KEY_LINE = 'BACKUP_KEY = "AKIAABCDEFGHIJKLMNOP"\n'
 
@@ -163,7 +165,17 @@ class TestLocalReview(LocalCase):
 		guide = local.context_for(review_id)["guide"]
 		self.assertIn(f"Base: {hotfix}, the merge base with branch hotfix.", guide)
 		self.assertNotIn("app/hotfix.py", guide)
-		local.submit(review_id, [])
+		# The run that submit saves has the base branch of the session.
+		runs = []
+
+		def keep(*args, **kwargs):
+			runs.append(CHANGE_RUN(*args, **kwargs))
+			return runs[-1]
+
+		with patch.object(local, "change_run", side_effect=keep):
+			name = local.submit(review_id, [])["review"]
+		self.assertEqual([run.base_branch for run in runs], ["hotfix"])
+		self.assertEqual(runs[0].review.name, name)
 
 		store = store_for(self.repository)
 		change = store.diff(self.base, hotfix)
@@ -534,6 +546,22 @@ class TestPublishLocalReview(PullRequestCase):
 		local_publish.publish(review)
 		with self.assertRaises(frappe.ValidationError):
 			local_publish.publish(review)
+
+	def test_publish_runs_with_the_base_branch_of_the_pull_request(self):
+		# The pull request targets a hotfix branch, not the default branch.
+		self.repo.git("branch", "hotfix", self.base)
+		frappe.db.set_value("Pull Request", self.pr, "base_branch", "hotfix")
+		review = self.submit()
+		runs = []
+
+		def keep(*args, **kwargs):
+			runs.append(CHANGE_RUN(*args, **kwargs))
+			return runs[-1]
+
+		with patch.object(local, "change_run", side_effect=keep):
+			local_publish.publish(review)
+		self.assertEqual([run.base_branch for run in runs], ["hotfix"])
+		self.assertEqual(runs[0].base_sha, self.base)
 
 	def test_publish_takes_no_daily_review_slot(self):
 		frappe.db.set_single_value("Guard Settings", "repository_daily_reviews", 1)
