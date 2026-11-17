@@ -91,6 +91,22 @@ class TestPipeline(PullRequestCase):
 		self.assertEqual(self.adapter.named("status"), ["queued", "pending", "failure"])
 		self.assertIn("+1", self.adapter.named("react"))
 
+	def test_the_summary_and_the_review_name_the_model_of_the_tier(self):
+		models = {"base": "base-model", "plus": "plus-model"}
+		gateway = GatewayConfig(models, {"gw": AIProviderConfig("gw", "https://gw", "k", "anthropic")}, "gw")
+		verdict = {"summary": "s", "confidence_score": 4}
+		valid = '[{"index": 0, "valid": true}]'
+		respond = scripted([[("report_finding", PROBLEM), ("submit_review", verdict)]], {"verify": valid})
+		with patch("guard.settings.gateway", return_value=gateway), use_responder(respond):
+			name = str(trigger.consider(self.pr, "open"))
+		review = db.values("Code Review", name, ("status", "error", "tier", "model")) or {}
+		self.assertEqual(review["status"], "Completed", review["error"])
+		self.assertEqual((review["tier"], review["model"]), ("plus", "plus-model"))
+		summary = self.adapter.named("post_comment")[0]
+		# The plus model also checked the finding: the footer names it once.
+		self.assertIn("Reviewed by `plus-model` · [Re-trigger]", summary)
+		self.assertNotIn("https://gw", summary)
+
 	def test_summary_is_posted_above_the_inline_comments(self):
 		self.review(
 			[[("report_finding", PROBLEM), ("submit_review", {"summary": "s", "confidence_score": 4})]]
@@ -1881,6 +1897,7 @@ class TestApexAreas(IntegrationTestCase):
 			[(r.purpose, r.model) for r in requests], [("verify", "plus-model"), ("verdict", "plus-model")]
 		)
 		self.assertEqual(run.verdict.confidence_score, 5)
+		self.assertEqual(run.check_model, "plus-model")
 		# Without a plus model, the check falls back to apex and not to base.
 		gateway.models = dict(models, plus="")
 		with patch("guard.settings.gateway", return_value=gateway):
@@ -1907,8 +1924,14 @@ class TestApexAreas(IntegrationTestCase):
 		with patch("guard.settings.gateway", return_value=gateway), use_responder(respond):
 			pipeline.agent(run, BuiltContext(ContextPack()))
 		self.assertIn("Reviewed by `plus-model`", render.summary(run, [], 1, {}))
-		# The agents took no turn: no model read the code.
+		# Another model checked the findings: the footer names both.
+		run.check_model = "check-model"
+		self.assertIn("Reviewed by `plus-model`, checked by `check-model`", render.summary(run, [], 1, {}))
+		# The agents took no turn: only the check read the code.
 		run.turns = 0
+		self.assertIn("Checked by `check-model`", render.summary(run, [], 1, {}))
+		self.assertNotIn("Reviewed by", render.summary(run, [], 1, {}))
+		run.check_model = ""
 		self.assertNotIn("Reviewed by", render.summary(run, [], 1, {}))
 		# A model without an AI provider answers nothing.
 		gateway.ai_providers = {}

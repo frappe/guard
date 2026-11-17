@@ -259,13 +259,29 @@ def _outside(finding: Finding, note: str = "") -> str:
 
 def _footer(run: ReviewRun, review_number: int) -> str:
 	parts = [f"Reviews ({review_number})", _last_commit(run)]
-	# Only when the agents took turns: a review with the graph alone had no model.
-	if run.model and run.turns:
-		parts.append(f"Reviewed by `{run.model.replace('`', '')}`")
+	if models := _models(run):
+		parts.append(models)
 	if run.pr is not None:
 		parts.append(f"[Re-trigger]({links.retrigger(str(run.pr.name))})")
 		parts.append(f"[Fix all]({links.fix_all(str(run.pr.name))})")
 	return "<sub>" + " · ".join(parts) + "</sub>"
+
+
+def _models(run: ReviewRun) -> str:
+	"""The model of the review agents, and the model of the checks when it is another one."""
+	reviewer, checker = run.reviewed_by, run.check_model
+	if checker == reviewer:
+		checker = ""
+	if reviewer and checker:
+		return f"Reviewed by {_code(reviewer)}, checked by {_code(checker)}"
+	if reviewer:
+		return f"Reviewed by {_code(reviewer)}"
+	return f"Checked by {_code(checker)}" if checker else ""
+
+
+def _code(model: str) -> str:
+	# A backtick in the name must not break the code span.
+	return f"`{model.replace('`', '')}`"
 
 
 def _local_footer(run: ReviewRun) -> str:

@@ -129,6 +129,8 @@ class ReviewRun:
 	tier: str = "base"
 	# The model of the review agents, for the footer. Empty when no model can answer them.
 	model: str = ""
+	# The model that checked the findings or the score. Empty when no check called a model.
+	check_model: str = ""
 	# Offline mode was on when the review started: no agent runs, and the review costs no credits.
 	offline: bool = False
 	# Offline for this review only: an AI provider is down (`ReviewPipeline.falls_back`).
@@ -155,6 +157,12 @@ class ReviewRun:
 
 	def file(self, path: str) -> FileDiff | None:
 		return next((f for f in self.files if f.path == path), None)
+
+	@property
+	def reviewed_by(self) -> str:
+		"""The model that read the code as the reviewer. Empty when the agents took no turn: a review
+		with the graph alone had no model."""
+		return self.model if self.turns else ""
 
 	@property
 	def paths(self) -> list[str]:

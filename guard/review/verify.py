@@ -54,6 +54,7 @@ def verify(run: ReviewRun) -> None:
 	system = Message("system", VERIFIER + "\n\nAnswer with JSON only.")
 	conversations = [[system, Message("user", _prompt(run, batch, rules, earlier))] for batch in batches]
 	results = client.chat_many(conversations)
+	_checked_by(run, client)
 	for batch, result in zip(batches, results, strict=True):
 		answers = _answers(run, batch, result)
 		for index, finding in enumerate(batch):
@@ -61,6 +62,13 @@ def verify(run: ReviewRun) -> None:
 				_apply(run, finding, answers[index])
 			else:
 				finding.verify_failed = True
+
+
+def _checked_by(run: ReviewRun, client: LLMClient) -> None:
+	"""Keep the model of a check for the footer. A test responder answers also without an AI
+	provider, but then no model ran."""
+	if client.route.online:
+		run.check_model = client.model
 
 
 def check_tier(tier: str) -> str:
@@ -168,6 +176,7 @@ def check_verdict(run: ReviewRun) -> None:
 			+ data(f"what happened to finding {offset}", "open from an earlier review: it still applies")
 		)
 	answer = client.complete_json(VERDICT, "\n\n".join(parts), default={})
+	_checked_by(run, client)
 	score = answer.get("score") if isinstance(answer, dict) else None
 	if not isinstance(score, int) or isinstance(score, bool) or not 0 <= score <= 5:
 		return
