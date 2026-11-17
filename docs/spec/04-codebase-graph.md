@@ -130,9 +130,12 @@ For every language, Guard reads route definitions, routers with a path prefix an
 By default Guard indexes only the default branch. The config key `index_branches` ([06-configuration.md](06-configuration.md)) lists other branches, as globs, that get an index of their own, for example `version-*-hotfix`. A pull request to such a branch then gets callers, callees, blast radius and similar code of that branch.
 
 - Guard reads the setting at push time and in `catch_up`, so it reads only the cheap layers: the dashboard (Review Settings of the organization or the team) and the root config at the head of the default branch in the mirror. Nested configs do not count. A pull request cannot add a branch for itself.
-- The first review of a pull request to a listed branch makes its index: a full index. A push to a listed branch queues an incremental update. `catch_up` updates them as it updates the default branch.
-- A repository has at most 5 branch indexes (`MAX_BRANCH_INDEXES` in `guard/indexing/branches.py`). Each one is a full copy of the entity, edge and chunk rows and of the vectors. Past the limit, Guard logs a warning and does not index the branch.
-- Every hour, `catch_up` drops the index of a branch that the setting no longer lists or that the remote no longer has: its Code Entity, Code Edge and Code Chunk rows, its `guard_vector` rows, and the Repository Index. It does not drop an index while a run writes it, and never the index of the default branch. It also drops an index that the query API made for a branch that the setting does not list.
+- An index that Guard makes for the setting has `auto` set on its Repository Index. An index that the query API makes has not.
+- The first review of a pull request to a listed branch queues a full index of the branch on the `long` queue, and does not wait for it: the review uses the index of the default branch with a note. A later review uses the branch index when it is completed. A push to a listed branch queues an incremental update. `catch_up` updates them as it updates the default branch. A failed run blocks indexing of the branch for an hour, as on the default branch.
+- A repository has at most 5 branch indexes (`MAX_BRANCH_INDEXES` in `guard/indexing/branches.py`). Each one is a full copy of the entity, edge and chunk rows and of the vectors. The limit counts the indexes with `auto` set whose branch the setting lists. The oldest indexes win: when more of them exist than the limit, for example after a change of the setting, the ones created first are used, and `catch_up` drops the others. A new branch never takes the place of a branch that has an index. Past the limit, Guard logs a warning and does not index the branch. An index of the query API does not count, and a review of a listed branch can use it.
+- Every hour, `catch_up` drops an index with `auto` set when the setting no longer lists its branch or the index is past the limit. It drops any index of a branch other than the default branch when the remote no longer has the branch. An index of the query API for a branch that the setting does not list stays, and `catch_up` does not update it.
+- A drop deletes the Code Edge, Code Entity and Code Chunk rows and the `guard_vector` rows of the chunks in batches of 5,000 rows, with a commit after each batch, and then the Repository Index. First it sets the index to `failed` with no sha, so reviews and runs that read it skip it. It drops an index only when its status is `completed` or `failed`, no run holds its lock, and no review of a pull request to its branch is queued or running. Else the next `catch_up` tries again. A queued index job whose index is gone stops without an error. `catch_up` never drops the index of the default branch. A failure in one repository does not stop the others.
+- Branch names are compared without case, as MariaDB compares the `branch` column.
 - `index_status`, `default_index` and the knowledge base stay about the default branch.
 
 Cost: each listed branch costs as much storage as the default branch. The first index embeds every chunk once. Later pushes are incremental, as on the default branch.
@@ -156,7 +159,7 @@ Cost: each listed branch costs as much storage as the default branch. The first 
 
 ## Pull request graph
 
-The base index is the index of the base branch when `index_branches` lists it and its index is ready ([Branch indexes](#branch-indexes)). Else it is the index of the default branch, also for a pull request to another branch. Then the agent gets a note: the graph is of a commit of the default branch, not of the base branch, so it checks callers and callees in the code at the base. Every consumer in the review (the overlay, the checks, cross-repo callers and the agent tools) uses the same index. A pull request changes some files, so Guard builds a small overlay graph for the head:
+The base index is the index of the base branch when `index_branches` lists it and its index is completed ([Branch indexes](#branch-indexes)). Else it is the index of the default branch, also for a pull request to another branch. Then the agent gets a note: the graph is of a commit of the default branch, not of the base branch, so it checks callers and callees in the code at the base. Every consumer in the review (the overlay, the checks, cross-repo callers and the agent tools) uses the same index. A pull request changes some files, so Guard builds a small overlay graph for the head:
 
 1. Parse each changed file at the head commit in memory. Do not write rows.
 2. Map each diff hunk to the head entities whose line range overlaps it. These are the **changed entities**.
@@ -187,3 +190,4 @@ When a review, a chat answer or the knowledge base needs a file summary, Guard g
 | Callers returned for each entity | 50 |
 | Impact depth | 2 |
 | Branch indexes for each repository, apart from the default branch | 5 |
+| Rows deleted in one batch when Guard drops a branch index | 5,000 |

@@ -118,7 +118,7 @@ The record name is a random hash.
 
 ### Repository Index
 
-`repository`, `branch`, `status` (`submitted`, `cloning`, `processing`, `completed`, `failed`), `sha`, `files_processed`, `num_files`, `entity_count`, `edge_count`, `chunk_count`, `error`, `started_at`, `completed_at`.
+`repository`, `branch`, `status` (`submitted`, `cloning`, `processing`, `completed`, `failed`), `sha`, `auto` (Check, read only: Guard made it for `index_branches`), `files_processed`, `num_files`, `entity_count`, `edge_count`, `chunk_count`, `error`, `started_at`, `completed_at`.
 
 One record for each repository and branch. The default branch always has one. Other branches have one when `index_branches` lists them ([04-codebase-graph.md](04-codebase-graph.md#branch-indexes)). `index_status` and `default_index` on Code Repository are about the default branch only.
 

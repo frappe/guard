@@ -10,13 +10,16 @@ from guard.llm.embeddings import Embedder
 from guard.utils import db
 
 
-def index_for(repository: str, branch: str | None = None) -> str:
-	"""The Repository Index of a branch, created when missing."""
+def index_for(repository: str, branch: str | None = None, auto: bool = False) -> str:
+	"""The Repository Index of a branch, created when missing. `auto` marks a new index that
+	`index_branches` asks for: Guard drops it when the setting no longer lists the branch."""
 	branch = branch or db.value("Code Repository", repository, "default_branch") or "main"
 	name = db.value("Repository Index", {"repository": repository, "branch": branch}, "name")
 	if name:
 		return str(name)
-	doc = frappe.get_doc({"doctype": "Repository Index", "repository": repository, "branch": branch})
+	doc = frappe.get_doc(
+		{"doctype": "Repository Index", "repository": repository, "branch": branch, "auto": int(auto)}
+	)
 	doc.insert(ignore_permissions=True)
 	return str(doc.name)
 
@@ -47,6 +50,8 @@ def enqueue_index(repository: str, branch: str | None = None, full: bool = False
 
 def run_index(index: str, full: bool = False) -> None:
 	repository = db.value("Repository Index", index, "repository")
+	if not repository:
+		return  # `branches.drop_index` dropped the index after the job was queued.
 	if db.value("Code Repository", repository, "default_branch") == db.value(
 		"Repository Index", index, "branch"
 	):
@@ -57,6 +62,11 @@ def run_index(index: str, full: bool = False) -> None:
 	except IndexBusy:
 		# Another job is indexing the branch now. The next push indexes it again.
 		return
+	except frappe.DoesNotExistError:
+		if frappe.db.exists("Repository Index", index):
+			raise
+		# Dropped while the job started. Only a branch index can be dropped.
+		frappe.clear_last_message()
 
 
 def catch_up() -> None:

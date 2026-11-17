@@ -122,10 +122,10 @@ Guard keeps a code graph of the default branch. It uses the graph to find the ca
 | `index_branches` | `[]` | Base branches that get their own code graph, for example `["version-*-hotfix"]`. |
 
 - Set it in Review Settings (**Index Branches**) or in the root `.guard/config.toml` or `guard.toml` of the default branch. A config in a subdirectory does not count.
-- The first review of a pull request to a listed branch indexes the whole branch. A push to the branch updates the graph.
+- The first review of a pull request to a listed branch starts an index of the whole branch in the background, and uses the graph of the default branch. Later reviews use the graph of the branch when the index is complete. A push to the branch updates the graph.
 - Each listed branch is a full extra copy of the graph and its search vectors. The first index embeds every chunk once. Later pushes index only the changed files.
-- Guard indexes at most 5 branches for each repository, apart from the default branch.
-- Every hour, Guard deletes the graph of a branch that the setting no longer lists or that the repository no longer has. It never deletes the graph of the default branch.
+- Guard indexes at most 5 branches for each repository, apart from the default branch. When more branches match, the branches that Guard indexed first keep their graphs.
+- Every hour, Guard deletes the graph of a branch that the setting no longer lists or that the repository no longer has. It never deletes the graph of the default branch. A graph that you asked for through the query API stays until its branch is deleted.
 
 ### Output
 

@@ -620,14 +620,16 @@ def _callers(run: ReviewRun, graph: CodeGraph, name: str) -> str:
 	if not links:
 		return f"no callers of {name}"
 	# The line numbers are of the commit of the index: of the base branch when Guard indexes it, else
-	# of the default branch (`run.graph_note`). Read each call at that commit, so the line fits.
+	# of the default branch (`run.graph_note`). Read each call at that commit, so the line fits. Read
+	# the commit with the rows: a push can update the index during the review.
+	sha = graph.sha
 	changed = set(run.paths)
 	sources: dict[str, list[str]] = {}
-	commit = f" {graph.sha[:12]}" if graph.sha else ""
+	commit = f" {sha[:12]}" if sha else ""
 	out = [f"Callers of {entity.label}. Line numbers are of commit{commit} of the code graph."]
 	for link in links:
 		if link.path not in sources:
-			text = graph.source(link.path) or run.base(link.path) or run.head(link.path)
+			text = graph.source(link.path, sha) or run.base(link.path) or run.head(link.path)
 			sources[link.path] = (text or "").splitlines()
 		lines = sources[link.path]
 		call = lines[link.line - 1].strip()[:200] if 0 < link.line <= len(lines) else ""

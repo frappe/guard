@@ -11,7 +11,7 @@ from frappe import _
 from werkzeug.wrappers import Response
 
 from guard.conversation import codebase
-from guard.indexing.jobs import enqueue_index, index_for
+from guard.indexing.jobs import enqueue_index
 from guard.utils import db
 
 STATUS = {
@@ -47,8 +47,11 @@ def get_repository(repository_id: str) -> dict[str, Any]:
 	remote, branch, full_name = parse_id(repository_id)
 	name = _repository(full_name)
 	frappe.has_permission("Code Repository", "read", name, throw=True)
-	index = index_for(name, branch or None)
-	row = db.values("Repository Index", index, ("status", "files_processed", "num_files", "sha")) or {}
+	indexed = branch or str(db.value("Code Repository", name, "default_branch") or "")
+	# Read only: a status request must not make an index that nothing runs or drops.
+	index = db.value("Repository Index", {"repository": name, "branch": indexed}, "name")
+	fields = ("status", "files_processed", "num_files", "sha")
+	row = (db.values("Repository Index", str(index), fields) if index else None) or {}
 	return {
 		"repository": full_name,
 		"remote": remote,

@@ -435,28 +435,22 @@ class ReviewPipeline:
 		return index
 
 	def base_branch_index(self, run: ReviewRun, refresh: bool) -> str | None:
-		"""The index of the base branch of a pull request, when `index_branches` lists the branch.
+		"""The completed index of the base branch of a pull request, when `index_branches` lists the
+		branch. Else None, and the review takes the index of the default branch with a note.
 
-		The first review of the branch makes it: a full index. When it is busy or failed, the review
-		takes the index of the default branch with a note, and does not wait: that index is ready.
+		The review does not make the index of the branch: the first one is a full index. It queues it
+		on the `long` queue, and a later review uses it.
 		"""
-		assert run.repository
-		if run.pr is None or not branches.index_of(
-			run.repository, run.base_branch, run.settings.get(branches.SETTING)
-		):
+		if run.pr is None or not run.repository:
 			return None
-		try:
-			return ensure_fresh(run.repository, refresh=refresh, branch=run.base_branch)
-		except (IndexBusy, IndexFailed) as error:
-			frappe.logger("guard").info(
-				f"review {self.review.name}: the index of the base branch is not ready: {redact(str(error))}"
-			)
-			return None
+		return branches.ready_index(
+			run.repository, run.base_branch, run.settings.get(branches.SETTING), queue=refresh
+		)
 
 	def note_default_graph(self, run: ReviewRun, index: str) -> None:
 		"""Tell the agent when the graph is of the default branch and the base is another branch."""
 		default = default_branch(str(run.repository))
-		if run.pr is None or not run.base_branch or run.base_branch == default:
+		if run.pr is None or not run.base_branch or branches.same_branch(run.base_branch, default):
 			return
 		sha = str(db.value("Repository Index", index, "sha") or "")
 		# The overlay reads the changed files at the merge base. Callers, callees and similar code come

@@ -78,16 +78,17 @@ class CodeGraph:
 		self.index = index
 		self.repository = str(db.value("Repository Index", index, "repository") or "")
 
-	@cached_property
+	@property
 	def sha(self) -> str:
-		"""The commit of the index. The line numbers of the graph are of this commit."""
+		"""The commit of the index now. The line numbers of the graph are of this commit. Not cached:
+		a push can update the index during a long review, and the rows change with it."""
 		return str(db.value("Repository Index", self.index, "sha") or "")
 
-	def source(self, path: str) -> str | None:
-		"""A file at the commit of the index. None when the mirror does not have it."""
-		if not self.sha or not self.repository:
+	def source(self, path: str, sha: str) -> str | None:
+		"""A file at `sha`, a commit of the index. None when the mirror does not have it."""
+		if not sha or not self.repository:
 			return None
-		return self._store.show(self.sha, path)
+		return self._store.show(sha, path)
 
 	@cached_property
 	def _store(self) -> "GitStore":

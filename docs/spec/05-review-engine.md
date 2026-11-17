@@ -122,11 +122,15 @@ On a push re-review or a backport, the lines, files, paths and contract changes 
 
 ## Stage 3: Fresh index
 
-Guard picks the index of the base branch when the base branch is not the default branch, `index_branches` lists it ([04-codebase-graph.md](04-codebase-graph.md#branch-indexes)), and the repository has fewer than 5 branch indexes or has one for this branch already. Else it picks the index of the default branch.
+Guard picks the index of the base branch when the base branch is not the default branch, `index_branches` lists it ([04-codebase-graph.md](04-codebase-graph.md#branch-indexes)), the branch is within the limit of 5 branch indexes, and its index is completed. Else it picks the index of the default branch.
 
-The review takes any completed index: pushes and the hourly `catch_up` keep it fresh. An index that never completed gets a full index first, in the review. Indexing waits when another job indexes the same branch: the review tries again after 1, 5 and 15 minutes. The index of a listed base branch does not make the review wait: when it is busy or fails, the review takes the index of the default branch.
+The review never builds the index of a base branch. When a listed branch has no completed index, the review queues one on the `long` queue (the first one is a full index) and uses the index of the default branch with the note below. A later review uses the branch index when it is completed. It does not queue an index that runs now or that failed in the last hour.
 
-When the base branch is not the default branch and the graph is of the default branch, the task of the agent says so: "The code graph is of commit X of the default branch, not of the base branch of this pull request." The agent then checks callers and callees in the code at the base. `get_callers` gives line numbers and lines of the commit of the index, and says which commit that is.
+The review takes any completed index: pushes and the hourly `catch_up` keep it fresh. An index of the default branch that never completed gets a full index first, in the review. Indexing waits when another job indexes the same branch: the review tries again after 1, 5 and 15 minutes.
+
+Replies in review threads use the same index as a review: the completed index of a listed base branch, else the index of the default branch. A reply does not queue an index.
+
+When the base branch is not the default branch and the graph is of the default branch, the task of the agent says so: "The code graph is of commit X of the default branch, not of the base branch of this pull request." The agent then checks callers and callees in the code at the base. `get_callers` gives line numbers and lines of the commit of the index, and says which commit that is. It reads the commit with the rows on each call: a push can update the index during the review.
 
 For one hour after an index run fails, reviews go on without the graph and do not wait for the index again. The Repository Index keeps the error and the end time of the failed run until a later run completes.
 

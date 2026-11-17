@@ -2,12 +2,13 @@ from unittest.mock import PropertyMock, patch
 
 import frappe
 from frappe.tests import IntegrationTestCase
+from frappe.utils import now_datetime
 
 from guard.config import dashboard
 from guard.git.repository import store_for
 from guard.git.store import GitError, GitStore
 from guard.indexing import branches, jobs
-from guard.indexing.indexer import Indexer
+from guard.indexing.indexer import Indexer, index_lock
 from guard.llm.client import LLMClient, use_responder
 from guard.review import trigger
 from guard.tests.cases import PullRequestCase
@@ -25,6 +26,9 @@ HOTFIX_CALLER = """from app.models import update_user_email
 def hotfix_email(user):
     return update_user_email(user, "fixed@example.com")
 """
+
+
+PATTERNS = ["version-*-hotfix"]
 
 
 def listed_config() -> str:
@@ -68,15 +72,29 @@ class TestBaseBranchReview(PullRequestCase):
 			db.value("Repository Index", {"repository": self.repository, "branch": HOTFIX}, "name") or ""
 		)
 
-	def test_a_listed_base_branch_reviews_with_its_own_index(self):
+	def test_the_first_review_queues_the_branch_index_and_uses_the_default_graph(self):
+		main = self.commit_on_main({".guard/config.toml": listed_config()})
+		with patch("guard.indexing.jobs.enqueue_index") as enqueue:
+			task = self.review_task()
+		# The first index of a branch is a full index: the review does not wait for it.
+		self.assertEqual([c.args for c in enqueue.call_args_list], [(self.repository, HOTFIX)])
+		self.assertEqual(
+			db.values("Repository Index", self.branch_index(), ("auto", "status")),
+			{"auto": 1, "status": "submitted"},
+		)
+		self.assertIn(f"The code graph is of commit {main[:12]} of the default branch `main`", task)
+		self.assertNotIn("app/hotfix.py", task)
+
+	def test_a_listed_base_branch_reviews_with_its_own_index_when_it_is_completed(self):
 		self.commit_on_main({".guard/config.toml": listed_config()})
-		task = self.review_task()
+		# Tests run queued jobs at once: this makes and completes the index.
+		self.assertIsNone(branches.ready_index(self.repository, HOTFIX, PATTERNS, queue=True))
 		index = self.branch_index()
-		self.assertTrue(index, "the first review of the branch makes its index")
 		self.assertEqual(
 			db.values("Repository Index", index, ("status", "sha")),
 			{"status": "completed", "sha": self.hotfix},
 		)
+		task = self.review_task()
 		# The caller of the release branch is at risk: the graph is of that branch.
 		self.assertIn("app/hotfix.py", task)
 		self.assertNotIn("of the default branch", task)
@@ -92,27 +110,43 @@ class TestBaseBranchReview(PullRequestCase):
 
 	def test_a_branch_past_the_limit_gets_the_default_index_and_a_note(self):
 		self.commit_on_main({".guard/config.toml": listed_config()})
-		with patch.object(branches, "MAX_BRANCH_INDEXES", 0):
+		for n in range(1, branches.MAX_BRANCH_INDEXES + 1):
+			self.assertTrue(branches.index_of(self.repository, f"version-{n}-hotfix", PATTERNS))
+		with patch("guard.indexing.jobs.enqueue_index") as enqueue:
 			task = self.review_task()
 		self.assertFalse(self.branch_index())
+		enqueue.assert_not_called()
 		self.assertIn("of the default branch `main`", task)
 
 	def test_a_failed_branch_index_gets_the_default_index_and_a_note(self):
 		self.commit_on_main({".guard/config.toml": listed_config()})
-		run = Indexer._run
-
-		def fail_on_the_branch(indexer):
-			if indexer.doc.branch == HOTFIX:
-				raise RuntimeError("parser crashed")
-			return run(indexer)
-
-		with patch.object(Indexer, "_run", autospec=True, side_effect=fail_on_the_branch):
+		index = str(branches.index_of(self.repository, HOTFIX, PATTERNS))
+		db.set_values(
+			"Repository Index",
+			index,
+			{"status": "failed", "error": "parser crashed", "completed_at": now_datetime()},
+		)
+		with patch("guard.indexing.jobs.enqueue_index") as enqueue:
 			task = self.review_task()
+		enqueue.assert_not_called()  # A failed run blocks indexing for an hour.
 		self.assertIn("of the default branch `main`", task)
 		self.assertNotIn("app/hotfix.py", task)
-		self.assertEqual(db.value("Repository Index", self.branch_index(), "status"), "failed")
-		# The status of the repository is about the default branch only.
-		self.assertEqual(db.value("Code Repository", self.repository, "index_status"), "Indexed")
+
+	def test_a_drop_waits_for_the_reviews_of_the_branch(self):
+		self.commit_on_main({".guard/config.toml": listed_config()})
+		branches.ready_index(self.repository, HOTFIX, PATTERNS, queue=True)
+		index = self.branch_index()
+		review = frappe.get_doc(
+			{
+				"doctype": "Code Review",
+				"pull_request": self.pr,
+				"repository": self.repository,
+				"status": "Queued",
+			}
+		).insert(ignore_permissions=True)
+		self.assertFalse(branches.drop_index(index), "a queued review can read it")
+		frappe.db.set_value("Code Review", str(review.name), "status", "Completed")
+		self.assertTrue(branches.drop_index(index))
 
 	def test_a_pull_request_to_the_default_branch_has_no_note(self):
 		frappe.db.set_value("Pull Request", self.pr, "base_branch", "main")
@@ -158,6 +192,9 @@ class TestBranchIndexJobs(IntegrationTestCase):
 		self.set_config(listed_config())
 		self.assertTrue(self.push(HOTFIX))
 		self.assertEqual(self.queued, [(HOTFIX,)])
+		self.assertEqual(
+			db.value("Repository Index", {"repository": self.repository, "branch": HOTFIX}, "auto"), 1
+		)
 
 	def test_a_push_to_an_unlisted_branch_queues_nothing(self):
 		self.set_config(listed_config())
@@ -176,15 +213,24 @@ class TestBranchIndexJobs(IntegrationTestCase):
 			dashboard.settings_layer(doc).settings["index_branches"], ["version-*-hotfix", "version-14"]
 		)
 
-	def index_both(self) -> tuple[str, str]:
+	def index_both(self, auto: bool = True) -> tuple[str, str]:
 		self.set_config(listed_config())
 		default = jobs.ensure_fresh(self.repository)
+		if auto:
+			self.assertTrue(branches.index_of(self.repository, HOTFIX, PATTERNS))
+		else:
+			jobs.index_for(self.repository, HOTFIX)  # as the query API makes it
 		branch = jobs.ensure_fresh(self.repository, branch=HOTFIX)
 		self.assertNotEqual(default, branch)
+		self.assertEqual(db.value("Repository Index", branch, "auto"), int(auto))
 		return default, branch
 
-	def counts(self, index: str) -> tuple[int, int]:
-		entities = int(db.scalar("SELECT COUNT(*) FROM `tabCode Entity` WHERE `index` = %s", (index,)))
+	def counts(self, index: str) -> tuple[int, int, int, int]:
+		def count(table: str) -> int:
+			return int(
+				db.scalar(f"SELECT COUNT(*) FROM `{table}` WHERE `index` = %s", (index,))
+			)  # nosemgrep: frappe-sql-format-injection
+
 		vectors = int(
 			db.scalar(
 				"""SELECT COUNT(*) FROM `guard_vector` v JOIN `tabCode Chunk` c ON c.name = v.ref
@@ -192,23 +238,96 @@ class TestBranchIndexJobs(IntegrationTestCase):
 				(index,),
 			)
 		)
-		return entities, vectors
+		return count("tabCode Entity"), count("tabCode Edge"), count("tabCode Chunk"), vectors
 
 	def test_catch_up_drops_the_index_of_a_branch_no_longer_listed(self):
 		default, branch = self.index_both()
-		self.assertTrue(all(self.counts(branch)))
+		before = self.counts(branch)
+		self.assertTrue(all(before), before)
+		chunks = [r[0] for r in db.rows("SELECT name FROM `tabCode Chunk` WHERE `index` = %s", (branch,))]
 		self.set_config(None)
-		jobs.catch_up()
+		# Small batches: the drop deletes in several rounds.
+		with patch.object(branches, "DROP_BATCH", 2):
+			jobs.catch_up()
 		self.assertFalse(frappe.db.exists("Repository Index", branch))
-		self.assertEqual(self.counts(branch), (0, 0))
+		self.assertEqual(self.counts(branch), (0, 0, 0, 0))
+		self.assertFalse(
+			db.scalar(
+				"SELECT COUNT(*) FROM `guard_vector` WHERE kind = 'chunk' AND ref IN %s", (tuple(chunks),)
+			)
+		)
 		self.assertTrue(all(self.counts(default)), "the default index stays")
 		self.assertTrue(frappe.db.exists("Repository Index", default))
+		# A job queued before the drop finds no index, and stops.
+		jobs.run_index(branch)
 
 	def test_catch_up_drops_the_index_of_a_deleted_branch(self):
 		_, branch = self.index_both()
 		self.repo.git("branch", "-D", HOTFIX)
 		jobs.catch_up()
 		self.assertFalse(frappe.db.exists("Repository Index", branch))
+
+	def test_an_index_of_the_query_api_stays_until_its_branch_is_gone(self):
+		_, branch = self.index_both(auto=False)
+		self.set_config(None)
+		jobs.catch_up()
+		self.assertTrue(frappe.db.exists("Repository Index", branch), "the setting did not make it")
+		self.assertTrue(all(self.counts(branch)))
+		self.repo.git("branch", "-D", HOTFIX)
+		jobs.catch_up()
+		self.assertFalse(frappe.db.exists("Repository Index", branch))
+
+	def test_a_drop_skips_a_locked_or_queued_index(self):
+		_, branch = self.index_both()
+		with index_lock(branch):
+			self.assertFalse(branches.drop_index(branch), "a run writes it")
+		frappe.db.set_value("Repository Index", branch, "status", "submitted")
+		self.assertFalse(branches.drop_index(branch), "a job is queued")
+		self.assertEqual(db.value("Repository Index", branch, "status"), "submitted")
+		self.assertTrue(all(self.counts(branch)))
+		frappe.db.set_value("Repository Index", branch, "status", "failed")
+		self.assertTrue(branches.drop_index(branch))
+
+	def test_catch_up_goes_on_after_a_repository_fails(self):
+		with (
+			patch.object(branches, "_catch_up", side_effect=[RuntimeError("boom"), None]) as catch_up,
+			patch.object(
+				branches,
+				"branch_indexes",
+				return_value=[branches.BranchIndex("x", "b", True, "completed", "")],
+			),
+			patch.object(db, "rows", return_value=[("one",), ("two",)]),
+		):
+			branches.catch_up()
+		self.assertEqual([c.args[0] for c in catch_up.call_args_list], ["one", "two"])
+
+	def test_the_limit_counts_only_listed_indexes_that_guard_made_and_the_oldest_win(self):
+		api = jobs.index_for(self.repository, "version-0-hotfix")  # not marked: does not count
+		jobs.index_for(self.repository, "version-0-other", auto=True)  # not listed: does not count
+		made = [branches.index_of(self.repository, f"version-{n}-hotfix", PATTERNS) for n in range(1, 6)]
+		self.assertTrue(all(made))
+		self.assertIsNone(branches.index_of(self.repository, "version-6-hotfix", PATTERNS))
+		self.assertEqual(branches.index_of(self.repository, "version-0-hotfix", PATTERNS), api)
+		# A wider setting can leave more marked indexes than the limit. The oldest win.
+		jobs.index_for(self.repository, "version-7-hotfix", auto=True)
+		self.assertIsNone(branches.index_of(self.repository, "version-7-hotfix", PATTERNS))
+		self.assertEqual(branches.index_of(self.repository, "version-1-hotfix", PATTERNS), made[0])
+
+	def test_branch_names_match_without_case(self):
+		index = branches.index_of(self.repository, HOTFIX, PATTERNS)
+		self.assertEqual(branches.index_of(self.repository, HOTFIX.upper(), PATTERNS), index)
+		self.assertIsNone(branches.index_of(self.repository, "MAIN", ["*"]), "the default branch")
+
+	def test_a_failed_branch_index_does_not_fail_the_repository(self):
+		_, branch = self.index_both()
+		status = db.value("Code Repository", self.repository, "index_status")
+		with (
+			patch.object(Indexer, "_run", side_effect=RuntimeError("parser crashed")),
+			self.assertRaises(RuntimeError),
+		):
+			jobs.run_index(branch, full=True)
+		self.assertEqual(db.value("Repository Index", branch, "status"), "failed")
+		self.assertEqual(db.value("Code Repository", self.repository, "index_status"), status)
 
 	def test_catch_up_indexes_a_listed_branch_that_moved(self):
 		_, branch = self.index_both()

@@ -13,6 +13,7 @@ class RepositoryIndex(Document):
 	if TYPE_CHECKING:
 		from frappe.types import DF
 
+		auto: DF.Check
 		branch: DF.Data
 		chunk_count: DF.Int
 		completed_at: DF.Datetime | None
