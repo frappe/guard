@@ -59,6 +59,8 @@ MAX_SUGGESTION = 20_000
 MAX_AGENT = 140  # the length of a Data field
 SHA = re.compile(r"[0-9a-f]{7,64}")
 REVIEW_ID = re.compile(r"[0-9a-f]{16}")
+# A branch name that can go into the upload command without quotes. Git allows more, such as `;` and `$`.
+SAFE_REF = re.compile(r"[A-Za-z0-9._/-]{1,140}")
 
 WAITING, READY = "waiting", "ready"
 
@@ -102,8 +104,10 @@ def repositories() -> list[str]:
 	return [str(r) for r in frappe.get_list("Code Repository", pluck="full_name", order_by="full_name")]
 
 
-def begin(full_name: str, instructions: str = "") -> tuple[str, str]:
-	"""Start a review that waits for its diff. Return the review id and the secret of the upload."""
+def begin(full_name: str, instructions: str = "", base_branch: str = "") -> tuple[str, str]:
+	"""Start a review that waits for its diff. Return the review id and the secret of the upload.
+	`base_branch` is the branch that the change targets. Empty means the default branch."""
+	base_branch = safe_branch(base_branch)
 	repository = repository_for(full_name)
 	review_id, secret = frappe.generate_hash(length=16), frappe.generate_hash(length=32)
 	cache.set(
@@ -112,6 +116,7 @@ def begin(full_name: str, instructions: str = "") -> tuple[str, str]:
 			"state": WAITING,
 			"user": frappe.session.user,
 			"repository": repository,
+			"base_branch": base_branch,
 			"instructions": instructions.strip()[:MAX_INSTRUCTIONS],
 			"secret": _digest(secret),
 			"started_at": now_datetime(),
@@ -141,11 +146,13 @@ def receive(
 	base: str,
 	branch: str = "",
 	head: str = "",
+	base_branch: str = "",
 ) -> dict[str, Any]:
 	"""Take the diff of a waiting review from the upload of the shell, and act for the user who started
 	the review. The secret is the credential: the upload has no session. `diff` can be a function, so
 	the body is read only after the secret is checked. When the diff does not apply, the review keeps
-	waiting, so the agent can send it again."""
+	waiting, so the agent can send it again. `base_branch` replaces the base branch of `begin`: the
+	pre-push hook chooses it after the start."""
 	waiting(review_id, secret)
 	with cache.exclusive(f"guard:local-receive:{review_id}", 600) as acquired:
 		if not acquired:
@@ -158,15 +165,21 @@ def receive(
 		# nosemgrep: frappe-setuser -- the one-time upload secret is checked above, and the user is enabled
 		frappe.set_user(user)
 		frappe.has_permission("Code Repository", "read", str(session["repository"]), throw=True)
-		_set_change(session, base, branch, head)
+		_set_change(session, base, branch, head, base_branch)
 		return _prepare(review_id, session, diff() if callable(diff) else diff)
 
 
 def start(
-	full_name: str, base: str, diff: str, branch: str = "", head: str = "", instructions: str = ""
+	full_name: str,
+	base: str,
+	diff: str,
+	branch: str = "",
+	head: str = "",
+	instructions: str = "",
+	base_branch: str = "",
 ) -> dict[str, Any]:
 	"""Start a review with the diff in the call. Only for small diffs: a model writes out each byte."""
-	review_id, _secret = begin(full_name, instructions)
+	review_id, _secret = begin(full_name, instructions, base_branch)
 	session = _session(review_id)
 	_set_change(session, base, branch, head)
 	_prepare(review_id, session, diff)
@@ -191,8 +204,24 @@ def context_for(review_id: str) -> dict[str, Any]:
 	}
 
 
-def _set_change(session: dict[str, Any], base: str, branch: str, head: str) -> None:
+def safe_branch(name: str) -> str:
+	"""`name` without spaces, when it can go into the upload command. Empty means the default branch."""
+	name = name.strip()
+	if name and not SAFE_REF.fullmatch(name):
+		frappe.throw(
+			_(
+				"base_branch {0} is not a branch name that Guard can put in a shell command. Send the name "
+				"of the branch on the remote, without the remote, such as `version-15-hotfix`: letters, "
+				"digits and `._/-`, at most 140 characters."
+			).format(name[:MAX_BRANCH])
+		)
+	return name
+
+
+def _set_change(session: dict[str, Any], base: str, branch: str, head: str, base_branch: str = "") -> None:
 	repository = str(session["repository"])
+	if base_branch := safe_branch(base_branch):
+		session["base_branch"] = base_branch
 	store = store_for(repository)
 	session["base"] = _commit(store, base)
 	# The config comes from the default branch: read it as it is now, not as the mirror last saw it.
@@ -214,7 +243,7 @@ def _prepare(review_id: str, session: dict[str, Any], diff: str | bytes) -> dict
 	if not diff.strip():
 		frappe.throw(
 			_(
-				"The diff is empty. Check that `git diff` works and that the change is not committed to the default branch."
+				"The diff is empty. Check that `git diff` works and that the change is not committed to the base branch."
 			)
 		)
 	try:
@@ -234,7 +263,9 @@ def _apply(review_id: str, session: dict[str, Any], diff: bytes) -> dict[str, An
 		raise
 	# The diff of the mirror, not the one sent: it has the same form as on a pull request.
 	diff_text = store.diff(base, tree)
-	run = change_run(repository, store, base, tree, diff_text, session["branch"])
+	run = change_run(
+		repository, store, base, tree, diff_text, session["branch"], session.get("base_branch") or ""
+	)
 	if not run.files:
 		frappe.throw(_("The diff has no files to review: they are ignored, binary or empty."))
 	index = _index(run)
@@ -283,7 +314,10 @@ def _apply(review_id: str, session: dict[str, Any], diff: bytes) -> dict[str, An
 def guide_for(run: ReviewRun, found: list[Finding], review_id: str, instructions: str = "") -> str:
 	"""What the agent needs to review this change: the rubric, the rules and the graph facts."""
 	parts = [local_prompt(int(run.settings.get("strictness") or 2))]
-	parts.append(f"Review id: {review_id}. Repository: {run.full_name}. Base: {run.base_sha}.")
+	parts.append(
+		f"Review id: {review_id}. Repository: {run.full_name}. Base: {run.base_sha}, "
+		f"the merge base with branch {run.base_branch}."
+	)
 	if instructions:
 		parts.append("Extra instructions from the developer:\n" + data("request", instructions))
 	for source, text in context.instructions(run.cfg)[:10]:
@@ -344,7 +378,13 @@ def submit(
 			# The tree stays in the scratch objects, so the session does not need to hold the diff.
 			diff_text = store.diff(session["base"], session["tree"])
 			run = change_run(
-				repository, store, session["base"], session["tree"], diff_text, session["branch"]
+				repository,
+				store,
+				session["base"],
+				session["tree"],
+				diff_text,
+				session["branch"],
+				session.get("base_branch") or "",
 			)
 		except GitError:
 			frappe.throw(_("Guard lost the change of review {0}. Start the review again.").format(review_id))
@@ -487,23 +527,28 @@ def _commit(store: GitStore, base: str) -> str:
 	"""`base` as a full sha. Fetch it when the mirror does not have it yet."""
 	base = base.strip().lower()
 	if not SHA.fullmatch(base):
-		frappe.throw(_("The base must be a commit sha: `git merge-base HEAD <remote>/<default branch>`."))
+		frappe.throw(_("The base must be a commit sha: `git merge-base HEAD <remote>/<base branch>`."))
 	try:
 		store.fetch_sha(base)
 		return store.rev_parse(base)
 	except GitError:
 		frappe.throw(
-			_("Guard cannot find commit {0}. Use the merge base with the default branch.").format(base)
+			_(
+				"Guard cannot find commit {0}. Use the merge base with the branch that the change targets, "
+				"as it is on the remote."
+			).format(base)
 		)
 		raise
 
 
 def change_run(
-	repository: str, store: GitStore, base: str, tree: str, diff_text: str, branch: str
+	repository: str, store: GitStore, base: str, tree: str, diff_text: str, branch: str, base_branch: str = ""
 ) -> ReviewRun:
-	"""The run of a change from `base` to `tree`. `tree` can also be a commit."""
+	"""The run of a change from `base` to `tree`. `tree` can also be a commit. `base_branch` is the
+	branch that the change targets. Empty means the default branch."""
 	files = parse_diff(diff_text)
-	# Config from the default branch, as on a pull request. The base can be old, or any commit.
+	# Config from the default branch, as on a pull request, also when the change targets another
+	# branch. The base can be old, or any commit.
 	config_sha = default_head(repository, store)
 	config = ConfigResolver.from_store(repository, store, config_sha).resolve_pr([f.path for f in files])
 	reviewed = set(config.reviewed_paths())
@@ -520,7 +565,7 @@ def change_run(
 		title=f"Local change on {branch}" if branch else "Local change",
 		author=str(frappe.session.user),
 		head_branch=branch,
-		base_branch=str(db.value("Code Repository", repository, "default_branch") or ""),
+		base_branch=base_branch or str(db.value("Code Repository", repository, "default_branch") or ""),
 		all_files=files,
 		files=[f for f in files if f.path in reviewed and not f.is_binary][:MAX_FILES],
 		config=config,
@@ -542,7 +587,8 @@ def _index(run: ReviewRun) -> str | None:
 		# The overlay reads the changed files at the base. Callers and their lines are of the index.
 		run.notes.append(
 			f"The code graph is of commit {sha[:12]} of the default branch, not of the base "
-			f"{run.base_sha[:12]}. Callers and their lines come from that commit: check them in the code."
+			f"{run.base_sha[:12]} on {run.base_branch}. Callers and their lines come from that commit: "
+			"check them in the code."
 		)
 	return index
 

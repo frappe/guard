@@ -16,20 +16,24 @@ SITE="__GUARD_SITE__"
 # Seconds. A hung agent or a sign-in that waits must not hold the push.
 START_TIMEOUT=${GUARD_START_TIMEOUT:-180}
 REVIEW_TIMEOUT=${GUARD_TIMEOUT:-900}
+# The remote branches, most recent first, that can be the base. Each one costs a git call, and a base
+# branch such as a release or hotfix branch gets commits.
+MAX_BRANCHES=100
 
 say() { printf 'guard: %s\n' "$*" >&2; }
 # Agent output without control characters, so it cannot move the cursor or change the terminal.
 clean() { LC_ALL=C tr -d '\000-\010\013-\037\177'; }
 
 # Git sends one line for each pushed ref. Review the last branch that is not deleted.
-head="" branch="" skipped=0
-while read -r local_ref local_sha _remote; do
+head="" branch="" target="" skipped=0
+while read -r local_ref local_sha remote_ref _remote_sha; do
 	case $local_ref in refs/heads/*) ;; *) continue ;; esac
 	# A deleted ref has a sha of zeros.
 	case $local_sha in *[!0]*) ;; *) continue ;; esac
 	[ -n "$head" ] && skipped=$((skipped + 1))
 	head=$local_sha
 	branch=${local_ref#refs/heads/}
+	target=${remote_ref#refs/heads/}
 done
 [ -n "$head" ] || exit 0
 [ "$skipped" -gt 0 ] && say "this push has more branches. Guard reviews only $branch."
@@ -114,14 +118,49 @@ if ! printf '%s' "$review" | grep -Eqx '[0-9a-f]{16}' ||
 	exit 0
 fi
 
-if ! base=$(git merge-base "$head" "$remote/$base_branch" 2>/dev/null) ||
+# Guard sent the default branch. The base is the branch of the remote with the nearest merge base: the
+# fewest commits from it to the pushed commit. So a branch from a release or hotfix branch sends only
+# its own commits. On a tie, the default branch wins. The branch that this push updates does not count,
+# unless it is the default branch: its old commit would leave the earlier commits of the branch out.
+default_branch=$base_branch
+best=$(git rev-list --count "refs/remotes/$remote/$default_branch..$head" 2>/dev/null || :)
+pushed_here=no
+if [ "${1:-}" = "$remote" ] || { [ -n "${2:-}" ] && [ "$2" = "$(git remote get-url "$remote" 2>/dev/null)" ]; }; then
+	pushed_here=yes
+fi
+for ref in $(git for-each-ref --sort=-committerdate --count="$MAX_BRANCHES" --format='%(refname)' \
+	"refs/remotes/$remote/"); do
+	[ "$best" = 0 ] && break
+	name=${ref#refs/remotes/"$remote"/}
+	case $name in HEAD | "$default_branch") continue ;; esac
+	[ "$pushed_here" = yes ] && [ "$name" = "$target" ] && continue
+	# Guard takes only these names, as in the upload command.
+	case $name in *[!A-Za-z0-9._/-]*) continue ;; esac
+	[ "${#name}" -le 140 ] || continue
+	# Commits of the pushed commit that are not on the branch: the commits from the merge base. Count
+	# only up to the best so far, so a branch that started long ago costs little.
+	if [ -n "$best" ]; then
+		count=$(git rev-list --count --max-count="$best" "$ref..$head" 2>/dev/null) || continue
+	else
+		count=$(git rev-list --count "$ref..$head" 2>/dev/null) || continue
+	fi
+	if [ -z "$best" ] || [ "$count" -lt "$best" ]; then
+		best=$count
+		base_branch=$name
+	fi
+done
+[ "$base_branch" = "$default_branch" ] ||
+	say "the base is $remote/$base_branch, the remote branch nearest to $branch."
+
+if ! base=$(git merge-base "$head" "refs/remotes/$remote/$base_branch" 2>/dev/null) ||
 	! git diff --binary "$base" "$head" >"$work/diff"; then
 	say "found no merge base with $remote/$base_branch, so the push goes on. Run: git fetch $remote"
 	exit 0
 fi
 if ! curl -sS --fail-with-body -X POST -H 'Content-Type: application/octet-stream' \
 	-H "X-Guard-Upload: $secret" -H "X-Guard-Base: $base" -H "X-Guard-Head: $head" \
-	-H "X-Guard-Branch: $branch" --data-binary @"$work/diff" "$SITE/mcp/upload/$review" \
+	-H "X-Guard-Branch: $branch" -H "X-Guard-Base-Branch: $base_branch" \
+	--data-binary @"$work/diff" "$SITE/mcp/upload/$review" \
 	>"$work/upload" 2>&1; then
 	clean <"$work/upload" >&2
 	say "Guard did not take the diff, so the push goes on."
