@@ -49,15 +49,29 @@ class FilterRule:
 	review_tier: str = ""
 
 
+def is_bot(login: str, account_type: str = "") -> bool:
+	"""The provider marks the account as a bot, or the login is a GitHub App login such as
+	`mergify[bot]`."""
+	return account_type == "Bot" or login.lower().endswith("[bot]")
+
+
 def check(
-	facts: PullRequestFacts, config: PullRequestConfig, event: str, manual: bool, rules: list[FilterRule]
+	facts: PullRequestFacts,
+	config: PullRequestConfig,
+	event: str,
+	manual: bool,
+	rules: list[FilterRule],
+	by_bot: bool = False,
 ) -> GateResult:
+	"""`by_bot`: a bot, or an unknown account, asked for the manual review."""
 	settings = config.settings
 	tier_rules = [rule.review_tier for rule in rules if rule.review_tier and rule_matches(rule, facts)]
 	if manual:
 		if match_filter(facts.base_branch, settings["exclude_branches"]):
 			return GateResult(False, "target branch is excluded")
-		if match_filter(facts.author, settings["exclude_authors"]):
+		# Skipped authors stop automatic reviews only. A person can ask for a review of a skipped
+		# author, for example a bot backport. A bot cannot, or bots could start reviews of each other.
+		if by_bot and match_filter(facts.author, settings["exclude_authors"]):
 			return GateResult(False, "author is excluded")
 		return GateResult(True, tier_rules=tier_rules)
 	if facts.is_draft and not settings["review_drafts"]:

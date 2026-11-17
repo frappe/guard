@@ -1368,14 +1368,27 @@ class TestPipeline(PullRequestCase):
 		settings = frappe.get_doc("Review Settings", "Organization")
 		settings.set("exclude_authors", "mergify[bot]\nad*")
 		settings.save(ignore_permissions=True)
+		submit: list[list[tuple[str, dict[str, Any]]] | str] = [
+			[("submit_review", {"summary": "s", "confidence_score": 5})]
+		]
 		try:
+			# Skipped authors stop automatic reviews.
 			self.assertIsNone(trigger.consider(self.pr, "open"))
-			# Skipped authors apply to requested reviews too.
-			self.assertIsNone(trigger.consider(self.pr, "open", manual=True, requested_by="bob"))
+			self.assertEqual(self.adapter.checks[-1][2], "Guard skipped this review: author is excluded")
+			# A bot cannot ask for a review of a skipped author: by its login, or as the provider tells.
+			for login, by_bot in (("mergify[bot]", False), ("ci-runner", True), ("", True)):
+				self.assertIsNone(
+					trigger.consider(self.pr, "retrigger", manual=True, requested_by=login, by_bot=by_bot)
+				)
+				self.assertEqual(self.adapter.checks[-1][2], "Guard skipped this review: author is excluded")
+			# A person can ask for a review of a skipped author.
+			with use_responder(scripted(submit)):
+				asked = trigger.consider(self.pr, "open", manual=True, requested_by="bob")
+			self.assertEqual(self.row(asked)["status"], "Completed")
 		finally:
 			settings.set("exclude_authors", "")
 			settings.save(ignore_permissions=True)
-		with use_responder(scripted([[("submit_review", {"summary": "s", "confidence_score": 5})]])):
+		with use_responder(scripted(submit)):
 			self.assertTrue(trigger.consider(self.pr, "open"))
 
 	def commit_on_main(self, files):
@@ -2021,6 +2034,24 @@ class TestDeadline(UnitTestCase):
 		with use_responder(respond):
 			result = Agent(run, "s", 8).run_loop("task", deadline=time.time() - 1)
 		self.assertEqual((result.turns, len(calls)), (0, 0))
+
+
+class TestRerunRequester(UnitTestCase):
+	def test_rerun_tells_the_gate_if_a_person_asked(self):
+		"""A re-run by a bot, or by nobody known, keeps skipped authors skipped."""
+		from guard.webhooks import handler
+		from guard.webhooks.events import WebhookEvent
+
+		cases = (("ada", False, False), ("ci", True, True), ("", False, True))
+		for sender, sender_is_bot, by_bot in cases:
+			event = WebhookEvent(kind="rerun", number=7, sender=sender, sender_is_bot=sender_is_bot)
+			with (
+				patch("guard.providers.sync.resolve_repository", return_value="repo"),
+				patch("guard.review.pull_requests.refresh", return_value=SimpleNamespace(name="PR-7")),
+				patch("guard.review.trigger.consider", return_value="CR-1") as consider,
+			):
+				self.assertTrue(handler.dispatch("github", event))
+			consider.assert_called_once_with("PR-7", "retrigger", True, sender, by_bot=by_bot)
 
 
 class TestWebhookDeadlock(IntegrationTestCase):

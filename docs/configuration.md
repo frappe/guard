@@ -98,7 +98,7 @@ After the first review, Guard posts only new P0 and P1 findings. A push that fix
 
 ### Which pull requests Guard reviews
 
-These filters apply to automatic reviews. A review that someone asks for skips them, except `exclude_authors` and `exclude_branches`.
+These filters apply to automatic reviews. A review that someone asks for skips them, except `exclude_branches`. A person can ask for a review of an author in `exclude_authors`, for example a backport that a bot opened. A bot cannot.
 
 | Key | Meaning |
 | - | - |
@@ -207,7 +207,7 @@ It has the same settings as the repository files. The **Filters** section has on
 | Only Target Branches | `include_branches` | |
 | Ignore Patterns | `ignore_patterns` | `**/*.min.js` |
 
-For example, to skip the backport pull requests that Mergify opens, add `mergify[bot]` to **Skip Authors**. To skip only backports, add `(backport #` to **Skip Keywords**.
+For example, to skip the backport pull requests that Mergify opens, add `mergify[bot]` to **Skip Authors**. To review one of them, mention Guard on the pull request. To skip only backports, add `(backport #` to **Skip Keywords**.
 
 Review Settings also has:
 

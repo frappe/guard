@@ -27,6 +27,7 @@ class WebhookEvent:
 	reaction: ReactionEvent | None = None
 	thread_id: str | None = None  # the id of the first comment of a review thread
 	sender: str = ""
+	sender_is_bot: bool = False
 	label: str | None = None
 	ref: str | None = None
 	installation_id: str | None = None

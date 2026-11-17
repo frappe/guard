@@ -59,12 +59,14 @@ def repository(data: dict[str, Any] | None) -> RepositoryInfo | None:
 def _base(payload: dict[str, Any], kind: str, action: str) -> WebhookEvent:
 	repo = repository(payload.get("repository"))
 	owner = ((payload.get("repository") or {}).get("owner") or {}).get("login") or ""
+	sender = payload.get("sender") or {}
 	return WebhookEvent(
 		kind=kind,
 		action=action,
 		repository=repo,
 		namespace=(payload.get("organization") or {}).get("login") or owner,
-		sender=(payload.get("sender") or {}).get("login") or "",
+		sender=sender.get("login") or "",
+		sender_is_bot=sender.get("type") == "Bot",
 		installation_id=str((payload.get("installation") or {}).get("id") or "") or None,
 	)
 

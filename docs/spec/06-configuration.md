@@ -99,7 +99,7 @@ exclude_authors = ["dependabot[bot]"]
 | Key | Type | Meaning |
 | - | - | - |
 | `labels`, `disabled_labels` | array | Review only with one of these labels / skip with one of these labels |
-| `include_authors`, `exclude_authors` | array | Author filters |
+| `include_authors`, `exclude_authors` | array | Author filters. `exclude_authors` stops automatic reviews and reviews that a bot asks for. |
 | `include_branches`, `exclude_branches` | array | Target branch filters |
 | `include_keywords`, `ignore_keywords` | array | Matched against title and description, case-insensitive |
 | `ignore_patterns` | array | `.gitignore` syntax, relative to the config directory |
@@ -209,7 +209,7 @@ Guard decides to review in this order. The first "no" stops it.
    3. The event is in the merged `auto_review`.
    4. The config filters pass: labels, authors, branches, keywords.
    5. The dashboard filter rules pass (below).
-5. For manual triggers: only `exclude_branches` and `exclude_authors` apply.
+5. For manual triggers: only `exclude_branches` applies. `exclude_authors` applies only when a bot asks for the review, or when the provider does not tell who asked (a GitHub check re-run without a sender). A person can ask for a review of a skipped author, for example a bot backport. A bot is an account with `type` `Bot`, or a login that ends with `[bot]`. A Desk request and the signed re-review link come from a person.
 
 ### Dashboard filter rules
 

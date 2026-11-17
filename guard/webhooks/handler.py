@@ -126,7 +126,9 @@ def dispatch(provider: str, event: WebhookEvent) -> bool:
 		pr = pull_requests.refresh(repository, event.number)
 		# Release the Pull Request row before the git work of the gate.
 		db.commit()
-		return bool(trigger.consider(str(pr.name), "retrigger", True, event.sender))
+		# Without a sender, nobody is known to have asked: skipped authors stay skipped.
+		by_bot = event.sender_is_bot or not event.sender
+		return bool(trigger.consider(str(pr.name), "retrigger", True, event.sender, by_bot=by_bot))
 	return False
 
 
