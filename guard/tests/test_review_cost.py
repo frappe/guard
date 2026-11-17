@@ -111,7 +111,7 @@ class TestBackportParsing(UnitTestCase):
 				f"diff --git a/a.py b/a.py\n--- a/a.py\n+++ b/a.py\n@@ -1,{count} +1,{count} @@\n{body}"
 			)
 
-		original = backport.Original(7, "", 4, "low", diff(" keep|-old()|+    new()|+more()"))
+		original = backport.Original(7, "", diff(" keep|-old()|+    new()|+more()"))
 		# The backport can leave a line out.
 		self.assertTrue(backport.covered(diff(" keep|-old()|+    new()")[0], [original]))
 		self.assertFalse(backport.covered(diff(" keep|-old()|+other()")[0], [original]))
@@ -272,7 +272,7 @@ class TestRepeatReviews(ReviewCostCase):
 
 class TestBackportReview(ReviewCostCase):
 	def backport(
-		self, extra: dict[str, str] | None = None, manual: bool = False
+		self, extra: dict[str, str] | None = None, manual: bool = False, steps=None
 	) -> tuple[str, list[ChatRequest]]:
 		"""Review #7 on main, then open #8 to `release` with the same change, and review it."""
 		self.online_review([SUBMIT])
@@ -287,28 +287,56 @@ class TestBackportReview(ReviewCostCase):
 		)
 		self.adapter.info, self.adapter.branch = info, "bp"
 		self.pr = str(pull_requests.upsert(self.repository, info).name)
-		return self.pr, self.online_review([SUBMIT], manual=manual)
+		return self.pr, self.online_review(steps or [SUBMIT], manual=manual)
 
-	def test_a_backport_of_reviewed_changes_runs_no_agent(self):
-		name, requests = self.backport()
+	def test_a_backport_of_reviewed_changes_gets_a_check_against_its_branch(self):
+		# #7 got score 5 and high risk. The check on `release` gives its own verdict, and it counts.
+		verdict = {"summary": "Adds a notify flag on release.", "confidence_score": 4, "risk_level": "low"}
+		fit = [("submit_review", verdict)]
+		# A score below 5 with no finding gets one nudge, so the agent submits twice.
+		name, requests = self.backport(steps=[fit, fit])
 		self.assertEqual(db.value("Pull Request", name, "backport_of"), "#7")
-		self.assertFalse([r for r in requests if r.purpose == "review"])
-		row = (
-			db.values(
-				"Code Review", self.reviews(name)[0].name, ("status", "summary", "risk_level", "agent_turns")
-			)
-			or {}
+		reviews = [r for r in requests if r.purpose == "review"]
+		self.assertEqual(len(reviews), 2)
+		task = reviews[0].messages[1].content
+		self.assertIn("This pull request backports #7 to the branch `release`", task)
+		self.assertIn("Check only that they fit `release`", task)
+		self.assertIn("Summaries of the reviews of the originals", task)
+		self.assertIn("with the same changes as the originals:\n- app/models.py", task)
+		self.assertIn("`read_file` with `ref` `base` reads `release` before it", task)
+		self.assertIn("can show the default branch, not `release`", task)
+		self.assertIn("Annotated diff (files with the same changes as #7)", task)
+		self.assertIn("### app/models.py", task)
+		self.assertNotIn("review them in\nfull", task)
+		fields = (
+			"status",
+			"summary",
+			"confidence_score",
+			"risk_level",
+			"agent_turns",
+			"agent_round_limit",
+			"tier",
 		)
-		self.assertEqual((row["status"], row["risk_level"], row["agent_turns"]), ("Completed", "high", 0))
-		self.assertIn("backports #7", row["summary"])
+		row = db.values("Code Review", self.reviews(name)[0].name, fields) or {}
+		self.assertEqual(
+			(row["status"], row["confidence_score"], row["risk_level"], row["agent_turns"], row["tier"]),
+			("Completed", 4, "low", 2, "base"),
+		)
+		self.assertEqual(row["agent_round_limit"], pipeline.DELTA_TURNS, "the turn limit of a re-review")
+		self.assertIn("Adds a notify flag on release.", row["summary"])
+		self.assertNotIn("backports #7", row["summary"])
+		self.assertTrue(
+			[r for r in requests if r.purpose == "verdict"], "the verify stage checks the verdict"
+		)
 
-	def test_a_backport_reviews_only_the_files_that_differ(self):
+	def test_a_backport_reviews_the_files_that_differ_in_full(self):
 		_, requests = self.backport({"app/extra.py": "VALUE = 1\n"})
 		task = next(r for r in requests if r.purpose == "review").messages[1].content
-		self.assertIn("This pull request backports #7", task)
-		self.assertIn("Annotated diff (files that differ from #7)", task)
-		self.assertIn("### app/extra.py", task)
-		self.assertNotIn("### app/models.py", task)
+		self.assertIn("This pull request backports #7 to the branch `release`", task)
+		self.assertIn("make changes that are not in #7", task)
+		self.assertIn("Annotated diff (files that differ from #7, then files with the same changes)", task)
+		# The file to review comes first, then the file to check for fit.
+		self.assertLess(task.index("### app/extra.py"), task.index("### app/models.py"))
 		self.assertIn("with the same changes as the originals:\n- app/models.py", task)
 
 	def test_a_backport_can_be_reviewed_in_full(self):

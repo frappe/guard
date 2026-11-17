@@ -93,6 +93,8 @@ DEFAULTS: dict[str, Any] = {
 	"hide_footer": False,
 	"comments_outside_diff": True,
 	"include_rule_files": True,
+	# On a backport, the files with the changes of a reviewed original get a short check that they fit the
+	# target branch, not a full review. False: a full review of every file.
 	"reuse_backport_reviews": True,
 	**{name: [] for name in LISTS},
 	"sections": {name: {"included": True, "collapsible": True, "default_open": False} for name in SECTIONS},

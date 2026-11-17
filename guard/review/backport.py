@@ -1,8 +1,10 @@
 """Backports: find the pull requests that a backport carries, and the files that Guard reviewed there.
 
 A backport to a release branch carries changes that were reviewed on the default branch. When a file
-makes only changes that a merged original makes, and Guard reviewed that original, the agents do not
-read that file again. See docs/spec/05-review-engine.md.
+makes only changes that a merged original makes, and Guard reviewed that original, the agent does not
+review that change again. It checks only that the change fits the target branch: the same diff can be
+right on the default branch and wrong on a release branch. The verdict always comes from the agent of
+the backport, never from the originals. See docs/spec/05-review-engine.md.
 """
 
 import re
@@ -16,7 +18,7 @@ import frappe
 from guard.git.diff import FileDiff, Hunk, parse_diff
 from guard.git.store import GitError, GitStore
 from guard.providers.base import ProviderAdapter
-from guard.review.run import Delta, ReviewRun, Verdict
+from guard.review.run import Delta, ReviewRun
 from guard.utils import db
 
 # "backport #12", "(backport #12)", "Backport of #12": in the title, the description and the commits.
@@ -28,7 +30,6 @@ MERGED = re.compile(r"^Merge pull request #(\d+)")
 BRANCH = re.compile(r"(?:^|/)(?:bp|backport)/.+/pr-(\d+)$")
 MAX_ORIGINALS = 30
 SUMMARY_LIMIT = 1500  # characters of the summary of each original in the task
-RISKS = ("low", "medium", "high", "critical")
 
 
 @dataclass
@@ -37,8 +38,6 @@ class Original:
 
 	number: int
 	summary: str
-	confidence_score: int
-	risk_level: str
 	files: list[FileDiff] = field(default_factory=list)
 	important_files: list[dict[str, str]] = field(default_factory=list)
 	diagram_type: str = ""
@@ -94,8 +93,6 @@ def originals(
 			Original(
 				number,
 				str(row.get("summary") or ""),
-				int(row.get("confidence_score") or 0),
-				str(row.get("risk_level") or "medium"),
 				files,
 				[f for f in shown or [] if isinstance(f, dict) and f.get("path")],
 				str(row.get("diagram_type") or ""),
@@ -107,8 +104,8 @@ def originals(
 
 def _last_read(pull_request: str) -> dict[str, Any] | None:
 	rows = db.dict_rows(
-		"""SELECT head_sha, merge_base_sha, summary, confidence_score, risk_level,
-		important_files, diagram_type, diagram FROM `tabCode Review`
+		"""SELECT head_sha, merge_base_sha, summary, important_files, diagram_type, diagram
+		FROM `tabCode Review`
 		WHERE pull_request = %s AND status = 'Completed' AND agent_turns > 0 AND source != 'local'
 		ORDER BY creation DESC LIMIT 1""",
 		(pull_request,),
@@ -170,7 +167,8 @@ def _in_order(lines: list[tuple[str, str]], source: list[tuple[str, str]]) -> bo
 
 
 def delta(run: ReviewRun, found: list[Original]) -> Delta | None:
-	"""What the agents read of a backport: the files that are not covered. None when no file is."""
+	"""What the agent reads of a backport: the files that are not covered, to review, and the covered
+	files, to check that they fit the target branch. None when no file is covered."""
 	if not found:
 		return None
 	same = [f for f in run.files if covered(f, found)]
@@ -188,29 +186,5 @@ def delta(run: ReviewRun, found: list[Original]) -> Delta | None:
 		diagram_type=diagram_type,
 		diagram=diagram,
 		originals=[o.number for o in found],
-		original_scores=[(o.confidence_score, o.risk_level) for o in found],
-	)
-
-
-def verdict(run: ReviewRun) -> Verdict:
-	"""The verdict of a backport whose files are all covered: the agents do not run. The score is
-	the lowest score of the originals, and the risk the highest."""
-	backport = run.delta
-	if backport is None or not backport.originals:
-		raise ValueError("not a backport")
-	names = ", ".join(f"#{n}" for n in backport.originals)
-	scores = [score for score, _ in backport.original_scores] or [3]
-	risks = [risk for _, risk in backport.original_scores if risk in RISKS] or ["medium"]
-	text = (
-		f"This pull request backports {names}. Each changed line is a change of {names}, which Guard "
-		"reviewed there, so the AI review did not read it again. The checks of the code graph ran on "
-		"this branch."
-	)
-	return Verdict(
-		summary=text + ("\n\n" + backport.summary if backport.summary else ""),
-		confidence_score=min(scores),
-		confidence_reason=f"The same changes as {names}.",
-		risk_level=max(risks, key=RISKS.index),
-		risk_reason=f"The risk of {names}.",
-		submitted=True,
+		covered=same,
 	)

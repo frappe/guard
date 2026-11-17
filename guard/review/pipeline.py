@@ -390,10 +390,8 @@ class ReviewPipeline:
 		suppression.suppress(run.findings, run.repository, similar=not run.outage)
 		# Before the score: the earlier findings that still apply count, as on the status check.
 		stale.close_stale(run, finding_filter.reraised)
-		# Only the model's verdict: the graph verdict below does not rest on findings. The verdict of
-		# a covered backport comes from the reviews of its originals.
-		if not (run.delta and run.delta.covers_all):
-			verify.check_verdict(run)
+		# Only the model's verdict: the graph verdict below does not rest on findings.
+		verify.check_verdict(run)
 		if not run.verdict.submitted:
 			run.verdict = graph_verdict(run)
 		elif run.delta:
@@ -531,7 +529,8 @@ class ReviewPipeline:
 		return run
 
 	def backport_delta(self, run: ReviewRun, store: GitStore, number: int) -> Delta | None:
-		"""On a backport: link its originals, and skip the files whose changes Guard reviewed there."""
+		"""On a backport: link its originals. The files whose changes Guard reviewed there get a check
+		that they fit the target branch, not a full review."""
 		if run.pr is None or not backport.is_backport(run):
 			return None
 		found = backport.numbers(run, number)
@@ -555,11 +554,16 @@ class ReviewPipeline:
 
 	def pick_tier(self, run: ReviewRun, changed: list[ChangedEntity]) -> None:
 		"""A push re-review gets the tier of its delta: a small fix after a large change is small."""
+		# Offline, no agent runs. A backport with only covered files gets a short check of fit.
 		if run.offline or (run.delta and run.delta.covers_all):
-			run.tier = "base"  # no agent runs
+			run.tier = "base"
 			self.review.db_set("tier", run.tier)
 			return
 		files = run.delta.files if run.delta else run.files
+		paths = [p for f in files for p in {f.path, f.old_path} if p]
+		if run.delta:
+			# The covered files of a backport get only a check of fit, so their contracts do not count.
+			changed = [e for e in changed if e.path in paths]
 		facts = gate.PullRequestFacts(
 			repository=run.full_name,
 			title=run.title,
@@ -568,7 +572,7 @@ class ReviewPipeline:
 			base_branch=run.base_branch,
 			head_branch=run.head_branch,
 			labels=run.labels,
-			paths=[p for f in files for p in {f.path, f.old_path} if p],
+			paths=paths,
 			additions=sum(f.additions for f in files),
 			deletions=sum(f.deletions for f in files),
 		)
@@ -643,16 +647,13 @@ class ReviewPipeline:
 
 	def agent(self, run: ReviewRun, built: context.BuiltContext) -> None:
 		"""Run the agents. On a push re-review, they read the diff since the last review. On a
-		backport, they read the files that differ from the reviewed originals, and none run when no
-		file differs."""
+		backport, they review the files that differ from the reviewed originals, and check that the
+		other files fit the target branch."""
 		whole = run.files
-		if run.delta is not None and run.delta.covers_all:
-			run.verdict = backport.verdict(run)
-			return
 		if run.offline:
 			return
 		if run.delta is not None:
-			run.files = run.delta.files
+			run.files = run.delta.reads
 		try:
 			self.run_agents(run, built)
 		finally:
@@ -668,7 +669,8 @@ class ReviewPipeline:
 		risk = str(get_effective(team).get("risk_definitions") or "")
 		system = prompts.system_prompt(int(run.settings.get("strictness") or 2), "", risk)
 		turns = guard_settings.max_turns(run.tier)
-		cap = delta_turns(run.files) if run.delta else turns
+		# Only the files under review add turns: a covered file of a backport gets a short check.
+		cap = delta_turns(run.delta.files) if run.delta else turns
 		turns = min(turns, cap)
 		deadline = self.deadline(run.tier)
 		single = run.tier != "apex" or len(run.files) <= AREA_FILES
@@ -1079,7 +1081,8 @@ class ReviewPipeline:
 
 
 def delta_turns(files: list[FileDiff]) -> int:
-	"""The turns of the agents of a re-review or a backport, from the size of the files they read."""
+	"""The turns of the agents of a re-review or a backport, from the size of the files they review
+	in full."""
 	lines = sum(f.additions + f.deletions for f in files)
 	return DELTA_TURNS + lines // DELTA_LINES
 
