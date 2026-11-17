@@ -115,7 +115,7 @@ A job that writes a Pull Request and its Code Review in one transaction writes t
 3. The config resolver reads the config at the head of the default branch, and evaluates filters and permissions.
 4. If the event passes, Guard creates a Code Review in status Queued and queues `guard.review.pipeline.run`.
 5. The job fetches the head into the mirror and computes the diff from the merge base.
-6. The job makes sure the base index is fresh. If not, it runs an incremental index first.
+6. The job picks the index: of the base branch when `index_branches` lists it, else of the default branch. An index that never completed gets a full index first.
 7. The context builder queries the graph and collects rules, memories, knowledge base pages, tickets and cross-repo context.
 8. The agent reviews the diff with tools and reports findings.
 9. Guard verifies, deduplicates, suppresses and scores the findings.

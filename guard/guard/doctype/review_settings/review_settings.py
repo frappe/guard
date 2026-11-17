@@ -53,22 +53,23 @@ class ReviewSettings(Document):
 		filter_rules: DF.Table[ReviewFilterRule]
 		fix_with_ai: DF.Check
 		hide_footer: DF.Check
-		ignore_patterns: DF.Code | None
-		include_rule_files: DF.Check
-		inherit_from_organization: DF.Check
 		ignore_keywords: DF.SmallText | None
-		include_authors: DF.SmallText | None
-		include_branches: DF.SmallText | None
-		instructions: DF.LongText | None
+		ignore_patterns: DF.Code | None
 		impact_collapsible: DF.Check
 		impact_included: DF.Check
 		impact_open: DF.Check
+		include_authors: DF.SmallText | None
+		include_branches: DF.SmallText | None
+		include_rule_files: DF.Check
+		index_branches: DF.SmallText | None
+		inherit_from_organization: DF.Check
+		instructions: DF.LongText | None
 		issues_table_collapsible: DF.Check
 		issues_table_included: DF.Check
 		issues_table_open: DF.Check
+		labels: DF.SmallText | None
 		review_drafts: DF.Check
 		review_tier: DF.Literal["auto", "base", "plus", "apex"]
-		labels: DF.SmallText | None
 		risk_ceiling: DF.Literal["low", "medium", "high", "critical"]
 		risk_definitions: DF.LongText | None
 		scope: DF.Literal["Organization", "Team"]

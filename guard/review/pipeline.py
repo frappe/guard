@@ -12,11 +12,11 @@ from guard import settings as guard_settings
 from guard.config import gate
 from guard.config.resolver import ConfigResolver
 from guard.git.diff import FileDiff, parse_diff
-from guard.git.repository import default_head, store_for
+from guard.git.repository import default_branch, default_head, store_for
 from guard.git.store import GitStore
 from guard.graph.overlay import ChangedEntity, PullRequestGraph
 from guard.graph.queries import CodeGraph
-from guard.indexing import frappe_plugin
+from guard.indexing import branches, frappe_plugin
 from guard.indexing.indexer import IndexBusy, IndexFailed
 from guard.indexing.jobs import ensure_fresh
 from guard.integrations import tickets
@@ -414,19 +414,58 @@ class ReviewPipeline:
 		self.after(run, number)
 
 	def index(self, run: ReviewRun) -> str | None:
-		"""The fresh index of the repository, or None when it failed: review without the graph."""
+		"""The fresh index of the base branch when `index_branches` lists it, else of the default
+		branch. None when it failed: review without the graph."""
 		if not run.repository:
 			return None
+		# Indexing embeds chunks. In an outage the embedding model can be down, and a failed index
+		# blocks indexing for an hour.
+		refresh = not run.outage
+		if index := self.base_branch_index(run, refresh):
+			return index
 		try:
-			# Indexing embeds chunks. In an outage the embedding model can be down, and a failed index
-			# blocks indexing for an hour.
-			return ensure_fresh(run.repository, refresh=not run.outage)
+			index = ensure_fresh(run.repository, refresh=refresh)
 		except IndexFailed as error:
 			run.notes.append(
 				"The code graph is not available, so this review read the diff and the changed files only. "
 				f"Indexing failed: {redact(str(error))[:200]}"
 			)
 			return None
+		self.note_default_graph(run, index)
+		return index
+
+	def base_branch_index(self, run: ReviewRun, refresh: bool) -> str | None:
+		"""The index of the base branch of a pull request, when `index_branches` lists the branch.
+
+		The first review of the branch makes it: a full index. When it is busy or failed, the review
+		takes the index of the default branch with a note, and does not wait: that index is ready.
+		"""
+		assert run.repository
+		if run.pr is None or not branches.index_of(
+			run.repository, run.base_branch, run.settings.get(branches.SETTING)
+		):
+			return None
+		try:
+			return ensure_fresh(run.repository, refresh=refresh, branch=run.base_branch)
+		except (IndexBusy, IndexFailed) as error:
+			frappe.logger("guard").info(
+				f"review {self.review.name}: the index of the base branch is not ready: {redact(str(error))}"
+			)
+			return None
+
+	def note_default_graph(self, run: ReviewRun, index: str) -> None:
+		"""Tell the agent when the graph is of the default branch and the base is another branch."""
+		default = default_branch(str(run.repository))
+		if run.pr is None or not run.base_branch or run.base_branch == default:
+			return
+		sha = str(db.value("Repository Index", index, "sha") or "")
+		# The overlay reads the changed files at the merge base. Callers, callees and similar code come
+		# from the index.
+		run.graph_note = (
+			f"The code graph is of commit {sha[:12]} of the default branch `{default}`, not of the base "
+			"branch of this pull request. Callers, callees, the blast radius and similar code come from "
+			"that commit and can be wrong for the base branch: check them in the code at the base."
+		)
 
 	def rule_files(self, run: ReviewRun) -> list[tuple[str, str]]:
 		"""CLAUDE.md and similar from the default branch. A payload review has no mirror: they come from its head."""

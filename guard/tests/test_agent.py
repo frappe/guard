@@ -69,8 +69,13 @@ class TestRead(UnitTestCase):
 
 
 class FakeGraph:
+	sha = "abc123"
+
 	def __init__(self, target: Entity, links: list[Link]):
 		self.target, self.links = target, links
+
+	def source(self, path: str) -> str | None:
+		return None
 
 	def entity(self, name: str) -> Entity | None:
 		return None
@@ -98,6 +103,7 @@ class TestGraphTools(UnitTestCase):
 
 	def test_callers_show_the_line_of_each_call(self):
 		out = agent.read_tool(self.review, "get_callers", {"name": "f"}) or ""
+		self.assertIn("Line numbers are of commit abc123 of the code graph.", out)
 		self.assertIn("app/a.py:410 in app.a.g (the pull request changes this file)\n    line_410 = ", out)
 		self.assertEqual(
 			agent.read_tool(self.review, "get_callers", {"name": "nope"}), "no definition found for nope"

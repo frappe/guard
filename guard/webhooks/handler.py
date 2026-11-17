@@ -133,7 +133,7 @@ def dispatch(provider: str, event: WebhookEvent) -> bool:
 def _push(repository: str, event: WebhookEvent) -> bool:
 	default = db.value("Code Repository", repository, "default_branch")
 	if event.ref != default:
-		return False
+		return _push_other_branch(repository, event)
 	from guard.indexing.jobs import enqueue_index
 
 	enqueue_index(repository)
@@ -147,6 +147,16 @@ def _push(repository: str, event: WebhookEvent) -> bool:
 			after=event.after,
 		)
 	return True
+
+
+def _push_other_branch(repository: str, event: WebhookEvent) -> bool:
+	"""Queue an index of a branch that `index_branches` lists. Not for a deleted branch: the hourly
+	`catch_up` drops its index."""
+	if not event.ref or not event.after or not event.after.strip("0"):
+		return False
+	from guard.indexing import branches
+
+	return branches.on_push(repository, event.ref)
 
 
 def _pull_request(repository: str, event: WebhookEvent) -> bool:

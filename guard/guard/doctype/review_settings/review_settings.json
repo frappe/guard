@@ -30,6 +30,8 @@
   "labels",
   "include_branches",
   "ignore_patterns",
+  "code_graph_section",
+  "index_branches",
   "advanced_filters_section",
   "filter_rules",
   "instructions",
@@ -254,288 +256,301 @@
    "options": "Text"
   },
   {
+   "fieldname": "code_graph_section",
+   "fieldtype": "Section Break",
+   "label": "Code Graph",
+   "idx": 25
+  },
+  {
+   "fieldname": "index_branches",
+   "fieldtype": "Small Text",
+   "label": "Index Branches",
+   "description": "Base branches other than the default branch that get their own code graph, for example version-*-hotfix. One on each line. Each branch is a full copy of the index. Guard indexes at most 5 of them for each repository.",
+   "idx": 26
+  },
+  {
    "fieldname": "advanced_filters_section",
    "fieldtype": "Section Break",
    "label": "Advanced Filter Rules",
    "collapsible": 1,
    "description": "Rules with conditions in JSON. A rule with a tier selects the review tier. A rule without a tier is a gate: when gates exist, Guard reviews only pull requests that match one.",
-   "idx": 25
+   "idx": 27
   },
   {
    "fieldname": "filter_rules",
    "fieldtype": "Table",
-   "idx": 26,
+   "idx": 28,
    "label": "Filter Rules",
    "options": "Review Filter Rule"
   },
   {
    "fieldname": "instructions",
    "fieldtype": "Long Text",
-   "idx": 27,
+   "idx": 29,
    "label": "Instructions"
   },
   {
    "fieldname": "output_tab",
    "fieldtype": "Tab Break",
-   "idx": 28,
+   "idx": 30,
    "label": "Output"
   },
   {
    "fieldname": "summary_section",
    "fieldtype": "Section Break",
-   "idx": 29,
+   "idx": 31,
    "label": "Summary"
   },
   {
    "default": "1",
    "fieldname": "summary_included",
    "fieldtype": "Check",
-   "idx": 30,
+   "idx": 32,
    "label": "Included"
   },
   {
    "fieldname": "summary_col1",
    "fieldtype": "Column Break",
-   "idx": 31
+   "idx": 33
   },
   {
    "default": "1",
    "fieldname": "summary_collapsible",
    "fieldtype": "Check",
-   "idx": 32,
+   "idx": 34,
    "label": "Collapsible"
   },
   {
    "fieldname": "summary_col2",
    "fieldtype": "Column Break",
-   "idx": 33
+   "idx": 35
   },
   {
    "default": "0",
    "fieldname": "summary_open",
    "fieldtype": "Check",
-   "idx": 34,
+   "idx": 36,
    "label": "Open by Default"
   },
   {
    "fieldname": "issues_table_section",
    "fieldtype": "Section Break",
-   "idx": 35,
+   "idx": 37,
    "label": "Issues Table"
   },
   {
    "default": "1",
    "fieldname": "issues_table_included",
    "fieldtype": "Check",
-   "idx": 36,
+   "idx": 38,
    "label": "Included"
   },
   {
    "fieldname": "issues_table_col1",
    "fieldtype": "Column Break",
-   "idx": 37
+   "idx": 39
   },
   {
    "default": "1",
    "fieldname": "issues_table_collapsible",
    "fieldtype": "Check",
-   "idx": 38,
+   "idx": 40,
    "label": "Collapsible"
   },
   {
    "fieldname": "issues_table_col2",
    "fieldtype": "Column Break",
-   "idx": 39
+   "idx": 41
   },
   {
    "default": "0",
    "fieldname": "issues_table_open",
    "fieldtype": "Check",
-   "idx": 40,
+   "idx": 42,
    "label": "Open by Default"
   },
   {
    "fieldname": "confidence_section",
    "fieldtype": "Section Break",
-   "idx": 41,
+   "idx": 43,
    "label": "Confidence"
   },
   {
    "default": "1",
    "fieldname": "confidence_included",
    "fieldtype": "Check",
-   "idx": 42,
+   "idx": 44,
    "label": "Included"
   },
   {
    "fieldname": "confidence_col1",
    "fieldtype": "Column Break",
-   "idx": 43
+   "idx": 45
   },
   {
    "default": "1",
    "fieldname": "confidence_collapsible",
    "fieldtype": "Check",
-   "idx": 44,
+   "idx": 46,
    "label": "Collapsible"
   },
   {
    "fieldname": "confidence_col2",
    "fieldtype": "Column Break",
-   "idx": 45
+   "idx": 47
   },
   {
    "default": "0",
    "fieldname": "confidence_open",
    "fieldtype": "Check",
-   "idx": 46,
+   "idx": 48,
    "label": "Open by Default"
   },
   {
    "fieldname": "impact_section",
    "fieldtype": "Section Break",
-   "idx": 47,
+   "idx": 49,
    "label": "Impact"
   },
   {
    "default": "1",
    "fieldname": "impact_included",
    "fieldtype": "Check",
-   "idx": 48,
+   "idx": 50,
    "label": "Included"
   },
   {
    "fieldname": "impact_col1",
    "fieldtype": "Column Break",
-   "idx": 49
+   "idx": 51
   },
   {
    "default": "1",
    "fieldname": "impact_collapsible",
    "fieldtype": "Check",
-   "idx": 50,
+   "idx": 52,
    "label": "Collapsible"
   },
   {
    "fieldname": "impact_col2",
    "fieldtype": "Column Break",
-   "idx": 51
+   "idx": 53
   },
   {
    "default": "0",
    "fieldname": "impact_open",
    "fieldtype": "Check",
-   "idx": 52,
+   "idx": 54,
    "label": "Open by Default"
   },
   {
    "fieldname": "diagram_section",
    "fieldtype": "Section Break",
-   "idx": 53,
+   "idx": 55,
    "label": "Diagram"
   },
   {
    "default": "1",
    "fieldname": "diagram_included",
    "fieldtype": "Check",
-   "idx": 54,
+   "idx": 56,
    "label": "Included"
   },
   {
    "fieldname": "diagram_col1",
    "fieldtype": "Column Break",
-   "idx": 55
+   "idx": 57
   },
   {
    "default": "1",
    "fieldname": "diagram_collapsible",
    "fieldtype": "Check",
-   "idx": 56,
+   "idx": 58,
    "label": "Collapsible"
   },
   {
    "fieldname": "diagram_col2",
    "fieldtype": "Column Break",
-   "idx": 57
+   "idx": 59
   },
   {
    "default": "0",
    "fieldname": "diagram_open",
    "fieldtype": "Check",
-   "idx": 58,
+   "idx": 60,
    "label": "Open by Default"
   },
   {
    "fieldname": "behavior_section",
    "fieldtype": "Section Break",
-   "idx": 59,
+   "idx": 61,
    "label": "Behavior"
   },
   {
    "default": "1",
    "fieldname": "status_check",
    "fieldtype": "Check",
-   "idx": 60,
+   "idx": 62,
    "label": "Status Check"
   },
   {
    "default": "0",
    "fieldname": "status_comments",
    "fieldtype": "Check",
-   "idx": 61,
+   "idx": 63,
    "label": "Status Comments"
   },
   {
    "default": "0",
    "fieldname": "update_description",
    "fieldtype": "Check",
-   "idx": 62,
+   "idx": 64,
    "label": "Update Description"
   },
   {
    "fieldname": "behavior_col",
    "fieldtype": "Column Break",
-   "idx": 63
+   "idx": 65
   },
   {
    "default": "0",
    "fieldname": "update_summary_only",
    "fieldtype": "Check",
-   "idx": 64,
+   "idx": 66,
    "label": "Update Summary Only"
   },
   {
    "default": "1",
    "fieldname": "fix_with_ai",
    "fieldtype": "Check",
-   "idx": 65,
+   "idx": 67,
    "label": "Fix with AI"
   },
   {
    "default": "0",
    "fieldname": "hide_footer",
    "fieldtype": "Check",
-   "idx": 66,
+   "idx": 68,
    "label": "Hide Footer"
   },
   {
    "fieldname": "approve_tab",
    "fieldtype": "Tab Break",
-   "idx": 67,
+   "idx": 69,
    "label": "Auto-approve"
   },
   {
    "default": "1",
    "fieldname": "auto_approve",
    "fieldtype": "Check",
-   "idx": 68,
+   "idx": 70,
    "label": "Auto Approve"
   },
   {
    "default": "critical",
    "fieldname": "risk_ceiling",
    "fieldtype": "Select",
-   "idx": 69,
+   "idx": 71,
    "label": "Risk Ceiling",
    "options": "low\nmedium\nhigh\ncritical"
   },
@@ -543,20 +558,20 @@
    "description": "Natural-language guidance for the risk assessment",
    "fieldname": "risk_definitions",
    "fieldtype": "Long Text",
-   "idx": 70,
+   "idx": 72,
    "label": "Risk Definitions"
   },
   {
    "description": "Same shape as autoApprove.filters in config files",
    "fieldname": "auto_approve_filters",
    "fieldtype": "JSON",
-   "idx": 71,
+   "idx": 73,
    "label": "Auto Approve Filters"
   }
  ],
  "index_web_pages_for_search": 0,
  "links": [],
- "modified": "2026-10-20 10:00:00.000000",
+ "modified": "2026-11-17 10:00:00.000000",
  "modified_by": "Administrator",
  "module": "Guard",
  "name": "Review Settings",

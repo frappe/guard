@@ -46,7 +46,7 @@ The indexer reads `git ls-tree -r -l <sha>`. It skips:
 - The indexer deletes the rows of changed and removed paths and parses only changed and added paths.
 - After the parse, it resolves edges again for the files that import or call the changed files.
 - A full rebuild runs when the parser version changes or when an admin asks for it.
-- A push to the default branch queues an update. A push can get lost, for example when a deploy loses its delivery. So every hour, `catch_up` fetches the default branch of each repository whose index is completed, and queues an update when the head is not the indexed sha. A review does not do this: it uses any completed index.
+- A push to the default branch queues an update. So does a push to a branch that `index_branches` lists ([Branch indexes](#branch-indexes)). A push can get lost, for example when a deploy loses its delivery. So every hour, `catch_up` fetches the default branch of each repository whose index is completed, and queues an update when the head is not the indexed sha. It does the same for each completed branch index. A review does not do this: it uses any completed index.
 
 ### 4. Parsing
 
@@ -125,6 +125,18 @@ For every language, Guard reads route definitions, routers with a path prefix an
 - With no embedding model, Guard uses a hash embedding: tokens and token pairs hashed into the configured dimension. It is lexical, but it keeps the same code path.
 - Vectors go into `guard_vector`. On MariaDB 11.7 or later the column is `VECTOR(n)` with a cosine HNSW index. On other databases the column is a blob and Guard ranks with numpy.
 
+### 11. Branch indexes
+
+By default Guard indexes only the default branch. The config key `index_branches` ([06-configuration.md](06-configuration.md)) lists other branches, as globs, that get an index of their own, for example `version-*-hotfix`. A pull request to such a branch then gets callers, callees, blast radius and similar code of that branch.
+
+- Guard reads the setting at push time and in `catch_up`, so it reads only the cheap layers: the dashboard (Review Settings of the organization or the team) and the root config at the head of the default branch in the mirror. Nested configs do not count. A pull request cannot add a branch for itself.
+- The first review of a pull request to a listed branch makes its index: a full index. A push to a listed branch queues an incremental update. `catch_up` updates them as it updates the default branch.
+- A repository has at most 5 branch indexes (`MAX_BRANCH_INDEXES` in `guard/indexing/branches.py`). Each one is a full copy of the entity, edge and chunk rows and of the vectors. Past the limit, Guard logs a warning and does not index the branch.
+- Every hour, `catch_up` drops the index of a branch that the setting no longer lists or that the remote no longer has: its Code Entity, Code Edge and Code Chunk rows, its `guard_vector` rows, and the Repository Index. It does not drop an index while a run writes it, and never the index of the default branch. It also drops an index that the query API made for a branch that the setting does not list.
+- `index_status`, `default_index` and the knowledge base stay about the default branch.
+
+Cost: each listed branch costs as much storage as the default branch. The first index embeds every chunk once. Later pushes are incremental, as on the default branch.
+
 ## Graph queries
 
 `guard/graph/queries.py` has one class, `CodeGraph`, bound to one index.
@@ -144,7 +156,7 @@ For every language, Guard reads route definitions, routers with a path prefix an
 
 ## Pull request graph
 
-The base index describes the base branch. A pull request changes some files, so Guard builds a small overlay graph for the head:
+The base index is the index of the base branch when `index_branches` lists it and its index is ready ([Branch indexes](#branch-indexes)). Else it is the index of the default branch, also for a pull request to another branch. Then the agent gets a note: the graph is of a commit of the default branch, not of the base branch, so it checks callers and callees in the code at the base. Every consumer in the review (the overlay, the checks, cross-repo callers and the agent tools) uses the same index. A pull request changes some files, so Guard builds a small overlay graph for the head:
 
 1. Parse each changed file at the head commit in memory. Do not write rows.
 2. Map each diff hunk to the head entities whose line range overlaps it. These are the **changed entities**.
@@ -174,3 +186,4 @@ When a review, a chat answer or the knowledge base needs a file summary, Guard g
 | Chunk size | 150 lines |
 | Callers returned for each entity | 50 |
 | Impact depth | 2 |
+| Branch indexes for each repository, apart from the default branch | 5 |

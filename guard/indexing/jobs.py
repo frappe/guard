@@ -60,12 +60,20 @@ def run_index(index: str, full: bool = False) -> None:
 
 
 def catch_up() -> None:
-	"""Every hour: index again each default branch whose head moved past its index.
+	"""Every hour: index again each default branch whose head moved past its index. Then do the
+	same for the other indexed branches, and drop those that are not wanted (`branches.catch_up`).
 
 	A push to the default branch queues an index, but a lost or ignored delivery does not. On 26 Oct
 	a deploy lost the deliveries of an hour, and the index of grove stayed 2 commits behind. Reviews
 	do not repair it: `ensure_fresh` takes any completed index.
 	"""
+	_catch_up_default()
+	from guard.indexing import branches
+
+	branches.catch_up()
+
+
+def _catch_up_default() -> None:
 	rows = db.dict_rows(
 		"""SELECT r.name, r.default_branch, i.sha FROM `tabCode Repository` r
 		JOIN `tabRepository Index` i ON i.name = r.default_index
@@ -85,14 +93,17 @@ def catch_up() -> None:
 		db.commit()
 
 
-def ensure_fresh(repository: str, sha: str | None = None, refresh: bool = True) -> str:
-	"""Make the default index cover `sha` (or the branch head). Run inline.
+def ensure_fresh(
+	repository: str, sha: str | None = None, refresh: bool = True, branch: str | None = None
+) -> str:
+	"""Make the index of `branch` (by default the default branch) cover `sha`, or any commit when
+	`sha` is None. Run inline. The first call for a branch makes a full index.
 
 	Raise IndexBusy when another job is indexing it now, and IndexFailed when the run fails or
 	failed in the last hour. With `refresh` False, do not index: raise IndexFailed when the index is
 	not ready.
 	"""
-	index = index_for(repository)
+	index = index_for(repository, branch)
 	row = db.values("Repository Index", index, ("status", "sha"))
 	if row and row["status"] == "completed" and (sha is None or row["sha"] == sha):
 		return index

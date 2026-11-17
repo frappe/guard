@@ -147,7 +147,9 @@ class Indexer:
 				sha = None if self.writing else self.previous
 				# Reviews skip the index for an hour after this, rather than fail the same way one by one.
 				self._set(status="failed", sha=sha, error=str(error)[:5000], completed_at=now_datetime())
-				frappe.db.set_value("Code Repository", self.repository, "index_status", "Failed")
+				# The status of the repository is about its default branch only.
+				if db.value("Code Repository", self.repository, "default_branch") == self.doc.branch:
+					frappe.db.set_value("Code Repository", self.repository, "index_status", "Failed")
 				db.commit()
 				raise
 

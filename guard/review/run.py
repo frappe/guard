@@ -124,6 +124,8 @@ class ReviewRun:
 	config: PullRequestConfig | None = None
 	commits: list[Commit] = field(default_factory=list)
 	graph: CodeGraph | None = None
+	# For the agent, when the graph is of the default branch and the base is another branch.
+	graph_note: str = ""
 	changed: list[ChangedEntity] = field(default_factory=list)
 	blast: BlastRadius | None = None
 	tier: str = "base"
