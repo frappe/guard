@@ -93,7 +93,14 @@ def repository_for(full_name: str) -> str:
 	for repository in frappe.get_all("Code Repository", filters={"full_name": name}, pluck="name"):
 		if frappe.has_permission("Code Repository", "read", str(repository)):
 			return str(repository)
-	frappe.throw(_("Guard has no repository {0} that you can read.").format(name), frappe.PermissionError)
+	# The MCP instructions limit the pre-push rule to repositories that Guard can read. Say it here too,
+	# so an agent does not stop a push that Guard cannot review.
+	frappe.throw(
+		_(
+			"Guard has no repository {0} that you can read. The pre-push review does not apply to this repository."
+		).format(name),
+		frappe.PermissionError,
+	)
 	raise AssertionError  # frappe.throw raises
 
 

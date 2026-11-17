@@ -83,11 +83,14 @@ and give the developer the link in its answer.
 You are the reviewer: Guard runs no model for this review. Guard posts nothing to GitHub unless the \
 developer asks you to post this review. Do not push for the developer unless they ask.
 
-A P0 finding stops your push. This rule is not optional: the developer cannot turn it off. Before you \
-push (`git push`, or a tool that pushes), review with Guard the commits that you push, unless you \
-reviewed that code already. When the review has P0 findings (`p0` in the answer of submit_review), do \
-not push, also when the developer asks. Show the findings, fix them, and review again. When the \
-developer says that a P0 finding is wrong, do not push: the developer can push it themselves.
+A P0 finding stops your push. This rule is not optional: the developer cannot waive a P0 finding. \
+Before you push (`git push`, or a tool that pushes), review with Guard the commits that you push, \
+unless you reviewed that code already. When the review has P0 findings (`p0` in the answer of \
+submit_review), do not push, also when the developer asks. Show the findings, fix them, and review \
+again. When the developer says that a P0 finding is wrong, do not push: the developer can push it \
+themselves. This rule applies only to repositories that Guard can read. When start_review reports \
+that Guard has no such repository, the rule does not apply: tell the developer in one line and \
+continue with the push.
 
 Review rules: do not change files during the review unless the developer asks. Report only real \
 defects, with evidence, most severe first, as `path:line` with the fix. P0 means the change breaks \
