@@ -1904,6 +1904,32 @@ class TestApexAreas(IntegrationTestCase):
 			self.assertEqual(verify.check_tier("apex"), "apex")
 			self.assertEqual(verify.check_tier("plus"), "plus")
 
+	def test_a_check_without_a_usable_answer_names_no_model(self):
+		from guard.review import verify
+
+		run = ReviewRun(None, None, "", lambda path: "a = 1", lambda path: None, lambda path: [], "", "")
+		run.tier = "plus"
+		finding = Finding("app/a.py", 1, 1, "P1", "logic", "Wrong value", "x")
+		run.findings = [finding]
+		# Below the cap of the P1, so the score goes to the check.
+		run.verdict = Verdict(summary="s", confidence_score=2, submitted=True)
+		models = {"base": "base-model", "plus": "plus-model"}
+		gateway = GatewayConfig(models, {"gw": AIProviderConfig("gw", "https://gw", "k", "anthropic")}, "gw")
+		calls: list[str] = []
+
+		def respond(request: ChatRequest) -> ChatResult:
+			calls.append(request.purpose)
+			return ChatResult("not JSON" if request.purpose == "verify" else '{"score": 9}', [], Usage(10, 5))
+
+		with patch("guard.settings.gateway", return_value=gateway), use_responder(respond):
+			verify.verify(run)
+			verify.check_verdict(run)
+		self.assertEqual(calls, ["verify", "verdict"])
+		self.assertTrue(finding.verify_failed)
+		self.assertEqual(run.verdict.confidence_score, 2)
+		# Both checks called the model, but neither answer changed the review.
+		self.assertEqual(run.check_model, "")
+
 	def test_the_footer_names_the_model_that_reviewed(self):
 		from guard.review import render
 
