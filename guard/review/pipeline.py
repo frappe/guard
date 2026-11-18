@@ -804,6 +804,7 @@ class ReviewPipeline:
 				"status": "Completed",
 				"completed_at": now_datetime(),
 				"duration": round(time.time() - self.started, 1),
+				"model": run.reviewed_by,
 				"summary": run.verdict.summary,
 				"confidence_score": run.verdict.confidence_score,
 				"confidence_reason": run.verdict.confidence_reason,
