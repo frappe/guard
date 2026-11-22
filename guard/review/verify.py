@@ -56,6 +56,9 @@ def verify(run: ReviewRun) -> None:
 	results = client.chat_many(conversations)
 	for batch, result in zip(batches, results, strict=True):
 		answers = _answers(run, batch, result)
+		if answers:
+			# The footer names the model only when its answer checked a finding.
+			run.check_model = client.model
 		for index, finding in enumerate(batch):
 			if index in answers:
 				_apply(run, finding, answers[index])
@@ -171,6 +174,7 @@ def check_verdict(run: ReviewRun) -> None:
 	score = answer.get("score") if isinstance(answer, dict) else None
 	if not isinstance(score, int) or isinstance(score, bool) or not 0 <= score <= 5:
 		return
+	run.check_model = client.model
 	verdict.confidence_score = score
 	if reason := str(answer.get("reason") or "").strip():
 		verdict.confidence_reason = reason[:500]

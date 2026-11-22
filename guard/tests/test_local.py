@@ -424,6 +424,9 @@ class TestPublishLocalReview(PullRequestCase):
 		[summary] = self.adapter.named("post_comment")
 		self.assertIn("Local review by", summary)
 		self.assertIn("claude-code", summary)
+		# The agent of the developer reviewed: Guard names no model of its own.
+		self.assertNotIn("Reviewed by", summary)
+		self.assertFalse(db.value("Code Review", review, "model"))
 		comments = [c for call in self.adapter.named("create_review") for c in call]
 		self.assertIn(("app/models.py", self.line), [(c.path, c.line) for c in comments])
 		self.assertEqual(result["posted"], len(comments))

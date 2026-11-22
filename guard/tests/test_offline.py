@@ -112,6 +112,10 @@ class TestOfflineReview(PullRequestCase):
 		self.assertIn("SQL built from strings", posted[0].body)
 		summary = self.adapter.named("post_comment")[0]
 		self.assertIn("Guard is in offline mode", summary)
+		# No model read the code, so the footer names none.
+		self.assertNotIn("Reviewed by", summary)
+		self.assertNotIn("Checked by", summary)
+		self.assertFalse(frappe.db.get_value("Code Review", name, "model"))
 
 
 class TestOutageFallback(PullRequestCase):
