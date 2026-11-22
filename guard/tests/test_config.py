@@ -184,9 +184,21 @@ class TestGate(UnitTestCase):
 	def test_filters(self):
 		result = gate.check(self.facts(author="dependabot[bot]"), self.config, "open", False, [])
 		self.assertEqual(result.reason, "author is excluded")
-		self.assertFalse(
-			gate.check(self.facts(author="dependabot[bot]"), self.config, "open", True, []).allowed
-		)
+		bot_pr = self.facts(author="dependabot[bot]")
+		# Skipped authors stop automatic reviews only. A person can ask for a review.
+		self.assertTrue(gate.check(bot_pr, self.config, "open", True, []).allowed)
+		# A bot cannot ask for a review of a skipped author.
+		result = gate.check(bot_pr, self.config, "open", True, [], by_bot=True)
+		self.assertEqual(result.reason, "author is excluded")
+		# A bot can ask for a review of an author that is not skipped.
+		self.assertTrue(gate.check(self.facts(), self.config, "open", True, [], by_bot=True).allowed)
+
+	def test_is_bot(self):
+		self.assertTrue(gate.is_bot("mergify[bot]"))
+		self.assertTrue(gate.is_bot("Dependabot[BOT]"))
+		self.assertTrue(gate.is_bot("ci-runner", "Bot"))
+		self.assertFalse(gate.is_bot("ada", "User"))
+		self.assertFalse(gate.is_bot(""))
 
 	def test_dashboard_rules(self):
 		only_main = gate.FilterRule(

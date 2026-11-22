@@ -15,7 +15,7 @@ Guard removes the handle and reads the rest of the text.
 
 | Intent | Example | Action |
 | - | - | - |
-| review | "review only the API changes" | Start a review. The text becomes instructions. |
+| review | "review only the API changes" | Start a review. The text becomes instructions. The gate for manual triggers applies ([06-configuration.md](06-configuration.md#review-gate)): a person can ask for a review of a skipped author. |
 | question | "is this thread-safe?" | Answer in the thread. |
 | diagram | "generate a class diagram" | Reply with a Mermaid diagram of the asked type. |
 | feedback | "this is intentional because..." | Store feedback, learn, react 👍, reply only if a question is in it. |

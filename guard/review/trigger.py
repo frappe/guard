@@ -40,8 +40,13 @@ def consider(
 	requested_tier: str = "",
 	instructions: str = "",
 	force_draft: bool = False,
+	by_bot: bool = False,
 ) -> str | None:
-	"""Run the review gate. Return the new Code Review name, or None when it is skipped."""
+	"""Run the review gate. Return the new Code Review name, or None when it is skipped.
+
+	`by_bot`: the provider tells that a bot asked for the manual review, or it does not tell who asked.
+	A `requested_by` login that ends with `[bot]` counts as a bot too.
+	"""
 	pr = cast("PullRequest", frappe.get_doc("Pull Request", pull_request))
 	repository = str(pr.repository)
 	repo = db.values("Code Repository", repository, ("reviews_enabled", "full_name", "team")) or {}
@@ -79,7 +84,7 @@ def consider(
 		deletions=sum(f.deletions for f in files),
 	)
 	rules = gate.dashboard_rules(get_effective(repo.get("team")))
-	result = gate.check(facts, config, event, manual, rules)
+	result = gate.check(facts, config, event, manual, rules, by_bot or gate.is_bot(requested_by))
 	if result.allowed and not manual and event in PUSH_EVENTS and over_budget(pull_request):
 		result = gate.GateResult(False, OVER_BUDGET)
 	if result.allowed and over_repository_limit(repository, pull_request):

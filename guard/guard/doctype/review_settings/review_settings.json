@@ -195,7 +195,7 @@
    "fieldname": "exclude_authors",
    "fieldtype": "Small Text",
    "label": "Skip Authors",
-   "description": "Do not review pull requests by these authors. One on each line, for example mergify[bot]. * matches any text.",
+   "description": "Do not review pull requests by these authors automatically. A person can still ask for a review. One on each line, for example mergify[bot]. * matches any text.",
    "idx": 16
   },
   {
@@ -556,7 +556,7 @@
  ],
  "index_web_pages_for_search": 0,
  "links": [],
- "modified": "2026-10-20 10:00:00.000000",
+ "modified": "2026-11-17 10:00:00.000000",
  "modified_by": "Administrator",
  "module": "Guard",
  "name": "Review Settings",
