@@ -306,6 +306,45 @@ class TestEvalCases(UnitTestCase):
 		expected = [e for e in case["expected"] if e["keywords"] == ["test"]]
 		self.assertTrue(evals.matches(expected[0], vars(missing[0])))
 
+	def test_hotfix_backport_calls_a_helper_that_only_the_default_branch_has(self):
+		[case] = evals.load_cases("hotfix-backport")
+		payload = case["payload"]
+		[expected] = case["expected"]
+		helper, older = expected["keywords"]
+		files = parse_diff(payload["diff"])
+		self.assertIn(expected["path"], [f.path for f in files])
+		for file in files:
+			self.assertIn(file.path, payload["files"])
+			self.assertIn(file.path, payload["tree"])
+		self.assertEqual(sorted(payload["files"]), sorted(payload["tree"]))
+		self.assertLessEqual(set(payload["base_files"]), set(payload["tree"]))
+		self.assertIn("hotfix", payload["base_branch"])
+		# The change calls the helper, and the hotfix branch does not define it, before or after the change.
+		self.assertIn(f"stock_utils.{helper}(", payload["files"][expected["path"]])
+		self.assertTrue(all(helper not in text for text in payload["base_files"].values()))
+		self.assertIn(f"def {older}(batch_no: str)", payload["base_files"]["stockroom/stock/utils.py"])
+		self.assertTrue(
+			all(helper not in text for path, text in payload["files"].items() if path != expected["path"])
+		)
+		# Only the change differs from the base.
+		changed = {f.path for f in files}
+		for path, text in payload["base_files"].items():
+			if path not in changed:
+				self.assertEqual(payload["files"][path], text)
+
+		found = {
+			"path": expected["path"],
+			"severity": "P1",
+			"title": f"`{helper}` does not exist on version-15-hotfix",
+			"body": "stockroom/stock/utils.py on the target branch has only get_batch_rate(batch_no).",
+		}
+		self.assertTrue(evals.matches(expected, found))
+		other = {**found, "title": "A batch rate of zero saves silently", "body": "Check the rate."}
+		self.assertFalse(evals.matches(expected, other))
+		# A finding that only quotes the added call is about something else.
+		quoted = {**found, "title": f"`{helper}` gets a None posting date", "body": "Pass a date."}
+		self.assertFalse(evals.matches(expected, quoted))
+
 	def test_matches(self):
 		expected = {"path": "a.ts", "severity": "P1", "keywords": ["port", "fail"]}
 		found = {"path": "a.ts", "severity": "P1", "title": "Failed load", "body": "port 0"}

@@ -468,6 +468,43 @@ class TestPipeline(PullRequestCase):
 		self.assertEqual(summary["recall"], 1.0)
 		self.assertIn("| 1/1 | 1/1 |", summary["markdown"])
 
+	def test_the_hotfix_backport_eval_reads_the_hotfix_branch(self):
+		from guard.evals import run
+
+		[case] = run.load_cases("hotfix-backport")
+		[expected] = case["expected"]
+		finding = {
+			"path": expected["path"],
+			"start_line": 30,
+			"severity": "P1",
+			"comment_type": "logic",
+			"title": "get_batch_valuation_rate does not exist on version-15-hotfix",
+			"body": "stockroom/stock/utils.py at the base has only get_batch_rate(batch_no).",
+			"confidence": 0.9,
+		}
+		answer = scripted(
+			[
+				[("read_file", {"path": "stockroom/stock/utils.py", "ref": "base"})],
+				[("report_finding", finding), ("submit_review", {"summary": "s", "confidence_score": 2})],
+			]
+		)
+		requests: list[ChatRequest] = []
+
+		def respond(request: ChatRequest) -> ChatResult:
+			if request.purpose == "review" and request.tools:
+				requests.append(request)
+			return answer(request)
+
+		with use_responder(respond):
+			result = run.review_case(case)
+		self.assertEqual((result["status"], result["found"], result["expected"]), ("Completed", 1, 1))
+		# The task names the hotfix branch, and `read_file` at the base reads the hotfix branch.
+		task = "\n".join(m.content for m in requests[0].messages if m.role == "user")
+		self.assertIn("-> version-15-hotfix", task)
+		read = next(m.content for m in requests[1].messages if m.role == "tool")
+		self.assertIn("def get_batch_rate(batch_no: str)", read)
+		self.assertNotIn("get_batch_valuation_rate", read)
+
 	def test_an_eval_review_that_parks_runs_again(self):
 		from guard.evals import build, run
 
