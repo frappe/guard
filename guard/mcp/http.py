@@ -166,6 +166,8 @@ def _receive(request: Request, review_id: str) -> dict[str, Any]:
 		headers.get("X-Guard-Base", ""),
 		headers.get("X-Guard-Branch", ""),
 		headers.get("X-Guard-Head", ""),
+		# Only the pre-push hook sends it: it picks the base branch after start_review.
+		base_branch=headers.get("X-Guard-Base-Branch", ""),
 	)
 
 

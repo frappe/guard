@@ -29,6 +29,7 @@ for a; do case $a in @*) cp "${a#@}" "$GUARD_TEST_BODY" ;; X-Guard-*) echo "$a" 
 STUB_CURL = """#!/bin/sh
 for a; do case $a in
 @*) cp "${a#@}" "$GUARD_TEST_BODY" ;;
+X-Guard-Base-Branch:*) echo "$a" >> "$GUARD_TEST_LOG" ;;
 http*) echo "curl $a" >> "$GUARD_TEST_LOG" ;;
 esac; done
 exit "${GUARD_TEST_CURL:-0}"
@@ -45,6 +46,7 @@ case "$*" in
 esac
 """
 REVIEW_ID, SECRET = "0123456789abcdef", "0123456789abcdef" * 2
+ZEROS = "0" * 40
 
 ACCEPT = "application/json, text/event-stream"
 
@@ -75,8 +77,18 @@ class TestMcpServer(LocalCase):
 	def call(self, tool: str, **arguments) -> dict:
 		return self.rpc("tools/call", {"name": tool, "arguments": arguments})["result"]
 
-	def upload(self, command: str, review_id: str, diff: str, secret: str | None = None) -> Response:
+	def upload(
+		self,
+		command: str,
+		review_id: str,
+		diff: str,
+		secret: str | None = None,
+		base: str | None = None,
+		base_branch: str | None = None,
+	) -> Response:
 		secret = secret or command.split("X-Guard-Upload: ")[1].split("'")[0]
+		# Only the pre-push hook sends the base branch.
+		extra = {"X-Guard-Base-Branch": base_branch} if base_branch else {}
 		builder = EnvironBuilder(
 			path=f"/mcp/upload/{review_id}",
 			method="POST",
@@ -85,8 +97,9 @@ class TestMcpServer(LocalCase):
 				{
 					"Content-Type": "application/octet-stream",
 					http.UPLOAD_SECRET_HEADER: secret,
-					"X-Guard-Base": self.base,
+					"X-Guard-Base": base or self.base,
 					"X-Guard-Branch": "feature",
+					**extra,
 				}
 			),
 		)
@@ -144,6 +157,11 @@ class TestMcpServer(LocalCase):
 				"publish_review",
 			],
 		)
+		# The agent learns from the schema when to send the base branch.
+		[start] = [t for t in self.rpc("tools/list")["result"]["tools"] if t["name"] == "start_review"]
+		self.assertIn("hotfix branch", start["inputSchema"]["properties"]["base_branch"]["description"])
+		self.assertNotIn("base_branch", start["inputSchema"]["required"])
+		self.assertIn("base_branch", tools.INSTRUCTIONS)
 
 	def test_review_my_pr_is_local_and_github_needs_the_words(self):
 		# A review on GitHub runs the model of Guard and takes credits, so the agent needs clear words.
@@ -222,6 +240,64 @@ class TestMcpServer(LocalCase):
 		self.assertIn("so the base is from origin", result.stderr)
 		self.assertIn(f"X-Guard-Base: {self.base}", result.stdout)
 
+	def hotfix_branch(self) -> str:
+		"""A hotfix branch on origin with a commit that the default branch does not have, and a branch
+		`feature` from it. Return the commit of the hotfix branch."""
+		self.repo.git("update-ref", "refs/remotes/origin/main", self.base)
+		self.repo.branch_off("hotfix")
+		hotfix = self.repo.commit({"app/hotfix.py": "FIX = 1\n"}, "a hotfix")
+		self.repo.git("update-ref", "refs/remotes/origin/hotfix", hotfix)
+		self.repo.branch_off("feature")
+		return hotfix
+
+	def test_the_upload_command_takes_the_merge_base_with_the_base_branch(self):
+		# guard#21: a change to a hotfix branch. A diff from the default branch has the hotfix commits too.
+		hotfix = self.hotfix_branch()
+		(self.repo.path / "app/models.py").write_text(NEW_SIGNATURE)
+		started = self.call("start_review", repository=self.full_name, base_branch=" hotfix ")
+		started = started["structuredContent"]
+		self.assertIn('git merge-base HEAD "$remote/hotfix"', started["command"])
+		self.assertEqual(started["upload"]["base_branch"], "hotfix")
+		result, diff = self.run_upload(started["command"])
+		self.assertEqual(result.returncode, 0, result.stderr)
+		self.assertIn(f"X-Guard-Base: {hotfix}", result.stdout)
+		self.assertIn("notify", diff)
+		self.assertNotIn("app/hotfix.py", diff)
+		response = self.upload(started["command"], started["review_id"], diff, base=hotfix)
+		self.assertEqual(response.status_code, 200, response.get_data(as_text=True))
+		guide = self.call("review_context", review_id=started["review_id"])["content"][0]["text"]
+		self.assertIn(f"Base: {hotfix}, the merge base with branch hotfix.", guide)
+
+		# The pre-push hook starts without a base branch, and names it in the upload.
+		started = self.call("start_review", repository=self.full_name)["structuredContent"]
+		self.assertEqual(started["upload"]["base_branch"], "main")
+		response = self.upload(
+			started["command"], started["review_id"], diff, base=hotfix, base_branch="hotfix"
+		)
+		self.assertEqual(response.status_code, 200, response.get_data(as_text=True))
+		guide = self.call("review_context", review_id=started["review_id"])["content"][0]["text"]
+		self.assertIn("the merge base with branch hotfix.", guide)
+
+	def test_an_unsafe_base_branch_gets_no_command(self):
+		for unsafe in ("hotfix;curl x|sh", "$(id)", "a b", "x" * 141):
+			result = self.call("start_review", repository=self.full_name, base_branch=unsafe)
+			self.assertTrue(result["isError"], unsafe)
+			self.assertIn(
+				"is not a branch name that Guard can put in a shell command", result["content"][0]["text"]
+			)
+			self.assertNotIn("review_id", result["content"][0]["text"])
+		# Also without a shell, and in the upload of the hook.
+		result = self.call(
+			"start_review", repository=self.full_name, base=self.base, diff="x", base_branch="`id`"
+		)
+		self.assertTrue(result["isError"])
+		started = self.call("start_review", repository=self.full_name)["structuredContent"]
+		response = self.upload(
+			started["command"], started["review_id"], self.working_tree_diff(), base_branch="main;id"
+		)
+		self.assertEqual(response.status_code, 422)
+		self.assertIn("base_branch main;id", response.get_data(as_text=True))
+
 	def run_upload(self, command: str) -> tuple[subprocess.CompletedProcess, str]:
 		"""Run the upload command in a subfolder of the repository, with a curl that keeps the body."""
 		with tempfile.TemporaryDirectory() as bin_dir:
@@ -254,6 +330,8 @@ class TestMcpServer(LocalCase):
 		self.assertIn(f"/mcp/upload/{review_id}", command)
 		self.assertIn('git merge-base HEAD "$remote/main"', command)
 		self.assertIn(f"*[/:]{self.full_name.lower()}.git", command)
+		# Without base_branch, the base branch is the default branch.
+		self.assertEqual(started["structuredContent"]["upload"]["base_branch"], "main")
 
 		self.assertEqual(self.upload(command, review_id, self.working_tree_diff(), "wrong").status_code, 403)
 		response = self.upload(command, review_id, self.working_tree_diff())
@@ -263,6 +341,7 @@ class TestMcpServer(LocalCase):
 
 		guide = self.call("review_context", review_id=review_id)["content"][0]["text"]
 		self.assertIn("update_user_email", guide)
+		self.assertIn("the merge base with branch main.", guide)
 		submitted = self.call("submit_review", review_id=review_id, findings=[], summary="- Adds notify.")
 		self.assertFalse(submitted["isError"])
 		self.assertIn("/desk/code-review/", submitted["structuredContent"]["url"])
@@ -657,6 +736,122 @@ class TestHook(LocalCase):
 		self.assertIn("start_review with repository https://github.com/acme/app.git.", calls[0])
 		# The hook sends the pushed commits, not the working tree.
 		self.assertIn("+def update_user_email(user, email, notify):", (self.tmp / "body").read_text())
+		# Only the default branch is on the remote, so it is the base.
+		self.assertIn("X-Guard-Base-Branch: main", log)
+
+	def test_the_hook_takes_the_base_from_the_nearest_remote_branch(self):
+		# guard#21: the branch starts from a hotfix branch. The diff has only the commits of the branch.
+		self.repo.git("update-ref", "refs/remotes/origin/main", self.base)
+		self.repo.branch_off("hotfix")
+		hotfix = self.repo.commit({"app/hotfix.py": "FIX = 1\n"}, "a hotfix")
+		self.repo.git("update-ref", "refs/remotes/origin/hotfix", hotfix)
+		self.repo.git("symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/main")
+		self.repo.branch_off("feature")
+		pushed = self.repo.commit({"app/notes.py": "NOTE = 1\n"}, "the first push")
+		# The branch of this push is on the remote at its first push. It is the nearest, but it does not count.
+		self.repo.git("update-ref", "refs/remotes/origin/feature", pushed)
+		# A name that Guard does not take is not a base.
+		self.repo.git("update-ref", "refs/remotes/origin/a+b", pushed)
+		self.head = self.repo.commit({"app/models.py": NEW_SIGNATURE}, "add notify")
+		result = self.hook(GUARD_TEST_P0="0")
+		self.assertEqual(result.returncode, 0, result.stderr)
+		self.assertIn("the base is origin/hotfix, the remote branch nearest to feature.", result.stderr)
+		self.assertIn("X-Guard-Base-Branch: hotfix", self.log.read_text())
+		body = (self.tmp / "body").read_text()
+		self.assertIn("+NOTE = 1", body)
+		self.assertIn("+def update_user_email(user, email, notify):", body)
+		self.assertNotIn("app/hotfix.py", body)
+
+	def push(self, ref: str, head: str, target: str = "", old: str = ZEROS) -> subprocess.CompletedProcess:
+		"""Run the hook for a push of `head` from branch `ref` to `target` on origin, which had `old`."""
+		script = tools.install_hook({})["content"]
+		lines = f"refs/heads/{ref} {head} refs/heads/{target or ref} {old}\n"
+		result = self.sh(script, "origin", "https://github.com/acme/app.git", stdin=lines, GUARD_TEST_P0="0")
+		self.assertEqual(result.returncode, 0, result.stderr)
+		return result
+
+	def base_branches(self) -> list[str]:
+		return [line.split(": ")[1] for line in self.log.read_text().splitlines() if "Base-Branch" in line]
+
+	def test_a_push_to_the_default_branch_reviews_the_pushed_commits(self):
+		# A release branch with more commits than main merged into main. Its tip is nearer to the pushed
+		# commit than main, but the old commit of main is the base: the release commits are new on main.
+		landed = self.repo.commit({"app/notes.py": "NOTE = 1\n"}, "on main")
+		self.repo.git("update-ref", "refs/remotes/origin/main", landed)
+		self.repo.git("checkout", "-q", "-b", "release", self.base)
+		for number in range(3):
+			self.repo.commit({f"app/release_{number}.py": f"R = {number}\n"}, f"release {number}")
+		self.repo.git("update-ref", "refs/remotes/origin/release", self.repo.head())
+		self.repo.git("checkout", "-q", "main")
+		self.repo.git("merge", "-q", "--no-ff", "-m", "merge release", "release")
+		result = self.push("main", self.repo.head(), old=landed)
+		self.assertIn("the base is the commit of main on the remote", result.stderr)
+		self.assertEqual(self.base_branches(), ["main"])
+		body = (self.tmp / "body").read_text()
+		self.assertIn("app/release_2.py", body)
+		self.assertNotIn("app/notes.py", body)
+
+	def test_a_push_to_a_release_branch_reviews_the_pushed_commits(self):
+		# version-15 is on the remote. Its commits are not on main, but they are not new in this push.
+		self.repo.git("update-ref", "refs/remotes/origin/main", self.base)
+		self.repo.branch_off("version-15")
+		release = self.repo.commit({"app/v15.py": "V = 15\n"}, "on version-15")
+		self.repo.git("update-ref", "refs/remotes/origin/version-15", release)
+		head = self.repo.commit({"app/models.py": NEW_SIGNATURE}, "add notify")
+		self.push("version-15", head, old=release)
+		self.assertEqual(self.base_branches(), ["version-15"])
+		body = (self.tmp / "body").read_text()
+		self.assertIn("+def update_user_email(user, email, notify):", body)
+		self.assertNotIn("app/v15.py", body)
+
+	def test_a_new_branch_at_the_tip_of_a_release_branch_is_not_an_empty_diff(self):
+		self.repo.git("update-ref", "refs/remotes/origin/main", self.base)
+		self.repo.branch_off("feature")
+		tip = self.repo.commit({"app/v1.py": "V = 1\n"}, "a fix on version-1")
+		self.repo.git("update-ref", "refs/remotes/origin/version-1", tip)
+		# version-1 has the pushed commit, so it is not the base. The default branch is.
+		self.push("feature", tip)
+		self.assertIn("app/v1.py", (self.tmp / "body").read_text())
+		# `git push origin feature:feature-v2` after a push of feature: origin/feature has the commit too.
+		self.repo.git("update-ref", "refs/remotes/origin/feature", tip)
+		(self.tmp / "body").unlink()
+		self.push("feature", tip, target="feature-v2")
+		self.assertIn("app/v1.py", (self.tmp / "body").read_text())
+		self.assertEqual(self.base_branches(), ["main", "main"])
+		# A new branch at the commit of main has nothing to review, and sends nothing.
+		(self.tmp / "body").unlink()
+		result = self.push("other", self.base)
+		self.assertIn("nothing new to review in other", result.stderr)
+		self.assertFalse((self.tmp / "body").exists())
+		# A push that adds nothing to the branch of the remote does not start the agent.
+		calls = self.log.read_text().count("start_review")
+		result = self.push("feature", tip, old=tip)
+		self.assertIn("nothing new to review in feature", result.stderr)
+		self.assertEqual(self.log.read_text().count("start_review"), calls)
+
+	def test_a_force_push_takes_the_base_from_the_nearest_branch(self):
+		self.repo.git("update-ref", "refs/remotes/origin/main", self.base)
+		self.repo.branch_off("feature")
+		shared = self.repo.commit({"app/shared.py": "S = 1\n"}, "shared")
+		old = self.repo.commit({"app/old.py": "O = 1\n"}, "dropped by a rebase")
+		self.repo.git("update-ref", "refs/remotes/origin/feature", old)
+		self.repo.git("reset", "-q", "--hard", shared)
+		head = self.repo.commit({"app/models.py": NEW_SIGNATURE}, "add notify")
+		# The old commit is not an ancestor, and origin/feature is the branch of the push: main is the base.
+		result = self.push("feature", head, old=old)
+		self.assertNotIn("the base is", result.stderr)
+		self.assertEqual(self.base_branches(), ["main"])
+		body = (self.tmp / "body").read_text()
+		self.assertIn("app/shared.py", body)
+		self.assertIn("+def update_user_email(user, email, notify):", body)
+
+	def test_the_hook_prefers_the_default_branch_on_a_tie(self):
+		# A release branch at the commit of the default branch is as near as the default branch.
+		self.repo.git("update-ref", "refs/remotes/origin/version-1", self.base)
+		result = self.hook(GUARD_TEST_P0="0")
+		self.assertEqual(result.returncode, 0, result.stderr)
+		self.assertIn("X-Guard-Base-Branch: main", self.log.read_text())
+		self.assertNotIn("the base is", result.stderr)
 
 	def test_the_hook_reviews_against_upstream_in_a_clone_of_a_fork_without_origin(self):
 		# guard#14: the remotes are `upstream` (the repository) and `me` (the fork).
