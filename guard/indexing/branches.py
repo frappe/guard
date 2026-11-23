@@ -18,9 +18,9 @@ import frappe
 from frappe.utils import now_datetime
 
 from guard.config.globs import match_filter
-from guard.config.resolver import ConfigResolver
+from guard.config.resolver import GUARD_DIR, SINGLE_FILE, ConfigResolver
 from guard.git.repository import default_branch, default_head, fetch_default, store_for
-from guard.git.store import GitError
+from guard.git.store import GitError, GitStore
 from guard.indexing.indexer import RUNNING, index_lock, recent_failure
 from guard.indexing.vectors import VectorStore
 from guard.utils import db
@@ -32,8 +32,6 @@ SETTING = "index_branches"
 # Rows deleted in one transaction when an index is dropped. A large repository has a million edges:
 # one DELETE of all of them holds locks and undo log for minutes.
 DROP_BATCH = 5000
-# Only these can be dropped. Any other status is a queued or running job that writes the rows.
-DROPPABLE = ("completed", "failed")
 # The graph tables, edges first: they point at entities.
 GRAPH_TABLES = ("tabCode Edge", "tabCode Entity")
 
@@ -52,21 +50,44 @@ def same_branch(a: str | None, b: str | None) -> bool:
 
 
 def patterns(repository: str, fetch: bool = False) -> list[str] | None:
-	"""The `index_branches` patterns of a repository. None when Guard cannot read the config now.
+	"""The `index_branches` patterns of a repository. None when Guard cannot read the setting now.
 
 	Read the default branch in the mirror. Fetch it first only with `fetch`, or when the mirror does
 	not have it: the setting changes seldom, and `catch_up` fetches and reads it again every hour.
+
+	None means "unknown": the caller drops nothing and queues nothing. An empty list would drop every
+	index that Guard made, so a root config that Guard cannot read or parse gives None, not [].
 	"""
 	try:
 		store = store_for(repository)
 		if fetch:
 			fetch_default(repository, store)
 		sha = default_head(repository, store)
-		resolver = ConfigResolver.from_store(repository, store, sha)
+		paths = [entry.path for entry in store.ls_tree(sha) if _root_config(entry.path)]
 	except GitError as error:
-		frappe.logger("guard").warning(f"{repository}: cannot read {SETTING}: {redact(str(error))}")
-		return None
-	return list(resolver.resolve("").settings.get(SETTING) or [])
+		return _unknown(repository, str(error))
+	files: dict[str, str] = {}
+	for path in paths:
+		# `show` gives None on a git error or a timeout, also for a file that the tree has.
+		text = store.show(sha, path)
+		if text is None:
+			return _unknown(repository, f"cannot read {path} at {sha[:12]}")
+		files[path] = text
+	resolver = ConfigResolver.from_files(repository, files)
+	settings = resolver.resolve("").settings
+	if resolver.errors:
+		return _unknown(repository, "; ".join(resolver.errors))
+	return list(settings.get(SETTING) or [])
+
+
+def _root_config(path: str) -> bool:
+	"""A config file of the root. Nested configs do not count for the whole repository."""
+	return path.startswith(f"{GUARD_DIR}/") or path == SINGLE_FILE
+
+
+def _unknown(repository: str, reason: str) -> None:
+	frappe.logger("guard").warning(f"{repository}: cannot read {SETTING}: {redact(reason)[:500]}")
+	return None
 
 
 def listed(repository: str, branch: str, branch_patterns: list[str] | None) -> bool:
@@ -198,32 +219,61 @@ def _catch_up(repository: str, indexes: list[BranchIndex]) -> None:
 		return  # Not on a guess: a read that failed must not drop an index.
 	store = store_for(repository)
 	remote = {branch.casefold() for branch in store.remote_branches()}
-	allowed = kept(repository, indexes, branch_patterns)
+	if default_branch(repository).casefold() not in remote:
+		# An empty or partial answer of the remote. Do not take it for deleted branches.
+		frappe.logger("guard").warning(
+			f"{repository}: the remote did not list the default branch: no branch index is dropped"
+		)
+		return
+	present = [index for index in indexes if index.branch.casefold() in remote]
+	# A branch that is gone does not hold a place under the limit.
+	allowed = kept(repository, present, branch_patterns)
 	for index in indexes:
-		if index.branch.casefold() not in remote:
-			drop_index(index.name)  # Any index: the branch is gone.
-			continue
-		if index.auto and index not in allowed:
-			drop_index(index.name)  # Not listed now, or past the limit.
-			continue
-		# An index of the query API for an unlisted branch: keep it, and leave it as it is.
-		if not index.auto and not listed(repository, index.branch, branch_patterns):
-			continue
-		# As on the default branch: a run in progress or a failed run is not repeated here.
-		if index.status != "completed":
-			continue
-		store.fetch_branches(index.branch)
-		if store.rev_parse(f"refs/heads/{index.branch}") != index.sha:
-			from guard.indexing.jobs import enqueue_index
+		try:
+			_catch_up_index(repository, store, index, index in present, index in allowed, branch_patterns)
+		except GitError as error:
+			# One bad branch must not stop the others.
+			frappe.logger("guard").warning(
+				f"{repository}: catch-up of the index of branch {index.branch} failed: {redact(str(error))}"
+			)
 
-			enqueue_index(repository, index.branch)
+
+def _catch_up_index(
+	repository: str,
+	store: GitStore,
+	index: BranchIndex,
+	present: bool,
+	allowed: bool,
+	branch_patterns: list[str],
+) -> None:
+	if not present:
+		drop_index(index.name)  # Any index: the branch is gone.
+		return
+	if index.auto and not allowed:
+		drop_index(index.name)  # Not listed now, or past the limit.
+		return
+	# An index of the query API for an unlisted branch: keep it, and leave it as it is.
+	if not index.auto and not listed(repository, index.branch, branch_patterns):
+		return
+	# As on the default branch: a run in progress or a failed run is not repeated here.
+	if index.status != "completed":
+		return
+	store.fetch_branches(index.branch)
+	if store.rev_parse(f"refs/heads/{index.branch}") != index.sha:
+		from guard.indexing.jobs import enqueue_index
+
+		enqueue_index(repository, index.branch)
 
 
 def drop_index(index: str) -> bool:
 	"""Delete the rows and the vectors of an index, then the Repository Index.
 
-	Return False and do nothing when the index is a default index, has a queued or running job, or a
-	review of a pull request to its branch is queued or running. The next catch-up tries again.
+	Return False and do nothing when the index is a default index, a run holds its lock, or a review
+	of a pull request to its branch is queued or running. The next catch-up tries again.
+
+	The status does not matter when the lock is free. A run holds the lock while it writes, so a
+	`cloning` or `processing` index without the lock is a run whose worker died. A `submitted` index
+	has a job that has not started: when it starts, `run_index` finds no index and stops.
 	"""
 	row = db.values("Repository Index", index, ("repository", "branch")) or {}
 	repository, branch = str(row.get("repository") or ""), str(row.get("branch") or "")
@@ -232,8 +282,8 @@ def drop_index(index: str) -> bool:
 	with index_lock(index) as acquired:
 		if not acquired:
 			return False  # A run writes it now.
-		# Read again under the lock: a job can have started since the read above.
-		if db.value("Repository Index", index, "status") not in DROPPABLE:
+		before = db.values("Repository Index", index, ("status", "sha", "error", "completed_at"))
+		if not before:
 			return False
 		# Reviews and runs that read the index now see a failed index with no sha, and skip it.
 		db.set_values(
@@ -247,6 +297,11 @@ def drop_index(index: str) -> bool:
 			},
 		)
 		db.commit()
+		# A review that started before the commit above can have read the index as it was.
+		if _in_review(repository, branch):
+			db.set_values("Repository Index", index, dict(before))
+			db.commit()
+			return False
 		_delete_rows(index)
 		frappe.delete_doc("Repository Index", index, ignore_permissions=True, force=True)
 		db.commit()

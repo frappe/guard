@@ -277,16 +277,107 @@ class TestBranchIndexJobs(IntegrationTestCase):
 		jobs.catch_up()
 		self.assertFalse(frappe.db.exists("Repository Index", branch))
 
-	def test_a_drop_skips_a_locked_or_queued_index(self):
+	def test_a_drop_skips_a_locked_index(self):
 		_, branch = self.index_both()
+		frappe.db.set_value("Repository Index", branch, "status", "processing")
 		with index_lock(branch):
 			self.assertFalse(branches.drop_index(branch), "a run writes it")
-		frappe.db.set_value("Repository Index", branch, "status", "submitted")
-		self.assertFalse(branches.drop_index(branch), "a job is queued")
-		self.assertEqual(db.value("Repository Index", branch, "status"), "submitted")
+		self.assertEqual(db.value("Repository Index", branch, "status"), "processing")
 		self.assertTrue(all(self.counts(branch)))
-		frappe.db.set_value("Repository Index", branch, "status", "failed")
+		# Without the lock, a "processing" index is a run whose worker died.
 		self.assertTrue(branches.drop_index(branch))
+
+	def test_a_drop_takes_a_queued_index_and_its_job_stops(self):
+		_, branch = self.index_both()
+		frappe.db.set_value("Repository Index", branch, "status", "submitted")
+		self.assertTrue(branches.drop_index(branch))
+		self.assertEqual(self.counts(branch), (0, 0, 0, 0))
+		jobs.run_index(branch)
+
+	def test_a_broken_root_config_drops_nothing(self):
+		_, branch = self.index_both()
+		self.set_config('index_branches = ["version-*-hotfix"\n')  # not TOML
+		self.assertIsNone(branches.patterns(self.repository, fetch=True))
+		jobs.catch_up()
+		self.assertTrue(frappe.db.exists("Repository Index", branch))
+		self.assertTrue(all(self.counts(branch)))
+
+	def test_an_unreadable_root_config_drops_nothing(self):
+		_, branch = self.index_both()
+		show = GitStore.show
+
+		def fail_on_config(store, sha, path):
+			return None if path == ".guard/config.toml" else show(store, sha, path)
+
+		with patch.object(GitStore, "show", autospec=True, side_effect=fail_on_config):
+			self.assertIsNone(branches.patterns(self.repository, fetch=True))
+			jobs.catch_up()
+		self.assertTrue(frappe.db.exists("Repository Index", branch))
+
+	def test_a_broken_nested_config_does_not_hide_the_setting(self):
+		self.set_config(listed_config())
+		self.repo.commit({"app/.guard/config.toml": "strictness = [\n"}, "broken nested config")
+		self.assertEqual(branches.patterns(self.repository, fetch=True), PATTERNS)
+
+	def test_a_partial_answer_of_the_remote_drops_nothing(self):
+		_, branch = self.index_both()
+		self.set_config(None)
+		with patch.object(GitStore, "remote_branches", return_value={"feature"}):
+			jobs.catch_up()
+		self.assertTrue(frappe.db.exists("Repository Index", branch))
+		with patch.object(GitStore, "remote_branches", return_value=set()):
+			jobs.catch_up()
+		self.assertTrue(frappe.db.exists("Repository Index", branch))
+
+	def test_one_bad_branch_does_not_stop_the_others(self):
+		# The index of version-14-hotfix is older, so catch-up takes it first.
+		self.assertTrue(branches.index_of(self.repository, "version-14-hotfix", PATTERNS))
+		_, branch = self.index_both()
+		self.repo.git("branch", "version-14-hotfix")
+		self.repo.git("checkout", "-q", HOTFIX)
+		head = self.repo.commit({"app/more.py": "Y = 2\n"}, "missed push")
+		self.repo.git("checkout", "-q", "main")
+		fetch = GitStore.fetch_branches
+
+		def fail_on_14(store, *names):
+			if "version-14-hotfix" in names:
+				raise GitError("timeout")
+			return fetch(store, *names)
+
+		# Catch-up fetches only completed indexes.
+		frappe.db.set_value(
+			"Repository Index",
+			{"repository": self.repository, "branch": "version-14-hotfix"},
+			"status",
+			"completed",
+		)
+		with patch.object(GitStore, "fetch_branches", autospec=True, side_effect=fail_on_14):
+			jobs.catch_up()
+		self.assertEqual(db.value("Repository Index", branch, "sha"), head)
+
+	def test_a_gone_branch_does_not_hold_a_place_under_the_limit(self):
+		self.set_config(listed_config())
+		# Five old indexes of branches that the remote no longer has, then the release branch.
+		for n in range(1, branches.MAX_BRANCH_INDEXES + 1):
+			jobs.index_for(self.repository, f"version-{n}-hotfix", auto=True)
+		hotfix = jobs.index_for(self.repository, HOTFIX, auto=True)
+		jobs.ensure_fresh(self.repository, branch=HOTFIX)
+		jobs.catch_up()
+		self.assertTrue(frappe.db.exists("Repository Index", hotfix))
+		self.assertFalse(
+			frappe.get_all(
+				"Repository Index",
+				filters={"repository": self.repository, "branch": ["like", "version-_-hotfix"]},
+			)
+		)
+
+	def test_a_drop_stops_when_a_review_starts(self):
+		_, branch = self.index_both()
+		before = db.values("Repository Index", branch, ("status", "sha"))
+		with patch.object(branches, "_in_review", side_effect=[False, True]):
+			self.assertFalse(branches.drop_index(branch))
+		self.assertEqual(db.values("Repository Index", branch, ("status", "sha")), before)
+		self.assertTrue(all(self.counts(branch)))
 
 	def test_catch_up_goes_on_after_a_repository_fails(self):
 		with (
