@@ -310,7 +310,7 @@ class TestEvalCases(UnitTestCase):
 		[case] = evals.load_cases("hotfix-backport")
 		payload = case["payload"]
 		[expected] = case["expected"]
-		helper = expected["keywords"][0]
+		helper, older = expected["keywords"]
 		files = parse_diff(payload["diff"])
 		self.assertIn(expected["path"], [f.path for f in files])
 		for file in files:
@@ -322,6 +322,7 @@ class TestEvalCases(UnitTestCase):
 		# The change calls the helper, and the hotfix branch does not define it, before or after the change.
 		self.assertIn(f"stock_utils.{helper}(", payload["files"][expected["path"]])
 		self.assertTrue(all(helper not in text for text in payload["base_files"].values()))
+		self.assertIn(f"def {older}(batch_no: str)", payload["base_files"]["stockroom/stock/utils.py"])
 		self.assertTrue(
 			all(helper not in text for path, text in payload["files"].items() if path != expected["path"])
 		)
@@ -340,6 +341,9 @@ class TestEvalCases(UnitTestCase):
 		self.assertTrue(evals.matches(expected, found))
 		other = {**found, "title": "A batch rate of zero saves silently", "body": "Check the rate."}
 		self.assertFalse(evals.matches(expected, other))
+		# A finding that only quotes the added call is about something else.
+		quoted = {**found, "title": f"`{helper}` gets a None posting date", "body": "Pass a date."}
+		self.assertFalse(evals.matches(expected, quoted))
 
 	def test_matches(self):
 		expected = {"path": "a.ts", "severity": "P1", "keywords": ["port", "fail"]}

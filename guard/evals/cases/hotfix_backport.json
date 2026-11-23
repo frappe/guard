@@ -1,7 +1,7 @@
 {
 	"name": "hotfix-backport",
 	"source": "synthetic: frappe/guard#25",
-	"note": "Synthetic case for issue #25. A backport to a hotfix branch calls a helper that exists only on the default branch. The diff is right on the default branch and wrong on the target branch.",
+	"note": "Synthetic case for issue #25. A backport to a hotfix branch calls a helper that exists only on the default branch. The diff is right on the default branch and wrong on the target branch. The case runs as a payload review, which has no pull request: the backport prompts do not apply, so the generic review agent must catch it.",
 	"payload": {
 		"full_name": "acme/stockroom",
 		"title": "fix: use the batch rate for a batch in a Material Transfer (backport #1234)",
@@ -62,9 +62,10 @@
 			"path": "stockroom/stock/doctype/stock_entry/stock_entry.py",
 			"severity": "P1",
 			"keywords": [
-				"get_batch_valuation_rate"
+				"get_batch_valuation_rate",
+				"get_batch_rate"
 			],
-			"why": "stock_utils.get_batch_valuation_rate is not in stockroom/stock/utils.py on version-15-hotfix, which has only get_batch_rate(batch_no). The default branch added it in another pull request that was not backported. Each Stock Entry with a batch from a source warehouse fails to save with an AttributeError."
+			"why": "stock_utils.get_batch_valuation_rate is not in stockroom/stock/utils.py on version-15-hotfix, which has only get_batch_rate(batch_no). The default branch added it in another pull request that was not backported. Each Stock Entry with a batch from a source warehouse fails to save with an AttributeError. A correct finding names both helpers: the missing one and the one that the hotfix branch has."
 		}
 	]
 }
