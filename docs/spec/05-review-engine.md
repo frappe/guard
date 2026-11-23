@@ -8,7 +8,7 @@
 | - | - | - |
 | 1 | Prepare | Fetched head, merge base, parsed diff, resolved config, tier |
 | 2 | Start | 👀 reaction, pending status |
-| 3 | Fresh index | Base index at the merge base or later |
+| 3 | Fresh index | The index of the base branch when `index_branches` lists it, else of the default branch |
 | 4 | Context | A context pack within the token budget of the tier |
 | 5 | Agent | Raw findings and a review verdict |
 | 6 | Verify | Findings with false positives removed (plus and apex) |
@@ -126,7 +126,15 @@ On a push re-review or a backport, the lines, files, paths and contract changes 
 
 ## Stage 3: Fresh index
 
-If the base index is older than the merge base, Guard runs an incremental index for the files that changed between the two commits. A repository with no index gets a full index first. A large first index runs on the `long` queue and the review waits for it.
+Guard picks the index of the base branch when the base branch is not the default branch, `index_branches` lists it ([04-codebase-graph.md](04-codebase-graph.md#branch-indexes)), the branch is within the limit of 5 branch indexes, and its index is completed. Else it picks the index of the default branch.
+
+The review never builds the index of a base branch. When a listed branch has no completed index, the review queues one on the `long` queue (the first one is a full index) and uses the index of the default branch with the note below. A later review uses the branch index when it is completed. It does not queue an index that runs now or that failed in the last hour.
+
+The review takes any completed index: pushes and the hourly `catch_up` keep it fresh. An index of the default branch that never completed gets a full index first, in the review. Indexing waits when another job indexes the same branch: the review tries again after 1, 5 and 15 minutes.
+
+Replies in review threads use the same index as a review: the completed index of a listed base branch, else the index of the default branch. A reply does not queue an index.
+
+When the base branch is not the default branch and the graph is of the default branch, the task of the agent says so: "The code graph is of commit X of the default branch, not of the base branch of this pull request." The agent then checks callers and callees in the code at the base. `get_callers` gives line numbers and lines of the commit of the index, and says which commit that is. It reads the commit with the rows on each call: a push can update the index during the review.
 
 For one hour after an index run fails, reviews go on without the graph and do not wait for the index again. The Repository Index keeps the error and the end time of the failed run until a later run completes.
 
@@ -143,6 +151,7 @@ A caller shows the line of the call with 10 lines on each side, and the first li
 | 1 | Pull request title, description, labels, branch names, commit messages |
 | 1 | The annotated diff: each line has its head line number, with the lines around each hunk |
 | 1 | Rules and instructions from the dashboard and the config files that apply to the changed paths |
+| 2 | A note when the graph is of the default branch and the base branch is another branch |
 | 2 | Changed entities: head body, base body, signature change |
 | 2 | Call sites at risk: callers not updated after a contract change |
 | 2 | Linked tickets (Jira, Linear) |
@@ -197,7 +206,7 @@ A `# nosemgrep` comment on the line, or on a comment line just above it, covers 
 | `grep(pattern, path_glob)` | `git grep` at the head, with a result cap. Only when the review has a repository. |
 | `search_code(query)` | Hybrid search in the index. |
 | `find_definition(name)` | Definitions by name or qualified name, with the signature. |
-| `get_callers(name)` | Callers, each with the text of the line of the call, at the base. |
+| `get_callers(name)` | Callers, each with the text of the line of the call, at the commit of the index. |
 | `get_callees(name)` | What a function calls. |
 | `get_outline(path)` | Entities in a file. |
 | `run_in_sandbox(command)`, `write_sandbox_file(path, content)` | Runtime validation, when on. |

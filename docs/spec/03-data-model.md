@@ -64,7 +64,7 @@ One record for the organization (name `Organization`) and one for each team that
 | `filter_rules` | Table Review Filter Rule | |
 | `ignore_patterns` | Code | `.gitignore` syntax |
 | `instructions` | Long Text | |
-| `exclude_authors`, `disabled_labels`, `exclude_branches`, `ignore_keywords`, `include_authors`, `labels`, `include_branches` | Small Text | One value on each line. Same meaning as the config keys. |
+| `exclude_authors`, `disabled_labels`, `exclude_branches`, `ignore_keywords`, `include_authors`, `labels`, `include_branches`, `index_branches` | Small Text | One value on each line. Same meaning as the config keys. |
 | `<section>_included`, `<section>_collapsible`, `<section>_open` | Check | For `summary`, `issues_table`, `confidence`, `impact`, `diagram`. |
 | `comments_outside_diff` | Check | |
 | `status_check`, `status_comments`, `update_description`, `update_summary_only`, `fix_with_ai`, `hide_footer` | Check | |
@@ -118,7 +118,9 @@ The record name is a random hash.
 
 ### Repository Index
 
-`repository`, `branch`, `status` (`submitted`, `cloning`, `processing`, `completed`, `failed`), `sha`, `files_processed`, `num_files`, `entity_count`, `edge_count`, `chunk_count`, `error`, `started_at`, `completed_at`.
+`repository`, `branch`, `status` (`submitted`, `cloning`, `processing`, `completed`, `failed`), `sha`, `auto` (Check, read only: Guard made it for `index_branches`), `files_processed`, `num_files`, `entity_count`, `edge_count`, `chunk_count`, `error`, `started_at`, `completed_at`.
+
+One record for each repository and branch. The default branch always has one. Other branches have one when `index_branches` lists them ([04-codebase-graph.md](04-codebase-graph.md#branch-indexes)). `index_status` and `default_index` on Code Repository are about the default branch only.
 
 ### Repository Cluster
 

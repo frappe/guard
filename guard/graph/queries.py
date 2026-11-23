@@ -3,12 +3,16 @@
 import re
 from collections import defaultdict
 from dataclasses import dataclass, field
-from typing import Any
+from functools import cached_property
+from typing import TYPE_CHECKING, Any
 
 from guard.indexing.symbols import family
 from guard.indexing.vectors import VectorStore
 from guard.llm.embeddings import Embedder, tokens
 from guard.utils import db
+
+if TYPE_CHECKING:
+	from guard.git.store import GitStore
 
 ENTITY_FIELDS = (
 	"name, kind, entity_name, qualified_name, path, parent_entity, start_line, end_line, "
@@ -73,6 +77,24 @@ class CodeGraph:
 	def __init__(self, index: str):
 		self.index = index
 		self.repository = str(db.value("Repository Index", index, "repository") or "")
+
+	@property
+	def sha(self) -> str:
+		"""The commit of the index now. The line numbers of the graph are of this commit. Not cached:
+		a push can update the index during a long review, and the rows change with it."""
+		return str(db.value("Repository Index", self.index, "sha") or "")
+
+	def source(self, path: str, sha: str) -> str | None:
+		"""A file at `sha`, a commit of the index. None when the mirror does not have it."""
+		if not sha or not self.repository:
+			return None
+		return self._store.show(sha, path)
+
+	@cached_property
+	def _store(self) -> "GitStore":
+		from guard.git.repository import store_for
+
+		return store_for(self.repository)
 
 	# ------------------------------------------------------------ entities
 

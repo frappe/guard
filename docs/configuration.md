@@ -113,6 +113,20 @@ Names and branches take `*`, `**`, `?` and `{a,b}`. Case does not matter. `depen
 
 The skip lists (`exclude_authors`, `exclude_branches`, `disabled_labels` and `ignore_keywords`) add up across all levels. A repository cannot remove a skip that Review Settings sets. The other lists replace the value from a higher level.
 
+### Code graph of other branches
+
+Guard keeps a code graph of the default branch. It uses the graph to find the callers, the callees and similar code of each changed function. A pull request to another branch, for example `version-15-hotfix`, gets the graph of the default branch by default, and Guard tells the reviewer that the callers can be different on the base branch.
+
+| Key | Default | Meaning |
+| - | - | - |
+| `index_branches` | `[]` | Base branches that get their own code graph, for example `["version-*-hotfix"]`. |
+
+- Set it in Review Settings (**Index Branches**) or in the root `.guard/config.toml` or `guard.toml` of the default branch. A config in a subdirectory does not count.
+- The first review of a pull request to a listed branch starts an index of the whole branch in the background, and uses the graph of the default branch. Later reviews use the graph of the branch when the index is complete. A push to the branch updates the graph.
+- Each listed branch is a full extra copy of the graph and its search vectors. The first index embeds every chunk once. Later pushes index only the changed files.
+- Guard indexes at most 5 branches for each repository, apart from the default branch. When more branches match, the branches that Guard indexed first keep their graphs.
+- Every hour, Guard deletes the graph of a branch that the setting no longer lists or that the repository no longer has. It never deletes the graph of the default branch. A graph that you asked for through the query API stays until its branch is deleted.
+
 ### Output
 
 | Key | Default | Meaning |
@@ -206,6 +220,7 @@ It has the same settings as the repository files. The **Filters** section has on
 | Only Labels | `labels` | |
 | Only Target Branches | `include_branches` | |
 | Ignore Patterns | `ignore_patterns` | `**/*.min.js` |
+| Index Branches (section **Code Graph**) | `index_branches` | `version-*-hotfix` |
 
 For example, to skip the backport pull requests that Mergify opens, add `mergify[bot]` to **Skip Authors**. To review one of them, mention Guard on the pull request. To skip only backports, add `(backport #` to **Skip Keywords**.
 

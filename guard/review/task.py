@@ -60,6 +60,8 @@ def compose(run: ReviewRun, built: BuiltContext, extra: str = "", tokens: int = 
 	parts.append(project_rules(run))
 	if run.frappe_app:
 		parts.append(checks.FRAPPE_RULES)
+	if run.graph_note:
+		parts.append(run.graph_note)
 	if run.blast and run.blast.sentence():
 		parts.append(f"Blast radius from the graph: {run.blast.sentence()}")
 		if run.blast.untested:

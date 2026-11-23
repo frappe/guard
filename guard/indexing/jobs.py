@@ -10,13 +10,16 @@ from guard.llm.embeddings import Embedder
 from guard.utils import db
 
 
-def index_for(repository: str, branch: str | None = None) -> str:
-	"""The Repository Index of a branch, created when missing."""
+def index_for(repository: str, branch: str | None = None, auto: bool = False) -> str:
+	"""The Repository Index of a branch, created when missing. `auto` marks a new index that
+	`index_branches` asks for: Guard drops it when the setting no longer lists the branch."""
 	branch = branch or db.value("Code Repository", repository, "default_branch") or "main"
 	name = db.value("Repository Index", {"repository": repository, "branch": branch}, "name")
 	if name:
 		return str(name)
-	doc = frappe.get_doc({"doctype": "Repository Index", "repository": repository, "branch": branch})
+	doc = frappe.get_doc(
+		{"doctype": "Repository Index", "repository": repository, "branch": branch, "auto": int(auto)}
+	)
 	doc.insert(ignore_permissions=True)
 	return str(doc.name)
 
@@ -47,6 +50,8 @@ def enqueue_index(repository: str, branch: str | None = None, full: bool = False
 
 def run_index(index: str, full: bool = False) -> None:
 	repository = db.value("Repository Index", index, "repository")
+	if not repository:
+		return  # `branches.drop_index` dropped the index after the job was queued.
 	if db.value("Code Repository", repository, "default_branch") == db.value(
 		"Repository Index", index, "branch"
 	):
@@ -57,15 +62,28 @@ def run_index(index: str, full: bool = False) -> None:
 	except IndexBusy:
 		# Another job is indexing the branch now. The next push indexes it again.
 		return
+	except frappe.DoesNotExistError:
+		if frappe.db.exists("Repository Index", index):
+			raise
+		# Dropped while the job started. Only a branch index can be dropped.
+		frappe.clear_last_message()
 
 
 def catch_up() -> None:
-	"""Every hour: index again each default branch whose head moved past its index.
+	"""Every hour: index again each default branch whose head moved past its index. Then do the
+	same for the other indexed branches, and drop those that are not wanted (`branches.catch_up`).
 
 	A push to the default branch queues an index, but a lost or ignored delivery does not. On 26 Oct
 	a deploy lost the deliveries of an hour, and the index of grove stayed 2 commits behind. Reviews
 	do not repair it: `ensure_fresh` takes any completed index.
 	"""
+	_catch_up_default()
+	from guard.indexing import branches
+
+	branches.catch_up()
+
+
+def _catch_up_default() -> None:
 	rows = db.dict_rows(
 		"""SELECT r.name, r.default_branch, i.sha FROM `tabCode Repository` r
 		JOIN `tabRepository Index` i ON i.name = r.default_index
@@ -85,14 +103,17 @@ def catch_up() -> None:
 		db.commit()
 
 
-def ensure_fresh(repository: str, sha: str | None = None, refresh: bool = True) -> str:
-	"""Make the default index cover `sha` (or the branch head). Run inline.
+def ensure_fresh(
+	repository: str, sha: str | None = None, refresh: bool = True, branch: str | None = None
+) -> str:
+	"""Make the index of `branch` (by default the default branch) cover `sha`, or any commit when
+	`sha` is None. Run inline. The first call for a branch makes a full index.
 
 	Raise IndexBusy when another job is indexing it now, and IndexFailed when the run fails or
 	failed in the last hour. With `refresh` False, do not index: raise IndexFailed when the index is
 	not ready.
 	"""
-	index = index_for(repository)
+	index = index_for(repository, branch)
 	row = db.values("Repository Index", index, ("status", "sha"))
 	if row and row["status"] == "completed" and (sha is None or row["sha"] == sha):
 		return index
@@ -127,3 +148,10 @@ def reembed_all() -> None:
 		)
 		last = rows[-1][0]
 		db.commit()
+		# `branches.drop_index` can delete chunks between the read and the upsert above. Read again
+		# after the commit, in a new snapshot, and delete the vectors of the chunks that are gone.
+		refs = tuple(row[0] for row in rows)
+		kept = {r[0] for r in db.rows("SELECT name FROM `tabCode Chunk` WHERE name IN %s", (refs,))}
+		if gone := [ref for ref in refs if ref not in kept]:
+			store.delete_refs("chunk", gone)
+			db.commit()

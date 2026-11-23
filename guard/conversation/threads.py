@@ -10,6 +10,7 @@ from guard.conversation import answer as answerer
 from guard.git.diff import parse_diff
 from guard.git.repository import default_head, store_for
 from guard.graph.queries import CodeGraph
+from guard.indexing import branches
 from guard.learning import feedback, missed
 from guard.llm.types import GatewayBusy
 from guard.providers import adapter_for_repository
@@ -36,8 +37,12 @@ def run_for(pull_request: str) -> ReviewRun:
 	base = store.rev_parse(f"refs/heads/{pr.base_branch}")
 	merge_base = store.merge_base(base, head)
 	files = parse_diff(store.diff(merge_base, head))
-	index = db.value("Code Repository", repository, "default_index")
 	config_sha = default_head(repository, store)
+	config = ConfigResolver.from_store(repository, store, config_sha).resolve_pr([f.path for f in files])
+	# The completed index of a listed base branch, as in a review. A reply does not queue one.
+	index = branches.ready_index(
+		repository, pr.base_branch or "", config.settings.get(branches.SETTING)
+	) or db.value("Code Repository", repository, "default_index")
 	return ReviewRun(
 		review=None,
 		repository=repository,
@@ -57,7 +62,7 @@ def run_for(pull_request: str) -> ReviewRun:
 		adapter=adapter,
 		all_files=files,
 		files=files,
-		config=ConfigResolver.from_store(repository, store, config_sha).resolve_pr([f.path for f in files]),
+		config=config,
 		config_sha=config_sha,
 		graph=CodeGraph(str(index)) if index else None,
 	)

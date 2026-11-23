@@ -69,8 +69,16 @@ class TestRead(UnitTestCase):
 
 
 class FakeGraph:
-	def __init__(self, target: Entity, links: list[Link]):
+	sha = "abc123"
+
+	def __init__(self, target: Entity, links: list[Link], sources: dict[str, str] | None = None):
 		self.target, self.links = target, links
+		self.sources = sources or {}
+		self.read: list[tuple[str, str]] = []
+
+	def source(self, path: str, sha: str) -> str | None:
+		self.read.append((path, sha))
+		return self.sources.get(path)
 
 	def entity(self, name: str) -> Entity | None:
 		return None
@@ -98,10 +106,23 @@ class TestGraphTools(UnitTestCase):
 
 	def test_callers_show_the_line_of_each_call(self):
 		out = agent.read_tool(self.review, "get_callers", {"name": "f"}) or ""
+		self.assertIn("Line numbers are of commit abc123 of the code graph.", out)
 		self.assertIn("app/a.py:410 in app.a.g (the pull request changes this file)\n    line_410 = ", out)
 		self.assertEqual(
 			agent.read_tool(self.review, "get_callers", {"name": "nope"}), "no definition found for nope"
 		)
+
+	def test_callers_read_each_call_at_the_commit_of_the_graph(self):
+		# The graph is of another commit than the base: its line 410 is not the line 410 of the base.
+		indexed = "\n".join(f"indexed_{n} = 1" for n in range(1, 501))
+		graph = cast(FakeGraph, self.review.graph)
+		graph.sources = {"app/a.py": indexed}
+		out = agent.read_tool(self.review, "get_callers", {"name": "f"}) or ""
+		self.assertIn(
+			"app/a.py:410 in app.a.g (the pull request changes this file)\n    indexed_410 = 1", out
+		)
+		self.assertNotIn("line_410", out)
+		self.assertEqual(graph.read, [("app/a.py", "abc123")])
 
 	def test_definitions_and_callees(self):
 		self.assertIn(

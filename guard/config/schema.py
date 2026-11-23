@@ -37,6 +37,8 @@ LISTS = (
 	# Rule ids of the Frappe review pack (`guard.review.frappe_pack`) to turn on and off.
 	"enabled_checks",
 	"disabled_checks",
+	# Base branches other than the default branch that get their own index (`guard.indexing.branches`).
+	"index_branches",
 )
 # Exclusions add up across levels, so a lower config cannot drop a skip set above it.
 ADDITIVE = (

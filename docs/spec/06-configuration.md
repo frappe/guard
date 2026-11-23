@@ -20,6 +20,7 @@ If `.guard/` and `guard.toml` are in the same directory, Guard reads `.guard/` a
 ## Which branch Guard reads
 
 - All config comes from the head of the default branch: settings, rules, files, notes, instructions, ignore patterns and `auto_approve`. A pull request cannot turn on reviews, lift a skip, add instructions or loosen approval for itself. A pull request to another branch, for example a release branch, and a local review from an old base or of a change to another branch also get the config of the default branch. When the mirror does not have the default branch, auto-approve is off.
+- `index_branches` comes from the same place. Guard reads it when a branch is pushed and every hour, from the default branch in the mirror.
 - A branch made before a config change gets the current config.
 - A config change in a pull request applies after it is merged.
 - A payload review (`source = cli`, used by evals) has no base branch to trust. It reads the config files in its payload.
@@ -131,6 +132,7 @@ exclude_authors = ["dependabot[bot]"]
 | `[[files]]` | array of tables | `path` (required), `description`, `scope` |
 | `[[notes]]` | array of tables | `content` (required), `scope` |
 | `context.repos` | array | Related repositories, `owner/repo` on the same provider |
+| `index_branches` | array | Branches other than the default branch that get their own code graph, as globs, for example `version-*-hotfix`. Only the dashboard and the root config count. At most 5 branches for each repository. Each one is a full extra index ([04-codebase-graph.md](04-codebase-graph.md#branch-indexes)). |
 
 Paths and scopes in a config are relative to the directory that holds `.guard/` or `guard.toml`. A rule, file or note with a scope applies only to files that match the scope.
 

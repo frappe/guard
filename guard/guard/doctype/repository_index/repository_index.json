@@ -11,6 +11,7 @@
   "status",
   "sha",
   "parser_version",
+  "auto",
   "index_col",
   "files_processed",
   "num_files",
@@ -64,61 +65,70 @@
    "label": "Parser Version"
   },
   {
+   "default": "0",
+   "description": "Guard made this index because the index_branches setting lists the branch. Guard deletes it when the setting no longer lists the branch.",
+   "fieldname": "auto",
+   "fieldtype": "Check",
+   "label": "Indexed for index_branches",
+   "read_only": 1,
+   "idx": 6
+  },
+  {
    "fieldname": "index_col",
    "fieldtype": "Column Break",
-   "idx": 6
+   "idx": 7
   },
   {
    "fieldname": "files_processed",
    "fieldtype": "Int",
-   "idx": 7,
+   "idx": 8,
    "label": "Files Processed"
   },
   {
    "fieldname": "num_files",
    "fieldtype": "Int",
-   "idx": 8,
+   "idx": 9,
    "label": "Num Files"
   },
   {
    "fieldname": "entity_count",
    "fieldtype": "Int",
-   "idx": 9,
+   "idx": 10,
    "label": "Entity Count"
   },
   {
    "fieldname": "edge_count",
    "fieldtype": "Int",
-   "idx": 10,
+   "idx": 11,
    "label": "Edge Count"
   },
   {
    "fieldname": "chunk_count",
    "fieldtype": "Int",
-   "idx": 11,
+   "idx": 12,
    "label": "Chunk Count"
   },
   {
    "fieldname": "timing_section",
    "fieldtype": "Section Break",
-   "idx": 12
+   "idx": 13
   },
   {
    "fieldname": "started_at",
    "fieldtype": "Datetime",
-   "idx": 13,
+   "idx": 14,
    "label": "Started At"
   },
   {
    "fieldname": "completed_at",
    "fieldtype": "Datetime",
-   "idx": 14,
+   "idx": 15,
    "label": "Completed At"
   },
   {
    "fieldname": "error",
    "fieldtype": "Long Text",
-   "idx": 15,
+   "idx": 16,
    "label": "Error"
   }
  ],
@@ -145,7 +155,7 @@
    "link_fieldname": "index"
   }
  ],
- "modified": "2026-11-11 12:00:00.000000",
+ "modified": "2026-11-17 12:00:00.000000",
  "modified_by": "Administrator",
  "module": "Guard",
  "name": "Repository Index",

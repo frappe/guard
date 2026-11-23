@@ -82,6 +82,18 @@ class GitStore:
 		names = [b for b in dict.fromkeys(branches) if b]
 		self.fetch(*(f"+refs/heads/{name}:refs/heads/{name}" for name in names))
 
+	def remote_branches(self) -> set[str]:
+		"""The names of the branches on the remote. Raise GitError when the remote does not answer."""
+		with self._lock():
+			self.ensure()
+		out = self._git("ls-remote", "--heads", "origin", auth=True)
+		prefix = "refs/heads/"
+		return {
+			ref[len(prefix) :]
+			for ref in (line.partition("\t")[2] for line in out.splitlines())
+			if ref.startswith(prefix)
+		}
+
 	def fetch_pull(self, pull_ref: str, number: int) -> str:
 		"""Fetch a pull request head into `refs/guard/pr/<n>` and return its sha."""
 		ref = f"refs/guard/pr/{number}"

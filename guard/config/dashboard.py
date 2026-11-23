@@ -48,6 +48,7 @@ LIST_FIELDS = (
 	"include_authors",
 	"labels",
 	"include_branches",
+	"index_branches",
 )
 
 
