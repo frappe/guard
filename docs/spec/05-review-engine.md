@@ -348,7 +348,7 @@ The summary comment starts with the marker `<!-- guard:summary -->`. On a re-rev
 
 (mermaid block)
 
-<sub>Reviews (2) · Last reviewed commit: [message](link) · Reviewed by `model` · [Re-trigger](link) · [Fix all](link)</sub>
+<sub>Reviews (2) · Last reviewed commit: [message](link) · Reviewed by `model`, checked by `model` · [Re-trigger](link) · [Fix all](link)</sub>
 ```
 
 - One headline line is always visible: confidence score, risk, finding counts and blast radius.
@@ -356,7 +356,9 @@ The summary comment starts with the marker `<!-- guard:summary -->`. On a re-rev
 - Sections are collapsed by default, including the diagram. A collapsible section is wrapped in `<details>`. `open` is set when the section is open by default.
 - A re-review posts P2 findings only on lines added since the last reviewed commit.
 - The summary explains the change in at most 4 bullets. It does not repeat the findings. A finding body is at most 3 sentences.
-- The footer names the model of the review agents. It shows no model when none read the code: offline mode, an outage, or a review with the graph alone.
+- The footer names the model of the review agents: "Reviewed by `model`". When the findings or the score were checked by another model, as in an apex review, it adds "checked by `model`". It shows only the model id of Guard Settings, never the AI provider or its key.
+- The footer shows no model when none read the code: offline mode, an outage, or a review with the graph alone. When only the check read the code, it shows "Checked by `model`".
+- A local review names no model of Guard: the agent of the developer reviewed ([Local reviews](#local-reviews)).
 - `hide_footer` removes the footer.
 - `update_description` writes the same content into the description between `<!-- guard:start -->` and `<!-- guard:end -->`.
 - Plus and apex reviews show the tier next to the score.
@@ -419,7 +421,7 @@ A local review (`source = local`) reviews a change in a working tree before it i
 3. **Submit** (`submit_review`). The agent sends its findings and verdict once. Only the user who started the review can submit it, and only once.
    - Guard adds the check findings, runs `FindingFilter`, drops findings on files that are not in the tree, runs `suppression.suppress` without embeddings, and caps the score with `score_cap`.
    - Guard saves a completed Code Review (`trigger = local`, `credits = 0`, `head_sha` only when the agent sent the commit, `tree_sha` the reviewed tree, `agent` the client and the model that the agent named) and a Review Finding for each finding, kept or not, with no pull request. The Code Review links the open pull request of the branch, for people who read it. GitHub reviews of the pull request do not count it.
-   - The answer has the link to the Code Review and the kept and dropped findings, and `p0`, the count of kept P0 findings. When `p0` is above 0, the agent does not push ([11-surfaces.md](11-surfaces.md#mcp-server)): this is not optional.
+   - The answer has the link to the Code Review and the kept and dropped findings, and `p0`, the count of kept P0 findings. When `p0` is above 0, the agent does not push ([11-surfaces.md](11-surfaces.md#mcp-server)): this is not optional. When `start_review` for the remote of the push answers that Guard has no such repository, the agent pushes without a review. Other errors do not lift the rule.
 4. **Publish** (`publish_review`, `guard/review/local_publish.py`). Only when the developer asks. Only the user who submitted the review can post it, only once, and only with the Guard Admin, Guard Member or System Manager role.
    - Guard finds the open pull request of the branch. A pull request from a fork has the reviewed commit (`head_sha`) as its head, because a fork can have a branch of the same name. Guard fetches the head of the pull request. It posts only when the tree of that head is `tree_sha`, so each line is right. Else the developer pushes the change, or reviews the head again.
    - Guard anchors the open findings again on the diff of the pull request, posts them as inline comments, then posts a new summary comment. The summary says "local review", and its footer names the user and the agent, also when `hide_footer` is on. The model in it is what the agent sent: Guard cannot check it.

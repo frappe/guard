@@ -64,6 +64,11 @@ SAFE_REF = re.compile(r"[A-Za-z0-9._/-]{1,140}")
 
 WAITING, READY = "waiting", "ready"
 
+
+class NoRepository(frappe.PermissionError):
+	"""Guard has no repository of this name that the user can read."""
+
+
 FINDING_FIELDS = """Each finding is an object with these keys:
 - path (required): the file, relative to the repository root.
 - start_line, end_line (required): line numbers in the working tree file.
@@ -95,7 +100,7 @@ def repository_for(full_name: str) -> str:
 	for repository in frappe.get_all("Code Repository", filters={"full_name": name}, pluck="name"):
 		if frappe.has_permission("Code Repository", "read", str(repository)):
 			return str(repository)
-	frappe.throw(_("Guard has no repository {0} that you can read.").format(name), frappe.PermissionError)
+	frappe.throw(_("Guard has no repository {0} that you can read.").format(name), NoRepository)
 	raise AssertionError  # frappe.throw raises
 
 

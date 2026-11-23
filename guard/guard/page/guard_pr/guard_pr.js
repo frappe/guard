@@ -213,7 +213,9 @@ class GuardReviewPage {
 		$main.append(`<div class="gpr-pickable" data-label="summary">
 			<h4>${__("Confidence")}: ${review.confidence_score}/5 · ${__("Risk")}: ${
 			review.risk_level || "–"
-		} ${review.tier && review.tier !== "base" ? `· ${review.tier}` : ""}</h4>
+		} ${review.tier && review.tier !== "base" ? `· ${review.tier}` : ""} ${
+			review.model ? `· ${frappe.utils.escape_html(review.model)}` : ""
+		}</h4>
 			<div>${frappe.markdown(review.summary || "")}</div></div>
 			<h5 style="margin-top:16px">${__("Findings")} (${findings.length})</h5>
 			<table class="table table-sm"><tbody>${

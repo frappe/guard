@@ -91,6 +91,22 @@ class TestPipeline(PullRequestCase):
 		self.assertEqual(self.adapter.named("status"), ["queued", "pending", "failure"])
 		self.assertIn("+1", self.adapter.named("react"))
 
+	def test_the_summary_and_the_review_name_the_model_of_the_tier(self):
+		models = {"base": "base-model", "plus": "plus-model"}
+		gateway = GatewayConfig(models, {"gw": AIProviderConfig("gw", "https://gw", "k", "anthropic")}, "gw")
+		verdict = {"summary": "s", "confidence_score": 4}
+		valid = '[{"index": 0, "valid": true}]'
+		respond = scripted([[("report_finding", PROBLEM), ("submit_review", verdict)]], {"verify": valid})
+		with patch("guard.settings.gateway", return_value=gateway), use_responder(respond):
+			name = str(trigger.consider(self.pr, "open"))
+		review = db.values("Code Review", name, ("status", "error", "tier", "model")) or {}
+		self.assertEqual(review["status"], "Completed", review["error"])
+		self.assertEqual((review["tier"], review["model"]), ("plus", "plus-model"))
+		summary = self.adapter.named("post_comment")[0]
+		# The plus model also checked the finding: the footer names it once.
+		self.assertIn("Reviewed by `plus-model` · [Re-trigger]", summary)
+		self.assertNotIn("https://gw", summary)
+
 	def test_summary_is_posted_above_the_inline_comments(self):
 		self.review(
 			[[("report_finding", PROBLEM), ("submit_review", {"summary": "s", "confidence_score": 4})]]
@@ -1368,14 +1384,27 @@ class TestPipeline(PullRequestCase):
 		settings = frappe.get_doc("Review Settings", "Organization")
 		settings.set("exclude_authors", "mergify[bot]\nad*")
 		settings.save(ignore_permissions=True)
+		submit: list[list[tuple[str, dict[str, Any]]] | str] = [
+			[("submit_review", {"summary": "s", "confidence_score": 5})]
+		]
 		try:
+			# Skipped authors stop automatic reviews.
 			self.assertIsNone(trigger.consider(self.pr, "open"))
-			# Skipped authors apply to requested reviews too.
-			self.assertIsNone(trigger.consider(self.pr, "open", manual=True, requested_by="bob"))
+			self.assertEqual(self.adapter.checks[-1][2], "Guard skipped this review: author is excluded")
+			# A bot cannot ask for a review of a skipped author: by its login, or as the provider tells.
+			for login, by_bot in (("mergify[bot]", False), ("ci-runner", True), ("", True)):
+				self.assertIsNone(
+					trigger.consider(self.pr, "retrigger", manual=True, requested_by=login, by_bot=by_bot)
+				)
+				self.assertEqual(self.adapter.checks[-1][2], "Guard skipped this review: author is excluded")
+			# A person can ask for a review of a skipped author.
+			with use_responder(scripted(submit)):
+				asked = trigger.consider(self.pr, "open", manual=True, requested_by="bob")
+			self.assertEqual(self.row(asked)["status"], "Completed")
 		finally:
 			settings.set("exclude_authors", "")
 			settings.save(ignore_permissions=True)
-		with use_responder(scripted([[("submit_review", {"summary": "s", "confidence_score": 5})]])):
+		with use_responder(scripted(submit)):
 			self.assertTrue(trigger.consider(self.pr, "open"))
 
 	def commit_on_main(self, files):
@@ -1599,6 +1628,32 @@ class TestPipeline(PullRequestCase):
 		frappe.db.set_value("Code Repository", self.repository, "reviews_enabled", 0)
 		threads.handle(self.pr, ProviderComment("c4", "issue", "ada", "@guard review", number=7))
 		self.assertEqual(self.on_comment("c4"), ["eyes", "removed"])
+
+	def test_mention_reviews_a_skipped_author_only_for_a_person(self):
+		from guard.conversation import threads
+
+		settings = frappe.get_doc("Review Settings", "Organization")
+		settings.set("exclude_authors", "ad*")
+		settings.save(ignore_permissions=True)
+		try:
+			# A bot as the provider tells, and a bot by its login.
+			for comment_id, login, is_bot in (("b1", "ci-runner", True), ("b2", "mergify[bot]", False)):
+				comment = ProviderComment(
+					comment_id, "issue", login, "@guard review", is_bot=is_bot, number=7
+				)
+				threads.handle(self.pr, comment)
+				self.assertEqual(self.on_comment(comment_id), ["eyes", "removed"])
+				self.assertEqual(self.adapter.checks[-1][2], "Guard skipped this review: author is excluded")
+			self.assertFalse(frappe.db.exists("Code Review", {"pull_request": self.pr}))
+			comment = ProviderComment("p1", "issue", "bob", "@guard review", number=7)
+			with use_responder(scripted([[("submit_review", {"summary": "s", "confidence_score": 4})]])):
+				threads.handle(self.pr, comment)
+			self.assertEqual(self.on_comment("p1"), ["eyes", "removed", "+1"])
+			review = db.value("Code Review", {"pull_request": self.pr, "trigger": "mention"}, "status")
+			self.assertEqual(review, "Completed")
+		finally:
+			settings.set("exclude_authors", "")
+			settings.save(ignore_permissions=True)
 
 	def mention_replaced_by_push(self, comment_id):
 		"""A mention asks for a review, and a push replaces that review while the model runs."""
@@ -1881,11 +1936,38 @@ class TestApexAreas(IntegrationTestCase):
 			[(r.purpose, r.model) for r in requests], [("verify", "plus-model"), ("verdict", "plus-model")]
 		)
 		self.assertEqual(run.verdict.confidence_score, 5)
+		self.assertEqual(run.check_model, "plus-model")
 		# Without a plus model, the check falls back to apex and not to base.
 		gateway.models = dict(models, plus="")
 		with patch("guard.settings.gateway", return_value=gateway):
 			self.assertEqual(verify.check_tier("apex"), "apex")
 			self.assertEqual(verify.check_tier("plus"), "plus")
+
+	def test_a_check_without_a_usable_answer_names_no_model(self):
+		from guard.review import verify
+
+		run = ReviewRun(None, None, "", lambda path: "a = 1", lambda path: None, lambda path: [], "", "")
+		run.tier = "plus"
+		finding = Finding("app/a.py", 1, 1, "P1", "logic", "Wrong value", "x")
+		run.findings = [finding]
+		# Below the cap of the P1, so the score goes to the check.
+		run.verdict = Verdict(summary="s", confidence_score=2, submitted=True)
+		models = {"base": "base-model", "plus": "plus-model"}
+		gateway = GatewayConfig(models, {"gw": AIProviderConfig("gw", "https://gw", "k", "anthropic")}, "gw")
+		calls: list[str] = []
+
+		def respond(request: ChatRequest) -> ChatResult:
+			calls.append(request.purpose)
+			return ChatResult("not JSON" if request.purpose == "verify" else '{"score": 9}', [], Usage(10, 5))
+
+		with patch("guard.settings.gateway", return_value=gateway), use_responder(respond):
+			verify.verify(run)
+			verify.check_verdict(run)
+		self.assertEqual(calls, ["verify", "verdict"])
+		self.assertTrue(finding.verify_failed)
+		self.assertEqual(run.verdict.confidence_score, 2)
+		# Both checks called the model, but neither answer changed the review.
+		self.assertEqual(run.check_model, "")
 
 	def test_the_footer_names_the_model_that_reviewed(self):
 		from guard.review import render
@@ -1907,8 +1989,14 @@ class TestApexAreas(IntegrationTestCase):
 		with patch("guard.settings.gateway", return_value=gateway), use_responder(respond):
 			pipeline.agent(run, BuiltContext(ContextPack()))
 		self.assertIn("Reviewed by `plus-model`", render.summary(run, [], 1, {}))
-		# The agents took no turn: no model read the code.
+		# Another model checked the findings: the footer names both.
+		run.check_model = "check-model"
+		self.assertIn("Reviewed by `plus-model`, checked by `check-model`", render.summary(run, [], 1, {}))
+		# The agents took no turn: only the check read the code.
 		run.turns = 0
+		self.assertIn("Checked by `check-model`", render.summary(run, [], 1, {}))
+		self.assertNotIn("Reviewed by", render.summary(run, [], 1, {}))
+		run.check_model = ""
 		self.assertNotIn("Reviewed by", render.summary(run, [], 1, {}))
 		# A model without an AI provider answers nothing.
 		gateway.ai_providers = {}
@@ -2021,6 +2109,24 @@ class TestDeadline(UnitTestCase):
 		with use_responder(respond):
 			result = Agent(run, "s", 8).run_loop("task", deadline=time.time() - 1)
 		self.assertEqual((result.turns, len(calls)), (0, 0))
+
+
+class TestRerunRequester(UnitTestCase):
+	def test_rerun_tells_the_gate_if_a_person_asked(self):
+		"""A re-run by a bot, or by nobody known, keeps skipped authors skipped."""
+		from guard.webhooks import handler
+		from guard.webhooks.events import WebhookEvent
+
+		cases = (("ada", False, False), ("ci", True, True), ("", False, True))
+		for sender, sender_is_bot, by_bot in cases:
+			event = WebhookEvent(kind="rerun", number=7, sender=sender, sender_is_bot=sender_is_bot)
+			with (
+				patch("guard.providers.sync.resolve_repository", return_value="repo"),
+				patch("guard.review.pull_requests.refresh", return_value=SimpleNamespace(name="PR-7")),
+				patch("guard.review.trigger.consider", return_value="CR-1") as consider,
+			):
+				self.assertTrue(handler.dispatch("github", event))
+			consider.assert_called_once_with("PR-7", "retrigger", True, sender, by_bot=by_bot)
 
 
 class TestWebhookDeadlock(IntegrationTestCase):

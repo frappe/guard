@@ -31,6 +31,7 @@ def retrigger(pull_request: str, sig: str = "") -> None:
 	frappe.set_user("Administrator")  # nosemgrep: frappe-setuser -- after the signature check
 	from guard.review.trigger import consider
 
+	# A person clicked the button: a review of a skipped author runs too.
 	review = consider(pull_request, "retrigger", manual=True)
 	_page(
 		_("Guard is reviewing the pull request again.")

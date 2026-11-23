@@ -1,6 +1,7 @@
 #!/bin/sh
 # Installed by Guard. Before a push, your coding agent reviews the pushed commits with Guard.
-# A P0 finding stops the push. When the review does not finish, the push goes on.
+# A P0 finding stops the push. When the review does not finish, the push goes on. In a repository
+# that Guard cannot read, the push goes on without a review.
 #
 # Skip the review once:  GUARD_SKIP=1 git push
 # Choose the agent:      git config guard.agent claude   (or codex, or pi)
@@ -118,7 +119,8 @@ for candidate in origin upstream; do
 done
 repository=$(git remote get-url "$remote" 2>/dev/null || printf '%s' "${2:-}")
 ask_agent "$START_TIMEOUT" no "Call the Guard tool start_review with repository $repository. Do not call \
-other tools. Then print these three lines, with the values from its answer, and nothing else:
+other tools. When it answers that Guard has no such repository, print GUARD_REVIEW=none and nothing \
+else. Else print these three lines, with the values from its answer, and nothing else:
 GUARD_REVIEW=<review_id>
 GUARD_SECRET=<upload.secret>
 GUARD_BRANCH=<upload.base_branch>" </dev/null >"$work/start" 2>&1
@@ -126,6 +128,12 @@ GUARD_BRANCH=<upload.base_branch>" </dev/null >"$work/start" 2>&1
 review=$(value GUARD_REVIEW "$work/start")
 secret=$(value GUARD_SECRET "$work/start")
 base_branch=$(value GUARD_BRANCH "$work/start")
+# The pre-push review applies only to repositories that Guard can read. Take the last GUARD_REVIEW
+# line: an agent that prints the prompt too prints <review_id> after none, and its answer comes last.
+if [ "$review" = none ]; then
+	say "the agent reports that Guard has no such repository, so the push goes on without a review."
+	exit 0
+fi
 # The values go into a URL and git commands: take only the shapes that Guard sends.
 if ! printf '%s' "$review" | grep -Eqx '[0-9a-f]{16}' ||
 	! printf '%s' "$secret" | grep -Eqx '[0-9a-f]{32}' ||
