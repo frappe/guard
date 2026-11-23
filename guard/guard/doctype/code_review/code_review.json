@@ -17,6 +17,7 @@
   "main_col",
   "requested_tier",
   "tier",
+  "model",
   "strictness",
   "review_number",
   "head_sha",
@@ -148,6 +149,13 @@
    "in_list_view": 1,
    "label": "Tier",
    "options": "\nbase\nplus\napex\nlocal"
+  },
+  {
+   "description": "The model of the review agents. Blank when no model read the code, and for a local review.",
+   "fieldname": "model",
+   "fieldtype": "Data",
+   "label": "Model",
+   "read_only": 1
   },
   {
    "fieldname": "strictness",
@@ -478,7 +486,7 @@
    "link_fieldname": "code_review"
   }
  ],
- "modified": "2026-11-13 12:00:00.000000",
+ "modified": "2026-11-17 12:00:00.000000",
  "modified_by": "Administrator",
  "module": "Guard",
  "name": "Code Review",

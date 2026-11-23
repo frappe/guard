@@ -100,7 +100,7 @@ exclude_authors = ["dependabot[bot]"]
 | Key | Type | Meaning |
 | - | - | - |
 | `labels`, `disabled_labels` | array | Review only with one of these labels / skip with one of these labels |
-| `include_authors`, `exclude_authors` | array | Author filters |
+| `include_authors`, `exclude_authors` | array | Author filters. `exclude_authors` stops automatic reviews and reviews that a bot asks for. |
 | `include_branches`, `exclude_branches` | array | Target branch filters |
 | `include_keywords`, `ignore_keywords` | array | Matched against title and description, case-insensitive |
 | `ignore_patterns` | array | `.gitignore` syntax, relative to the config directory |
@@ -117,7 +117,7 @@ exclude_authors = ["dependabot[bot]"]
 | `hide_footer` | boolean | false | No footer |
 | `comments_outside_diff` | boolean | true | List findings outside the diff in the summary |
 | `include_rule_files` | boolean | true | Read `CLAUDE.md`, `AGENTS.md` and similar files |
-| `reuse_backport_reviews` | boolean | true | On a backport, do not review again the files whose changes Guard reviewed in the original pull request ([05-review-engine.md](05-review-engine.md#backports)) |
+| `reuse_backport_reviews` | boolean | true | On a backport, the files whose changes Guard reviewed in the original pull request get a short check that they fit the target branch, not a full review. False: a full review of every file ([05-review-engine.md](05-review-engine.md#backports)) |
 | `sections.<name>` | table | Collapsed | `included`, `collapsible`, `default_open`. Names: `summary`, `issues_table`, `confidence`, `impact`, `diagram` |
 
 ### Context
@@ -211,7 +211,9 @@ Guard decides to review in this order. The first "no" stops it.
    3. The event is in the merged `auto_review`.
    4. The config filters pass: labels, authors, branches, keywords.
    5. The dashboard filter rules pass (below).
-5. For manual triggers: only `exclude_branches` and `exclude_authors` apply.
+5. For manual triggers (a mention, a GitHub check re-run, the signed re-review link): only `exclude_branches` applies. `exclude_authors` applies only when a bot asks for the review, or when the provider does not tell who asked (a check re-run without a sender). A person can ask for a review of a skipped author, for example a bot backport. A bot is an account with `type` `Bot`, or a login that ends with `[bot]`. A machine account of type `User` whose login does not end with `[bot]` counts as a person: the `trigger_by_tagging` check (step 2) limits such accounts. The signed re-review link counts as a person, because a person clicks its button.
+
+A review requested in Desk (`guard.api.ui.rereview`) skips this gate. Guard reviews the pull request for any author and target branch. Only the daily review limit of the repository applies.
 
 ### Dashboard filter rules
 

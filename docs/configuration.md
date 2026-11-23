@@ -45,7 +45,7 @@ All files are optional. If a directory has both `.guard/` and `guard.toml`, Guar
 
 Guard also reads `CLAUDE.md` and `AGENTS.md` in any directory of the base branch, and `.cursorrules` and `.github/copilot-instructions.md` at the root. To stop this, set `include_rule_files = false`. Each list item, and each line that says always, must or never, is a rule. Guard checks the change against them and reports each break as a P2 that links to the rule: fix it before merging. It measures complexity, file-length and boolean-naming rules in code, and a rule that asks for tests flags code changes that touch no test file.
 
-A pull request to another branch than the default branch can be a backport: its title, description, commits or branch name the pull requests that it carries (`backport #12`, a commit subject that ends with `(#12)`, `mergify/bp/<branch>/pr-12`). When Guard reviewed a merged original, and a file makes only the changes of the original, the automatic review does not read that file again. When every file does, no AI agent runs. Mention Guard to get a full review. To stop this, set `reuse_backport_reviews = false`.
+A pull request to another branch than the default branch can be a backport: its title, description, commits or branch name the pull requests that it carries (`backport #12`, a commit subject that ends with `(#12)`, `mergify/bp/<branch>/pr-12`). When Guard reviewed a merged original, and a file makes only the changes of the original, the automatic review does not review that change again. The AI agent checks only that it fits the target branch: the functions, signatures, callers, fields and migrations that it needs are the same there. The other files get a full review. The verdict always comes from this check, not from the review of the original. Mention Guard to get a full review. To review every file of a backport in full, set `reuse_backport_reviews = false`.
 
 ### Monorepos
 
@@ -98,7 +98,7 @@ After the first review, Guard posts only new P0 and P1 findings. A push that fix
 
 ### Which pull requests Guard reviews
 
-These filters apply to automatic reviews. A review that someone asks for skips them, except `exclude_authors` and `exclude_branches`.
+These filters apply to automatic reviews. A review that someone asks for on GitHub, with a mention, a check re-run or the re-review link, skips them, except `exclude_branches`. A person can ask for a review of an author in `exclude_authors`, for example a backport that a bot opened. A bot cannot. A review that someone asks for in Desk skips all of these filters.
 
 | Key | Meaning |
 | - | - |
@@ -222,7 +222,7 @@ It has the same settings as the repository files. The **Filters** section has on
 | Ignore Patterns | `ignore_patterns` | `**/*.min.js` |
 | Index Branches (section **Code Graph**) | `index_branches` | `version-*-hotfix` |
 
-For example, to skip the backport pull requests that Mergify opens, add `mergify[bot]` to **Skip Authors**. To skip only backports, add `(backport #` to **Skip Keywords**.
+For example, to skip the backport pull requests that Mergify opens, add `mergify[bot]` to **Skip Authors**. To review one of them, mention Guard on the pull request. To skip only backports, add `(backport #` to **Skip Keywords**.
 
 Review Settings also has:
 

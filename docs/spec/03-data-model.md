@@ -174,6 +174,7 @@ A repository has one row for each pull request number: a unique index on `reposi
 | `trigger` | Select | `open`, `push`, `rebase`, `mention`, `retrigger`, `manual`, `cli`, `api`, `local` |
 | `requested_by` | Data | Provider login. |
 | `requested_tier`, `tier` | Select | |
+| `model` | Data | The model of the review agents, as Guard Settings names it. The footer of the summary shows it. Blank when no model read the code, and for a local review. |
 | `head_sha`, `base_sha`, `merge_base_sha`, `branch` | Data | |
 | `tree_sha`, `agent` | Data | A local review: the reviewed tree, which a post must match, and the client and model that the agent named |
 | `instructions` | Long Text | From the trigger comment. |

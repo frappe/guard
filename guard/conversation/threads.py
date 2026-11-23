@@ -100,7 +100,14 @@ def _mention(pull_request: str, repository: str, comment: ProviderComment, text:
 		ack = acks.accept(pull_request, comment)
 		acks.wait_for_review(ack)
 		if not trigger.consider(
-			pull_request, "open", True, comment.author, mention.tier, mention.text, force_draft=mention.draft
+			pull_request,
+			"open",
+			True,
+			comment.author,
+			mention.tier,
+			mention.text,
+			force_draft=mention.draft,
+			by_bot=comment.is_bot,
 		):
 			acks.withdraw(ack)
 			acks.forget(ack)

@@ -56,7 +56,8 @@ class Delta:
 
 	On a backport, `originals` holds the numbers of the pull requests that it backports and that Guard
 	reviewed, and `since` is blank. `files` are then the files whose changes differ from those
-	reviews, and `rest` the files with the same changes. See `guard/review/backport.py`.
+	reviews: the agent reviews them in full. `covered` are the files with the same changes, and `rest`
+	their names: the agent only checks that they fit the target branch. See `guard/review/backport.py`.
 	"""
 
 	since: str
@@ -68,16 +69,25 @@ class Delta:
 	diagram_type: str = ""
 	diagram: str = ""
 	originals: list[int] = field(default_factory=list)
-	original_scores: list[tuple[int, str]] = field(default_factory=list)  # (score, risk) of each
+	covered: list[FileDiff] = field(default_factory=list)  # files of a backport that get the fit check
 
 	@property
 	def covers_all(self) -> bool:
-		"""A backport whose files all make the changes of the originals: no agent runs."""
+		"""A backport whose files all make the changes of the originals: the agent only checks that
+		they fit the target branch."""
 		return bool(self.originals) and not self.files
+
+	@property
+	def reads(self) -> list[FileDiff]:
+		"""The files in the diff of the agent: the files to review, then the files to check for fit."""
+		return self.files + self.covered
 
 	def carry_over(self, verdict: Verdict) -> None:
 		"""Keep what the last review showed of the files that the agent did not see: their important
-		files after the new ones, and the diagram when the agent sent none."""
+		files after the new ones, and the diagram when the agent sent none. Not on a backport: the
+		originals show the default branch, not the target branch."""
+		if self.originals:
+			return
 		paths = {f["path"] for f in verdict.important_files}
 		earlier = [f for f in self.important_files if f.get("path") not in paths]
 		verdict.important_files = (verdict.important_files + earlier)[:MAX_IMPORTANT_FILES]
@@ -86,12 +96,12 @@ class Delta:
 
 	@property
 	def paths(self) -> list[str]:
-		return [f.path for f in self.files]
+		return [f.path for f in self.reads]
 
 	@property
 	def names(self) -> set[str]:
 		"""The paths and the old paths: an entity that a rename removes has the old path."""
-		return {p for f in self.files for p in (f.path, f.old_path) if p}
+		return {p for f in self.reads for p in (f.path, f.old_path) if p}
 
 
 def _choice(value: Any, allowed: tuple[str, ...], default: str) -> str:
@@ -131,6 +141,8 @@ class ReviewRun:
 	tier: str = "base"
 	# The model of the review agents, for the footer. Empty when no model can answer them.
 	model: str = ""
+	# The model that checked the findings or the score. Empty when no check called a model.
+	check_model: str = ""
 	# Offline mode was on when the review started: no agent runs, and the review costs no credits.
 	offline: bool = False
 	# Offline for this review only: an AI provider is down (`ReviewPipeline.falls_back`).
@@ -157,6 +169,12 @@ class ReviewRun:
 
 	def file(self, path: str) -> FileDiff | None:
 		return next((f for f in self.files if f.path == path), None)
+
+	@property
+	def reviewed_by(self) -> str:
+		"""The model that read the code as the reviewer. Empty when the agents took no turn: a review
+		with the graph alone had no model."""
+		return self.model if self.turns else ""
 
 	@property
 	def paths(self) -> list[str]:

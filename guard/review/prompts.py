@@ -126,12 +126,34 @@ before. Read it with the tools when a change depends on it. In `submit_review`, 
 the verdict for the whole pull request as it is now. Start from the summary of the last review.
 In `important_files`, list only files of this diff: Guard adds the earlier ones after them."""
 
-BACKPORT = """This pull request backports {originals}, which Guard reviewed. The diff below shows only
-the files whose changes are not the same as there: review these. The other files make the same
-changes, so do not review them again. Check that the code fits the target branch: the functions,
-fields and APIs that the change uses must exist on it too. Read them with the tools. In
-`submit_review`, write the summary and the verdict for the whole pull request. In `important_files`,
-list only files of this diff: Guard adds the earlier ones after them."""
+BACKPORT = """This pull request backports {originals} to the target branch below. Guard reviewed
+{originals} on the default branch: the summaries of those reviews are below. The same change can be
+right there and wrong on the target branch, so this review checks it against the target branch.
+
+The files below "with the same changes as the originals" make only changes of {originals}. Do not
+review these changes again. Check only that they fit the target branch:
+- The functions, classes, methods and imports that the change calls, imports or overrides exist on
+  the target branch, with the same signatures.
+- The callers on the target branch still fit the changed code.
+- The settings, fields, DocTypes and migrations that the change needs exist on the target branch.
+- Code on the target branch that the change depends on behaves the same as on the default branch.
+Report findings for these files only for such mismatches."""
+
+BACKPORT_FILES = """The other files in the diff make changes that are not in {originals}: review them in
+full."""
+
+BACKPORT_TOOLS = """`read_file`, `list_directory` and `grep` read this pull request: the head is the
+target branch with the change, and `read_file` with `ref` `base` reads the target branch at the merge
+base, before the change."""
+
+BACKPORT_GRAPH = """The graph tools (`search_code`, `find_definition`, `get_callers`,
+`get_callees`, `get_outline`) can show the default branch, not the target branch. Confirm each name,
+signature and caller with `read_file` or `grep` before you report a mismatch or decide that there is
+none."""
+
+BACKPORT_SUBMIT = """In `submit_review`, write the summary and the verdict for this pull request on
+the target branch, from what you checked here. Do not copy the verdict of {originals}. Guard does not
+keep the diagram or the important files of {originals}: send them for this pull request."""
 
 DELTA_DIAGRAM = """The last review drew this {kind} diagram. Send `diagram_type` `none` when the
 changes since do not change what it shows: Guard keeps it. Else send a new diagram of the whole

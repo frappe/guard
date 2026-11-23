@@ -365,6 +365,21 @@ class TestWebhookHeaders(UnitTestCase):
 			github.wanted("check_run", {"action": "rerequested", "check_run": {"pull_requests": [{}]}})
 		)
 
+	def test_rerun_tells_if_a_bot_asked(self):
+		from guard.webhooks import github
+
+		repo = {"full_name": "acme/app", "owner": {"login": "acme"}}
+		run = {"pull_requests": [{"number": 7}]}
+		for sender, is_bot in (
+			({"login": "ada", "type": "User"}, False),
+			({"login": "ci", "type": "Bot"}, True),
+		):
+			payload = {"action": "rerequested", "check_run": run, "repository": repo, "sender": sender}
+			[event] = github.parse("check_run", payload)
+			self.assertEqual(
+				(event.kind, event.sender, event.sender_is_bot), ("rerun", sender["login"], is_bot)
+			)
+
 
 class TestCallFit(UnitTestCase):
 	def fit(self, signature, call, name="place_order"):
