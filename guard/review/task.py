@@ -2,7 +2,17 @@
 
 from guard.review import checks, rule_files
 from guard.review.context import BuiltContext, excerpt
-from guard.review.prompts import BACKPORT, DELTA, DELTA_DIAGRAM, TASK, data
+from guard.review.prompts import (
+	BACKPORT,
+	BACKPORT_FILES,
+	BACKPORT_GRAPH,
+	BACKPORT_SUBMIT,
+	BACKPORT_TOOLS,
+	DELTA,
+	DELTA_DIAGRAM,
+	TASK,
+	data,
+)
 from guard.review.run import ReviewRun
 
 DIFF_LIMIT = 120_000
@@ -159,7 +169,10 @@ def _scope(run: ReviewRun) -> str:
 	if not run.delta:
 		return ""
 	if run.delta.originals:
-		return " (files that differ from " + _numbers(run.delta.originals) + ")"
+		numbers = _numbers(run.delta.originals)
+		if not run.delta.files:
+			return f" (files with the same changes as {numbers})"
+		return f" (files that differ from {numbers}, then files with the same changes)"
 	return f" (changes since {run.delta.since[:7]})"
 
 
@@ -169,18 +182,21 @@ def _numbers(numbers: list[int]) -> str:
 
 def _delta(run: ReviewRun) -> str:
 	"""On a push re-review: what was reviewed before, and the files that did not change since. On a
-	backport: the reviews of the originals, and the files with the same changes."""
+	backport: the reviews of the originals, the files with the same changes, and the check that they
+	fit the target branch."""
 	if not run.delta:
 		return ""
 	backport = bool(run.delta.originals)
 	if backport:
-		parts = [BACKPORT.format(originals=_numbers(run.delta.originals))]
+		parts = _backport(run)
 	else:
 		parts = [DELTA.format(since=run.delta.since[:7])]
 	if run.delta.summary:
 		title = "Summaries of the reviews of the originals" if backport else "Summary of the last review"
 		parts.append(f"{title}:\n" + data("last summary", run.delta.summary[:SUMMARY_LIMIT]))
-	if run.delta.diagram_type and run.delta.diagram and len(run.delta.diagram) <= DIAGRAM_LIMIT:
+	# A backport gets no diagram of the originals: it shows the default branch, not the target branch.
+	diagram = not backport and run.delta.diagram_type and run.delta.diagram
+	if diagram and len(run.delta.diagram) <= DIAGRAM_LIMIT:
 		parts.append(
 			DELTA_DIAGRAM.format(kind=run.delta.diagram_type) + "\n" + data("last diagram", run.delta.diagram)
 		)
@@ -189,6 +205,21 @@ def _delta(run: ReviewRun) -> str:
 		what = "with the same changes as the originals" if backport else "not changed since"
 		parts.append(f"Other changed files of the pull request, {what}:\n" + names)
 	return "\n\n".join(parts)
+
+
+def _backport(run: ReviewRun) -> list[str]:
+	"""The task of a backport: check the covered files against the target branch, and review the
+	other files in full. The graph is of the default branch, so the agent confirms with the files.
+	The branch name comes from the pull request, so it is data, and only its block names it."""
+	originals = _numbers(run.delta.originals if run.delta else [])
+	parts = [
+		BACKPORT.format(originals=originals),
+		"Target branch:\n" + data("target branch", run.base_branch),
+	]
+	if run.delta and run.delta.files:
+		parts.append(BACKPORT_FILES.format(originals=originals))
+	tools = BACKPORT_TOOLS + (" " + BACKPORT_GRAPH if run.graph else "")
+	return [*parts, tools, BACKPORT_SUBMIT.format(originals=originals)]
 
 
 def changed_entities(run: ReviewRun) -> str:
