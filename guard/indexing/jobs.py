@@ -148,3 +148,10 @@ def reembed_all() -> None:
 		)
 		last = rows[-1][0]
 		db.commit()
+		# `branches.drop_index` can delete chunks between the read and the upsert above. Read again
+		# after the commit, in a new snapshot, and delete the vectors of the chunks that are gone.
+		refs = tuple(row[0] for row in rows)
+		kept = {r[0] for r in db.rows("SELECT name FROM `tabCode Chunk` WHERE name IN %s", (refs,))}
+		if gone := [ref for ref in refs if ref not in kept]:
+			store.delete_refs("chunk", gone)
+			db.commit()

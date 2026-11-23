@@ -282,7 +282,12 @@ def drop_index(index: str) -> bool:
 	with index_lock(index) as acquired:
 		if not acquired:
 			return False  # A run writes it now.
-		before = db.values("Repository Index", index, ("status", "sha", "error", "completed_at"))
+		# A locking read gives the latest committed row. A plain read can give the snapshot of the
+		# first query of this transaction (REPEATABLE READ), from before a run completed. A restore
+		# of that snapshot would write an old status and sha over a good index.
+		before = db.values(
+			"Repository Index", index, ("status", "sha", "error", "completed_at"), for_update=True
+		)
 		if not before:
 			return False
 		# Reviews and runs that read the index now see a failed index with no sha, and skip it.
@@ -297,16 +302,33 @@ def drop_index(index: str) -> bool:
 			},
 		)
 		db.commit()
-		# A review that started before the commit above can have read the index as it was.
-		if _in_review(repository, branch):
-			db.set_values("Repository Index", index, dict(before))
+		deleting = False
+		try:
+			# A review that started before the commit above can have read the index as it was.
+			if _in_review(repository, branch):
+				_restore(index, before)
+				return False
+			deleting = True
+			_delete_rows(index)
+			frappe.delete_doc("Repository Index", index, ignore_permissions=True, force=True)
 			db.commit()
-			return False
-		_delete_rows(index)
-		frappe.delete_doc("Repository Index", index, ignore_permissions=True, force=True)
-		db.commit()
+		except Exception:
+			db.rollback()
+			# Before the delete, put the index back as it was. After it started, committed batches are
+			# gone: the old sha would claim rows that do not exist. The index stays failed with no sha,
+			# so no review uses it, and the next catch-up drops it again.
+			if not deleting:
+				_restore(index, before)
+			raise
 	frappe.logger("guard").info(f"{repository}: dropped the index {index} of branch {branch}")
 	return True
+
+
+def _restore(index: str, before: dict) -> None:
+	"""Put back the status, sha, error and end time that the index had before a drop started."""
+	if frappe.db.exists("Repository Index", index):
+		db.set_values("Repository Index", index, dict(before))
+		db.commit()
 
 
 def _is_default(repository: str, index: str, branch: str) -> bool:

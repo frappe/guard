@@ -371,6 +371,60 @@ class TestBranchIndexJobs(IntegrationTestCase):
 			)
 		)
 
+	def test_an_error_before_the_delete_puts_the_index_back(self):
+		_, branch = self.index_both()
+		before = db.values("Repository Index", branch, ("status", "sha", "error"))
+		with (
+			patch.object(branches, "_in_review", side_effect=[False, RuntimeError("database gone")]),
+			self.assertRaises(RuntimeError),
+		):
+			branches.drop_index(branch)
+		self.assertEqual(db.values("Repository Index", branch, ("status", "sha", "error")), before)
+		self.assertTrue(all(self.counts(branch)))
+
+	def test_an_error_in_the_delete_leaves_the_index_failed(self):
+		_, branch = self.index_both()
+		with (
+			patch.object(branches, "_delete_rows", side_effect=RuntimeError("database gone")),
+			self.assertRaises(RuntimeError),
+		):
+			branches.drop_index(branch)
+		# The old sha would claim rows that a committed batch deleted.
+		self.assertEqual(
+			db.values("Repository Index", branch, ("status", "sha")), {"status": "failed", "sha": None}
+		)
+		self.assertTrue(branches.drop_index(branch), "the next catch-up drops it")
+
+	def test_a_drop_reads_the_row_with_a_locking_read(self):
+		_, branch = self.index_both()
+		values = db.values
+		calls = []
+
+		def record(doctype, name, fields, for_update=False):
+			calls.append((tuple(fields), for_update))
+			return values(doctype, name, fields, for_update)
+
+		with patch.object(db, "values", side_effect=record):
+			self.assertTrue(branches.drop_index(branch))
+		self.assertIn((("status", "sha", "error", "completed_at"), True), calls)
+
+	def test_reembedding_leaves_no_vector_of_a_dropped_chunk(self):
+		_, branch = self.index_both()
+		chunk = str(db.scalar("SELECT name FROM `tabCode Chunk` WHERE `index` = %s LIMIT 1", (branch,)))
+		embed = jobs.Embedder.embed
+
+		def drop_during_embed(embedder, texts):
+			# A drop deletes the chunk and its vector while the batch is embedded.
+			db.execute("DELETE FROM `tabCode Chunk` WHERE name = %s", (chunk,))
+			db.execute("DELETE FROM `guard_vector` WHERE kind = 'chunk' AND ref = %s", (chunk,))
+			return embed(embedder, texts)
+
+		with patch.object(jobs.Embedder, "embed", autospec=True, side_effect=drop_during_embed):
+			jobs.reembed_all()
+		self.assertFalse(
+			db.scalar("SELECT COUNT(*) FROM `guard_vector` WHERE kind = 'chunk' AND ref = %s", (chunk,))
+		)
+
 	def test_a_drop_stops_when_a_review_starts(self):
 		_, branch = self.index_both()
 		before = db.values("Repository Index", branch, ("status", "sha"))
