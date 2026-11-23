@@ -120,7 +120,13 @@ class LocalPost:
 		"""The run of the pull request at `head`, with the findings and the verdict of the review."""
 		base = store.merge_base(store.rev_parse(f"refs/heads/{pr.base_branch}"), head)
 		run = local.change_run(
-			self.repository, store, base, head, store.diff(base, head), str(self.review.branch or "")
+			self.repository,
+			store,
+			base,
+			head,
+			store.diff(base, head),
+			str(self.review.branch or ""),
+			str(pr.base_branch or ""),
 		)
 		run.review, run.pr = self.review, pr
 		run.commits = store.commits_between(base, head)
